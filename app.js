@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -124,6 +124,7 @@
   const CAT_RE = /^\P{L}*?([\p{L}\p{N}][^\s)]{0,11})\)\s*/u; // 앞 장식 기호 + 12자 이내 분류 + ')'
   function itemRow(r, opts = {}) {
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
+    if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
     if (TASK_KEYS.has(r.section)) row.append(dragHandle(r));
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
@@ -334,10 +335,43 @@
     };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   }
+  /* ---------- 릴스: 제목(링크) + 촬영/편집/업로드 단계 버튼. 셋 다 누르면 완료, 촬영을 누르면 영상 기획 시트에 ⭕ ---------- */
+  const REEL_STEPS = ['촬영', '편집', '업로드'];
+  // shortcut: 단계는 행의 '시작' 칸에 "촬영,편집" 처럼, 링크는 '종료' 칸에 저장(릴스 행은 시간 칸을 안 씀). 필드가 더 필요해지면 전용 컬럼으로
+  const reelSteps = r => new Set(String(r.start || '').split(',').filter(x => REEL_STEPS.includes(x)));
+  const reelLink = r => r.end && /^https?:/.test(r.end) ? r.end : `https://docs.google.com/spreadsheets/d/1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo/edit#gid=1655414943&range=L${String(r.col).slice(5)}`;
+  function reelRow(r, virtual = false) {
+    const steps = reelSteps(r), row = el(`<div class="row reel${isDone(r) ? ' done' : ''}${virtual ? ' virtual' : ''}"${virtual ? '' : ` data-id="${esc(r.id)}"`}></div>`);
+    if (!virtual) row.append(dragHandle(r));
+    row.append(el(`<span class="pst">${statusIcon(statusCode(r.status))}</span>`));
+    const a = el(`<a class="tx reel-title" target="_blank" rel="noopener" title="영상 기획 열기"></a>`); a.href = reelLink(r); a.textContent = r.text; row.append(a);
+    const box = el('<div class="reel-steps" role="group" aria-label="진행 단계"></div>');
+    REEL_STEPS.forEach(st => {
+      const b = el(`<button type="button" aria-pressed="${steps.has(st)}">${st}</button>`);
+      b.onclick = () => {
+        let target = r;
+        if (virtual) { const { id, ...rest } = r; target = addRow(rest); } // 처음 누를 때 오늘 행으로 저장
+        const set = reelSteps(target); set.has(st) ? set.delete(st) : set.add(st);
+        const status = set.size === REEL_STEPS.length ? 'done' : set.size ? 'doing' : 'todo';
+        updateRow(target, { start: REEL_STEPS.filter(x => set.has(x)).join(','), status });
+        if (st === '촬영' && set.has('촬영')) api.post({ action: 'reelsShot', row: String(target.col).slice(5) }).catch(() => {});
+        if (status === 'done') holdSort(target.id);
+        render();
+      };
+      box.append(b);
+    });
+    row.append(box);
+    if (!virtual) { const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del); }
+    return row;
+  }
   function taskSection(d, s) {
     const all = rowsFor(d, s.key), done = all.filter(isDone).length;
     const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo' }));
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
+    if (s.key === '릴스업무') { // 영상 기획에서 아직 촬영 안 한 항목: 오늘 행이 없으면 가상 행으로 보여주고 처음 누를 때 저장
+      const have = new Set(all.map(r => r.col)), list = node.querySelector('.task-list'), add = list.querySelector(':scope > .add');
+      state.reelPlan.filter(p => !have.has('plan:' + p.row)).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
+    }
     return node;
   }
   function sectionChips(d) { // 섹션 바로가기 칩: 남은 개수 표시
@@ -749,6 +783,7 @@
     render();
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
+    if (!isDirector()) api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; if (asked === state.person) renderReport(); }).catch(() => {});
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */

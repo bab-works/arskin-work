@@ -31,11 +31,12 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 13, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 14, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -51,6 +52,7 @@ function doPost(e) {
   }
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
+  if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -607,5 +609,26 @@ function directorEdit_(body, me) {
       String(t.memo == null ? (old ? old[8] : '') : t.memo).slice(0, 500), now];
     if (old) sh.getRange(idx + 2, 1, 1, row.length).setValues([row]); else sh.appendRow(row);
     return directorList_();
+  } finally { lock.releaseLock(); }
+}
+
+/* ---------- 릴스업무 ↔ 영상 기획: 아직 촬영 안 한 기획을 가져오고, 촬영하면 기획 시트에 ⭕ 표시 ---------- */
+// 기획 시트 열: J 타겟팅, K 방식, L 영상 리스트(제목), M 촬영 여부, N 업로드완료, O 레퍼런스, P 업로드 영상
+function reelsPlan_() {
+  return contentPlanRead(SpreadsheetApp.openById(CALENDAR_SS_ID)).filter(function (r) {
+    var v = r.v.map(function (x) { return String(x).trim(); });
+    return v[2] && v[1] !== '기각' && v[3] !== '기각' && v[3] !== '⭕' && !v[4];
+  }).map(function (r) { return { row: r.row, title: String(r.v[2]).trim(), kind: String(r.v[0]).trim(), ref: String(r.v[5]).trim() }; });
+}
+function reelsShot_(row) {
+  row = Number(row);
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = contentPlanSheet(SpreadsheetApp.openById(CALENDAR_SS_ID));
+    if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('기획 행 번호가 올바르지 않습니다');
+    var cell = sh.getRange(row, 13);
+    if (String(cell.getDisplayValue()).trim()) return false; // 이미 표시돼 있으면 건드리지 않음
+    cell.setValue('⭕'); SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    return true;
   } finally { lock.releaseLock(); }
 }

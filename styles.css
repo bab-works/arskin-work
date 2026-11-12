@@ -495,3 +495,14 @@ html.printing .drag{display:none}
 .dc-day.out{opacity:.45}
 .dc-day.has{cursor:pointer}.dc-day.has:hover{box-shadow:inset 0 0 0 1px var(--blue)}
 .dc-day.today{box-shadow:inset 0 0 0 2px var(--blue-dark)}.dc-day.sel{background:var(--blue-weak)}
+/* I: 릴스 단계 버튼 */
+.row.reel{flex-wrap:wrap}
+.reel .pst{display:grid;place-items:center;width:24px;flex:none}
+.reel-title{color:var(--text-1);text-decoration:underline;text-decoration-color:var(--grey200);text-underline-offset:3px}
+.reel-title:hover{color:var(--blue-text);text-decoration-color:currentColor}
+.reel-steps{display:flex;gap:4px;margin-left:auto}
+.reel-steps button{min-height:30px;padding:0 9px;font-size:12px;font-weight:600;border-radius:999px;background:var(--grey100);color:var(--text-2);position:relative}
+.reel-steps button::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+.reel-steps button[aria-pressed=true]{background:#e6f6ee;color:#0a7a4a}
+.row.reel.done .reel-steps button[aria-pressed=true]{background:#0a7a4a;color:#fff}
+.row.virtual{opacity:.85}
