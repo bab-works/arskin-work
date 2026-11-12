@@ -10,13 +10,13 @@
   const ICONS = {"todo": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z\"/>", "doing": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24ZM40,128a88.1,88.1,0,0,1,88-88V216A88.1,88.1,0,0,1,40,128Z\"/>", "done": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z\"/>", "check": "<path d=\"M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"/>", "carry": "<path d=\"M229.66,157.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,160H128A104.11,104.11,0,0,1,24,56a8,8,0,0,1,16,0,88.1,88.1,0,0,0,88,88h76.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,157.66Z\"/>", "sort": "<path d=\"M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z\"/>", "print": "<path d=\"M214.67,72H200V40a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8V72H41.33C27.36,72,16,82.77,16,96v80a8,8,0,0,0,8,8H56v32a8,8,0,0,0,8,8H192a8,8,0,0,0,8-8V184h32a8,8,0,0,0,8-8V96C240,82.77,228.64,72,214.67,72ZM72,48H184V72H72ZM184,208H72V160H184Zm40-40H200V152a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8v16H32V96c0-4.41,4.19-8,9.33-8H214.67c5.14,0,9.33,3.59,9.33,8Zm-24-52a12,12,0,1,1-12-12A12,12,0,0,1,200,116Z\"/>", "reload": "<path d=\"M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z\"/>", "x": "<path d=\"M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z\"/>", "more": "<path d=\"M140,128a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm56-12a12,12,0,1,0,12,12A12,12,0,0,0,196,116ZM60,116a12,12,0,1,0,12,12A12,12,0,0,0,60,116Z\"/>"};
   const icon = (name, size = 20, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 256 256" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
   const statusIcon = c => icon(c, 20, 'sti sti-' + c);
-  const TASK_SECTIONS = [
-    { key: '주간고정', L: '주간고정', R: '주간고정 완료' },
-    { key: '데일리고정', L: '데일리 고정업무', R: '' },
-    { key: '배치예정', L: '업무 배치 예정', R: '' },
-    { key: '팔로업', L: '진행중 작업 팔로업', R: '' },
-    { key: '변동업무', L: '변동업무', R: '변동업무 진행중&완료' },
-    { key: '릴스업무', L: '릴스 업무', R: '릴스 완료' },
+  const TASK_SECTIONS = [ // 예전 L/R 두 칸(진행/완료)은 한 목록으로 합침. 시트의 열 값은 그대로 둔다
+    { key: '주간고정', L: '주간고정' },
+    { key: '데일리고정', L: '데일리 고정업무' },
+    { key: '배치예정', L: '업무 배치 예정' },
+    { key: '팔로업', L: '진행중 작업 팔로업' },
+    { key: '변동업무', L: '변동업무' },
+    { key: '릴스업무', L: '릴스 업무' },
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
@@ -210,22 +210,17 @@
   }
   function itemList(date, section, col, opts = {}) {
     const box = document.createElement('div');
-    const rows = rowsFor(date, section, col);
-    const key = date + section + col;
+    let rows = rowsFor(date, section, col);
+    if (opts.doneLast) rows = [...rows.filter(r => !isDone(r)), ...rows.filter(isDone)];
+    const key = date + section + (col ?? '');
     const hide = state.collapse && TASK_KEYS.has(section) && !state.expanded.has(key);
     let hidden = 0;
     rows.forEach(r => { const n = itemRow(r, opts); if (hide && isDone(r)) { n.classList.add('collapsed'); hidden++; } box.append(n); });
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
-    box.append(addInput(text => addRow({ date, section, col, text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
+    box.append(addInput(text => addRow({ date, section, col: col ?? '', text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
     return box;
   }
-  function taskSection(d, s) {
-    const cols = el('<div class="cols"></div>');
-    [['L', s.L], ['R', s.R || s.L]].forEach(([col, label]) => {
-      const c = el(`<div class="col"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, s.key, col)); cols.append(c);
-    });
-    return sec(s.L, cols);
-  }
+  const taskSection = (d, s) => sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
   function cellGrid(d, section, keys, cls, mode) {
     const g = el(`<div class="${cls}"></div>`);
     keys.forEach(([col, label]) => {
@@ -380,7 +375,7 @@
     let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
     const memo = cellText(d, '메모', '').trim();
     if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
-    TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L, s.R || s.L], [rowsFor(d, s.key, 'L'), rowsFor(d, s.key, 'R')]));
+    TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L], [[...rowsFor(d, s.key).filter(r => !isDone(r)), ...rowsFor(d, s.key).filter(isDone)]]));
     h += `<h3>원장님 완료</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '원장님완료', w)));
     h += `<h3>원장님 업무리스트업</h3>` + pairTable(['원개블', '그외', '릴스 촬영 리스트업'], ['원개블', '그외', '릴스촬영'].map(c => rowsFor(d, '원장님리스트', c)));
     h += `<h3>원장님 숙제</h3>` + textTable(['영상숙제(영어)', '영상숙제'], ['영어', '영상'].map(c => cellText(d, '원장님숙제', c)));

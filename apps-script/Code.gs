@@ -30,7 +30,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 9, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 10, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
@@ -456,6 +456,12 @@ function holidayEdit_(body) {
 /* ---------- 날짜 보고서 자동 생성: 직전 근무일의 이어갈 업무를 그날로 복사 ---------- */
 var TASK_KEYS_ = ['주간고정', '데일리고정', '배치예정', '팔로업', '변동업무', '릴스업무'];
 var NO_CARRY_ = ['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'];
+function isoWeek_(d) { // 'YYYY-Www' (월요일 시작, ISO 8601)
+  var t = new Date(d + 'T00:00:00Z'), wd = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - wd);
+  var y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return t.getUTCFullYear() + '-W' + ('0' + Math.ceil(((t - y0) / 864e5 + 1) / 7)).slice(-2);
+}
 function shiftKst_(d, n) { var t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
 function newId_(d, i) { return d.replace(/-/g, '') + '-' + Date.now().toString(36) + ('00' + i.toString(36)).slice(-3); }
 function isWorkday_(d) {
@@ -476,11 +482,20 @@ function generateDay_(who, d, force) {
     if (!src) { props.setProperty(mark, '1'); return { rows: [], src: '' }; }
     var srcRows = prev.filter(function (r) { return r.date === src; });
     var isDone = function (r) { return r.status === 'done' || r.status === '⭕'; };
-    var parents = srcRows.filter(function (r) { return NO_CARRY_.indexOf(r.section) < 0 && !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r)); });
+    // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
+    var newWeek = isoWeek_(d) !== isoWeek_(src);
+    var parents = srcRows.filter(function (r) {
+      if (NO_CARRY_.indexOf(r.section) >= 0) return false;
+      if (r.section === '데일리고정' || r.section === '주간고정') return true;
+      return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));
+    });
     var ids = {}, n = 0, copies = [];
     parents.forEach(function (r) {
       ids[r.id] = newId_(d, n++);
-      copies.push(copyOf_(r, ids[r.id], d, r.section === '데일리고정' ? 'todo' : r.status, r.col));
+      var st = r.section === '데일리고정' || (r.section === '주간고정' && newWeek) ? 'todo' : r.status;
+      var c = copyOf_(r, ids[r.id], d, st, r.col);
+      if (st === r.status && isDone(r)) c.completed = r.completed; // 같은 주 주간업무는 완료일도 유지
+      copies.push(c);
     });
     srcRows.forEach(function (r) {
       if ((r.section === '프로젝트' || r.section === '하위업무') && ids[r.col]) copies.push(copyOf_(r, newId_(d, n++), d, r.status, ids[r.col]));
@@ -488,7 +503,7 @@ function generateDay_(who, d, force) {
     if (copies.length) {
       var sh = monthSheet(who, d, true), now = new Date().toISOString();
       sh.getRange(sh.getLastRow() + 1, 1, copies.length, NCOL).setValues(copies.map(function (o) {
-        return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, '', o.origin];
+        return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, o.completed || '', o.origin];
       }));
     }
     props.setProperty(mark, '1');
