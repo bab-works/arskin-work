@@ -99,16 +99,21 @@
   }
   function autosize(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
 
+  const CAT_RE = /^\P{L}*?([\p{L}\p{N}][^\s)]{0,11})\)\s*/u; // 앞 장식 기호 + 12자 이내 분류 + ')'
   function itemRow(r, opts = {}) {
     if (r.section === '변동업무' && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
     if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); }));
-    const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`); tx.textContent = r.text;
-    tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); } else if (v !== r.text) updateRow(r, { text: v }); };
-    tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); } };
+    // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
+    const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
+    const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? m[1] : ''; tx.textContent = rest || r.text; };
+    paint();
+    tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
+    tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
+    tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); tx.blur(); } };
     const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`);
     del.onclick = () => { deleteRow(r); render(); };
-    row.append(tx);
+    row.append(chip, tx);
     if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
     row.append(del); return row;
   }

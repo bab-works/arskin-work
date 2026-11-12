@@ -399,3 +399,7 @@ button.sc-date:hover b{color:var(--blue-text);text-decoration:underline}
 .sec-toggle .chev{margin-left:auto;font-size:13px;font-weight:600;color:var(--blue-text)}
 #sharedtasks.folded>:not(h3){display:none}
 #sharedtasks h3{margin-bottom:4px}
+/* 작업 12: 분류 칩 (표시 전용) */
+.cat{flex:none;align-self:center;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;line-height:1;padding:5px 8px;border-radius:6px;background:var(--grey100);color:var(--text-2)}
+.cat[hidden]{display:none}
+.row.done .cat{opacity:.75}
