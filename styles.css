@@ -449,3 +449,12 @@ html.printing textarea{font-size:11px;line-height:1.35}
 @media(max-width:600px){#btnKeys{display:none}}
 .row-selecting,.row-selecting *{user-select:none!important;cursor:default}
 @media(hover:hover){.task-list .project-start{opacity:0}.task-list .row:hover .project-start,.task-list .row:focus-within .project-start{opacity:1}}
+/* E: 드래그 이동 */
+.drag{flex:none;width:20px;min-height:28px;padding:0;background:none;color:var(--text-3);cursor:grab;display:grid;place-items:center;touch-action:none;position:relative;margin-left:-6px}
+.drag::after{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+@media(hover:hover){.drag{opacity:0}.row:hover .drag,.row:focus-within .drag,.project-card:hover .drag{opacity:1}}
+.drag:active{cursor:grabbing}
+.drag-ghost{position:fixed;z-index:80;pointer-events:none;background:var(--card);box-shadow:0 12px 32px rgba(0,27,55,.18);border-radius:var(--r-sm);opacity:.95}
+.dragging{opacity:.35}
+.drop-ph{border:2px dashed #a8cbff;border-radius:var(--r-sm);background:var(--blue-weak);min-height:30px}
+html.printing .drag{display:none}

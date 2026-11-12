@@ -102,7 +102,8 @@
     } });
   }
 
-  const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col));
+  const ord = r => Number(r.order) || Infinity; // 순서 없는 행은 기존 순서대로 뒤에
+  const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col)).sort((a, b) => ord(a) - ord(b));
   // 같은 칸에 행이 여러 개면(과거 시트 흔적) 첫 행에 합쳐 저장한다
   function setCellText(date, section, col, text) {
     const rs = rowsFor(date, section, col);
@@ -123,6 +124,7 @@
   function itemRow(r, opts = {}) {
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
+    if (TASK_KEYS.has(r.section)) row.append(dragHandle(r));
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
@@ -220,8 +222,8 @@
     finally { changeSubtask.busy = false; }
   }
   function projectCard(r) {
-    const p = progressOf(r), card = el('<div class="project-card"></div>');
-    const head = el('<div class="project-card-head"><span class="project-badge">프로젝트</span></div>');
+    const p = progressOf(r), card = el(`<div class="project-card" data-id="${esc(r.id)}"></div>`);
+    const head = el('<div class="project-card-head"><span class="project-badge">프로젝트</span></div>'); head.prepend(dragHandle(r));
     const del = el('<button class="project-delete" title="프로젝트 삭제">삭제</button>'); del.onclick = () => { deleteRow(r); render(); }; head.append(del);
     const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
     title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
@@ -286,6 +288,50 @@
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' } /* = --dur, --ease */); });
     }, 400);
+  }
+  /* ---------- 드래그로 순서·칸 이동: 손잡이를 끌어 놓으면 그 칸의 순서를 1..n 으로 다시 저장 ---------- */
+  function dragHandle(r) {
+    const h = el(`<button type="button" class="drag" aria-label="끌어서 옮기기" title="끌어서 순서·칸 이동">${icon('drag', 16)}</button>`);
+    h.onpointerdown = e => startDrag(e, h.closest('.row,.project-card'), r);
+    h.onkeydown = e => { // 키보드: ↑↓ 로 같은 칸 안에서 한 칸씩 이동
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const list = rowsFor(r.date, r.section), i = list.indexOf(r), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]]; list.forEach((x, k) => { x.order = String(k + 1); }); save(list); render();
+      document.querySelector(`[data-id="${CSS.escape(r.id)}"] .drag`)?.focus();
+    };
+    h.setAttribute('aria-label', '끌어서 옮기기, 화살표 위·아래로 순서 이동');
+    return h;
+  }
+  function startDrag(e, node, r) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const box = node.getBoundingClientRect(), ghost = node.cloneNode(true), ph = el('<div class="drop-ph"></div>');
+    ghost.classList.add('drag-ghost'); Object.assign(ghost.style, { width: box.width + 'px', left: box.left + 'px', top: box.top + 'px' });
+    ph.style.height = box.height + 'px'; node.after(ph); node.classList.add('dragging'); document.body.append(ghost);
+    const dy = e.clientY - box.top, dx = e.clientX - box.left;
+    const move = ev => {
+      ghost.style.top = ev.clientY - dy + 'px'; ghost.style.left = ev.clientX - dx + 'px';
+      ghost.hidden = true; const under = document.elementFromPoint(ev.clientX, ev.clientY); ghost.hidden = false;
+      const target = under?.closest('.task-list .row[data-id], .task-list .project-card[data-id]');
+      const list = under?.closest('.task-list');
+      if (target && target !== node) { const t = target.getBoundingClientRect(); target[ev.clientY < t.top + t.height / 2 ? 'before' : 'after'](ph); }
+      else if (list && !target) list.querySelector('.add')?.before(ph);
+      if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12);
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      ghost.remove(); node.classList.remove('dragging');
+      const sec = ph.closest('.sec[id^="sec-"]'); if (!sec) { ph.remove(); return; }
+      ph.replaceWith(node);
+      const key = sec.id.slice(4), ids = [...sec.querySelectorAll('.task-list > [data-id]')].map(n => n.dataset.id);
+      const changed = [];
+      ids.forEach((id, i) => { const x = state.rows.find(y => y.id === id); if (!x) return; const patch = { order: String(i + 1), section: key }; if (x.order !== patch.order || x.section !== key) { Object.assign(x, patch); changed.push(x); } });
+      if (changed.length) save(changed);
+      render();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
   }
   function taskSection(d, s) {
     const all = rowsFor(d, s.key), done = all.filter(isDone).length;

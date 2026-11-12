@@ -23,7 +23,7 @@ function memberFor_(code) {
   if (!raw || !code) return '';
   try { var map = JSON.parse(raw); return Object.prototype.hasOwnProperty.call(map, code) ? String(map[code]) : ''; } catch (e) { return ''; }
 }
-var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '종료', '수정시각', '생성일', '완료일', '원본id'];
+var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '종료', '수정시각', '생성일', '완료일', '원본id', '순서'];
 var NCOL = HEADER.length;
 function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
 
@@ -80,7 +80,7 @@ function monthSheet(who, date, create) {
   var sh = ss.getSheetByName(name);
   if (!sh && create) {
     sh = ss.insertSheet(name, 0);
-    sh.getRange('A:L').setNumberFormat('@');
+    sh.getRange('A:M').setNumberFormat('@');
     sh.appendRow(HEADER);
     sh.setFrozenRows(1);
   }
@@ -105,7 +105,7 @@ function listRows(who, from, to) {
 }
 
 function toObj(r) {
-  return { id: r[0], date: r[1], section: r[2], col: r[3], status: r[4], text: r[5], start: r[6], end: r[7], updated: r[8], created: r[9] || r[1], completed: r[10], origin: r[11] || r[0] };
+  return { id: r[0], date: r[1], section: r[2], col: r[3], status: r[4], text: r[5], start: r[6], end: r[7], updated: r[8], created: r[9] || r[1], completed: r[10], origin: r[11] || r[0], order: r[12] || '' };
 }
 
 function upsertRow(who, o) {
@@ -113,10 +113,10 @@ function upsertRow(who, o) {
   var sh = monthSheet(who, o.date, true);
   var idx = findRow(sh, o.id);
   // 생성일·완료일·원본id 는 서버가 관리: 클라이언트가 안 보내도 기존 값을 유지한다
-  var prev = idx ? sh.getRange(idx, 10, 1, 3).getDisplayValues()[0] : ['', '', ''];
+  var prev = idx ? sh.getRange(idx, 10, 1, 4).getDisplayValues()[0] : ['', '', '', ''];
   var done = o.status === 'done' || o.status === '⭕';
   var vals = [o.id, o.date, o.section || '', o.col || '', o.status || '', o.text || '', o.start || '', o.end || '', new Date().toISOString(),
-    o.created || prev[0] || todayKst_(), done ? (prev[1] || todayKst_()) : '', o.origin || prev[2] || o.id];
+    o.created || prev[0] || todayKst_(), done ? (prev[1] || todayKst_()) : '', o.origin || prev[2] || o.id, o.order != null && o.order !== '' ? String(o.order) : prev[3]];
   if (idx) sh.getRange(idx, 1, 1, NCOL).setValues([vals]);
   else sh.appendRow(vals);
 }
@@ -140,7 +140,7 @@ var TRASH_DAYS = 14;
 function trashSheet_() {
   var ss = SpreadsheetApp.openById(sheetIdFor('공통'));
   var sh = ss.getSheetByName('trash');
-  if (!sh) { sh = ss.insertSheet('trash'); sh.getRange('A:N').setNumberFormat('@'); sh.appendRow(['삭제시각', '시트'].concat(HEADER)); sh.setFrozenRows(1); }
+  if (!sh) { sh = ss.insertSheet('trash'); sh.getRange('A:O').setNumberFormat('@'); sh.appendRow(['삭제시각', '시트'].concat(HEADER)); sh.setFrozenRows(1); }
   return sh;
 }
 function trashList_(who) {
@@ -159,7 +159,7 @@ function trashRestore_(keys) { // keys: ['삭제시각|id', ...]
   for (var i = vals.length - 1; i >= 0; i--) {
     if (keys.indexOf(vals[i][0] + '|' + vals[i][2]) < 0) continue;
     var o = toObj(vals[i].slice(2));
-    upsertRow(vals[i][1], { id: o.id, date: o.date, section: o.section, col: o.col, status: o.status, text: o.text, start: o.start, end: o.end, created: o.created, origin: o.origin });
+    upsertRow(vals[i][1], { id: o.id, date: o.date, section: o.section, col: o.col, status: o.status, text: o.text, start: o.start, end: o.end, created: o.created, origin: o.origin, order: o.order });
     sh.deleteRow(i + 2); n++;
   }
   return n;
@@ -543,7 +543,7 @@ function generateDay_(who, d, force) {
     if (copies.length) {
       var sh = monthSheet(who, d, true), now = new Date().toISOString();
       sh.getRange(sh.getLastRow() + 1, 1, copies.length, NCOL).setValues(copies.map(function (o) {
-        return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, o.completed || '', o.origin];
+        return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, o.completed || '', o.origin, o.order || ''];
       }));
     }
     props.setProperty(mark, '1');
@@ -551,7 +551,7 @@ function generateDay_(who, d, force) {
   } finally { lock.releaseLock(); }
 }
 function copyOf_(r, id, d, status, col) {
-  return { id: id, date: d, section: r.section, col: col || '', status: status || '', text: r.text, start: r.start, end: r.end, created: r.created || r.date, completed: '', origin: r.origin || r.id };
+  return { id: id, date: d, section: r.section, col: col || '', status: status || '', text: r.text, start: r.start, end: r.end, created: r.created || r.date, completed: '', origin: r.origin || r.id, order: r.order || '' };
 }
 // 트리거 진입점: 평일(공휴일 제외) 00:05 KST 에 모든 사람의 그날 보고서 생성
 function dailyGenerate() {
