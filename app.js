@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, dir: { tasks: [], me: '' }, doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -236,16 +236,6 @@
     }, 400);
   }
   const taskSection = (d, s) => sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
-  function cellGrid(d, section, keys, cls, mode) {
-    const g = el(`<div class="${cls}"></div>`);
-    keys.forEach(([col, label]) => {
-      const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`);
-      if (mode === 'list') c.append(itemList(d, section, col, { noStatus: true }));
-      else c.append(textarea('', cellText(d, section, col), v => setCellText(d, section, col, v), ''));
-      g.append(c);
-    });
-    return g;
-  }
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) {
@@ -258,9 +248,6 @@
     const projects = projectSummary(d); if (projects) box.append(projects);
     box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
-    box.append(sec('원장님 완료', cellGrid(d, '원장님완료', ['월', '화', '수', '목', '금'].map(w => [w, w]), 'grid5', 'text')));
-    box.append(sec('원장님 업무리스트업', cellGrid(d, '원장님리스트', [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']], 'grid3', 'list')));
-    box.append(sec('원장님 숙제', cellGrid(d, '원장님숙제', [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], 'cols', 'text')));
     const pub = publishingFor(d);
     if (pub) box.append(sec('오늘 발행 (콘텐츠 캘린더)', pub));
     box.querySelectorAll('textarea').forEach(autosize);
@@ -386,14 +373,10 @@
       for (let i = 0; i < n; i++) h += `<tr>${lists.map(l => cellHtml(l[i])).join('')}</tr>`;
       return h + '</tbody></table>';
     };
-    const textTable = (labels, texts) => `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody><tr>${texts.map(t => `<td class="pre">${esc(t)}</td>`).join('')}</tr></tbody></table>`;
     let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
     const memo = cellText(d, '메모', '').trim();
     if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
     TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L], [state.doneLast ? [...rowsFor(d, s.key).filter(r => !isDone(r)), ...rowsFor(d, s.key).filter(isDone)] : rowsFor(d, s.key)]));
-    h += `<h3>원장님 완료</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '원장님완료', w)));
-    h += `<h3>원장님 업무리스트업</h3>` + pairTable(['원개블', '그외', '릴스 촬영 리스트업'], ['원개블', '그외', '릴스촬영'].map(c => rowsFor(d, '원장님리스트', c)));
-    h += `<h3>원장님 숙제</h3>` + textTable(['영상숙제(영어)', '영상숙제'], ['영어', '영상'].map(c => cellText(d, '원장님숙제', c)));
     box.innerHTML = h;
   }
 
@@ -422,6 +405,8 @@
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
     $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
+    $('viewDirector').classList.toggle('hidden', v !== 'director');
+    if (v === 'director') { renderDirector(); loadDirector(); }
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
@@ -568,6 +553,56 @@
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
+  /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
+  const DIR_ST = { pending: '대기', approved: '승인', rejected: '거절', done: '완료' };
+  const DIRECTOR = '원장님';
+  const dirSeen = () => { try { return localStorage.dirSeen || ''; } catch { return ''; } };
+  // 알림: 내가 쓴 숙제가 마지막으로 본 뒤 승인·거절되면 메뉴에 숫자 배지
+  const dirNews = () => state.dir.tasks.filter(t => t.author === state.dir.me && (t.status === 'approved' || t.status === 'rejected') && t.updated > dirSeen());
+  function paintDirBadge() {
+    const n = state.view === 'director' ? 0 : dirNews().length;
+    document.querySelectorAll('.nav-badge').forEach(b => { b.textContent = n; b.classList.toggle('hidden', !n); b.setAttribute('aria-label', `새 결과 ${n}건`); });
+  }
+  async function loadDirector() {
+    try { const j = await api.get({ action: 'director' }); state.dir = { tasks: j.tasks || [], me: j.me || '' }; } catch { return; }
+    if (state.view === 'director') renderDirector(); else paintDirBadge();
+  }
+  async function saveDirector(body) {
+    try { state.dir.tasks = (await api.post(body)).tasks; } catch (e) { toast(e.message); }
+    renderDirector();
+  }
+  function renderDirector() {
+    const box = $('directorHub'), { tasks, me } = state.dir, isDir = me === DIRECTOR, seen = dirSeen();
+    const count = k => tasks.filter(t => t.status === k).length;
+    box.innerHTML = `<div class="dir-head"><h1>원장님 숙제</h1><p>마케터가 원장님께 드리는 숙제입니다. 누구나 쓰고 고칠 수 있고, 승인·거절은 원장님만 할 수 있습니다.</p></div>
+      <div class="dir-sum">${Object.keys(DIR_ST).map(k => `<span class="dir-pill d-${k}">${DIR_ST[k]} <b>${count(k)}</b></span>`).join('')}</div>
+      <form class="dir-add"><input name="text" placeholder="원장님께 드릴 숙제" aria-label="숙제 내용" maxlength="500" required><input name="due" type="date" aria-label="마감일"><button class="primary">추가</button></form>`;
+    box.querySelector('form').onsubmit = e => { e.preventDefault(); const f = e.target; saveDirector({ action: 'directorSave', task: { text: f.text.value, due: f.due.value } }); };
+    [['pending', '대기 중'], ['approved', '승인됨'], ['done', '완료'], ['rejected', '거절됨']].forEach(([k, label]) => {
+      const list = tasks.filter(t => t.status === k).sort((a, b) => (b.updated > a.updated ? 1 : -1));
+      if (!list.length) return;
+      const g = el(`<section class="sec dir-group"><h3>${label} <small>${list.length}</small></h3></section>`);
+      list.forEach(t => {
+        const fresh = t.author === me && (k === 'approved' || k === 'rejected') && t.updated > seen;
+        const meta = [`작성 ${esc(t.author)}`, t.created.slice(5).replace('-', '.'), t.due && `마감 ${t.due.slice(5).replace('-', '.')}`, t.decided && k !== 'pending' && `결정 ${t.decided.slice(5).replace('-', '.')}`].filter(Boolean).join(' · ');
+        const acts = [isDir && k === 'pending' && ['approved', '승인'], isDir && k === 'pending' && ['rejected', '거절'], k === 'approved' && ['done', '완료'], isDir && k !== 'pending' && ['pending', '대기로']].filter(Boolean);
+        const it = el(`<div class="dir-item d-${k}${fresh ? ' fresh' : ''}"><span class="dir-pill d-${k}">${DIR_ST[k]}</span>
+          <div class="dir-body"><div class="dir-text" contenteditable="plaintext-only" role="textbox" aria-label="숙제 내용"></div><small>${meta}${fresh ? ' · <b>새 결과</b>' : ''}</small></div>
+          <div class="dir-acts">${acts.map(([st, l]) => `<button type="button" data-st="${st}">${l}</button>`).join('')}${isDir || t.author === me ? `<button type="button" class="dir-del" aria-label="삭제">${icon('x', 14)}</button>` : ''}</div></div>`);
+        const tx = it.querySelector('.dir-text'); tx.textContent = t.text;
+        tx.onblur = () => { const v = tx.textContent.trim(); if (v && v !== t.text) saveDirector({ action: 'directorSave', task: { id: t.id, text: v } }); };
+        it.querySelectorAll('[data-st]').forEach(b => b.onclick = () => saveDirector({ action: 'directorSave', task: { id: t.id, status: b.dataset.st } }));
+        it.querySelector('.dir-del')?.addEventListener('click', () => { if (confirm('이 숙제를 지울까요?')) saveDirector({ action: 'directorDelete', task: { id: t.id } }); });
+        g.append(it);
+      });
+      box.append(g);
+    });
+    if (!tasks.length) box.append(el('<div class="empty-note">아직 숙제가 없습니다. 위에서 첫 숙제를 추가하세요.</div>'));
+    try { localStorage.dirSeen = new Date().toISOString(); } catch {}
+    paintDirBadge();
+  }
+
   load();
+  loadDirector();
   setView('calendar');
 })();

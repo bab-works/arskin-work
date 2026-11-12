@@ -356,3 +356,25 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .hol-list li{display:flex;align-items:center;gap:10px;min-height:44px;border-bottom:1px solid var(--line)}
 .hol-list li span{color:var(--text-2);font-variant-numeric:tabular-nums;flex:none;width:80px}.hol-list li b{flex:1;font-weight:500}
 .hol-list li small{color:var(--text-2)}.hol-list li button{width:44px;min-height:44px;background:none;color:var(--text-2);display:grid;place-items:center;padding:0}
+/* 작업 9: 원장님 숙제 */
+.nav-badge{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-left:6px;border-radius:10px;background:#c92a2a;color:#fff;font-size:12px;font-weight:700;vertical-align:1px}
+.nav-badge.hidden{display:none}
+.dir{max-width:880px;margin:0 auto;padding:24px 0 80px}
+.dir-head h1{font-size:26px;margin:0 0 6px}.dir-head p{margin:0 0 16px;color:var(--text-2)}
+.dir-sum{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.dir-pill{display:inline-flex;align-items:center;gap:4px;flex:none;font-size:13px;font-weight:600;padding:4px 10px;border-radius:999px}
+.d-pending{--dc:var(--text-2);--dbg:var(--grey100)}.d-approved{--dc:#0a7a4a;--dbg:#e6f6ee}.d-rejected{--dc:#c92a2a;--dbg:#fff0f0}.d-done{--dc:var(--blue-text);--dbg:var(--blue-weak)}
+.dir-pill{color:var(--dc);background:var(--dbg)}
+.dir-add{display:flex;gap:8px;flex-wrap:wrap;background:var(--card);padding:12px;border-radius:var(--r-lg);margin-bottom:12px}
+.dir-add input{flex:1 1 220px;min-height:44px;border:none;border-radius:var(--r-sm);background:var(--grey50);padding:0 12px;font:inherit}
+.dir-add input[type=date]{flex:0 1 160px}.dir-add button{min-height:44px}
+.dir-group h3{margin:0 0 8px;font-size:15px}.dir-group h3 small{color:var(--text-2);font-weight:500}
+.dir-item{display:flex;align-items:flex-start;gap:12px;padding:12px 0 12px 12px;border-left:3px solid var(--dc);border-bottom:1px solid var(--line);margin-bottom:4px}
+.dir-item.d-rejected .dir-text{color:var(--text-2)}
+.dir-item.fresh{background:var(--dbg);border-radius:0 var(--r-sm) var(--r-sm) 0}
+.dir-body{flex:1;min-width:0}.dir-text{outline:none;overflow-wrap:anywhere;padding:2px 0}.dir-text:focus{background:var(--blue-weak);border-radius:6px}
+.dir-body small{display:block;color:var(--text-2);margin-top:4px}.dir-body small b{color:var(--dc)}
+.dir-acts{display:flex;gap:6px;flex:none;align-items:center}.dir-acts button{min-height:44px;padding:0 12px;font-size:14px}
+.dir-acts [data-st=approved]{background:#e6f6ee;color:#0a7a4a}.dir-acts [data-st=rejected]{background:#fff0f0;color:#c92a2a}
+.dir-del{width:44px;padding:0!important;background:none!important;color:var(--text-2);display:grid;place-items:center}
+@media(max-width:600px){.dir{padding:16px 0 96px}.dir-item:has([data-st]){flex-wrap:wrap}.dir-acts:has([data-st]){width:100%;justify-content:flex-end}}

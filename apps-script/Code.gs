@@ -30,9 +30,10 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 10, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 11, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
+  if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -46,6 +47,7 @@ function doPost(e) {
   if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
   }
+  if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -455,7 +457,7 @@ function holidayEdit_(body) {
 
 /* ---------- 날짜 보고서 자동 생성: 직전 근무일의 이어갈 업무를 그날로 복사 ---------- */
 var TASK_KEYS_ = ['주간고정', '데일리고정', '배치예정', '팔로업', '변동업무', '릴스업무'];
-var NO_CARRY_ = ['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'];
+var NO_CARRY_ = ['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무', '원장님완료', '원장님리스트', '원장님숙제']; // 원장님 섹션은 원장님 숙제 페이지로 대체
 function isoWeek_(d) { // 'YYYY-Www' (월요일 시작, ISO 8601)
   var t = new Date(d + 'T00:00:00Z'), wd = t.getUTCDay() || 7;
   t.setUTCDate(t.getUTCDate() + 4 - wd);
@@ -523,4 +525,48 @@ function dailyGenerate() {
 function setupDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyGenerate') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('dailyGenerate').timeBased().everyDays(1).atHour(0).nearMinute(5).inTimezone('Asia/Seoul').create();
+}
+
+/* ---------- 원장님 숙제: 마케터가 원장님께 드리는 숙제. 마케터 모두 읽기·쓰기, 승인·거절은 원장님만 ---------- */
+var DIRECTOR = '원장님';
+var DIR_HEADER = ['id', '생성일', '작성자', '내용', '상태', '마감', '결정일', '완료일', '메모', '수정시각']; // 상태: pending|approved|rejected|done
+var DIR_STATUS = ['pending', 'approved', 'rejected', 'done'];
+function directorSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통'));
+  var sh = ss.getSheetByName('director_tasks');
+  if (!sh) { sh = ss.insertSheet('director_tasks'); sh.getRange('A:J').setNumberFormat('@'); sh.appendRow(DIR_HEADER); sh.setFrozenRows(1); }
+  return sh;
+}
+function directorRows_(sh) { return sh.getLastRow() < 2 ? [] : sh.getRange(2, 1, sh.getLastRow() - 1, DIR_HEADER.length).getDisplayValues(); }
+function directorList_() {
+  return directorRows_(directorSheet_()).filter(function (r) { return r[0]; }).map(function (r) {
+    return { id: r[0], created: r[1], author: r[2], text: r[3], status: r[4] || 'pending', due: r[5], decided: r[6], completed: r[7], memo: r[8], updated: r[9] };
+  });
+}
+function directorEdit_(body, me) {
+  if (!me) throw new Error('unauthorized');
+  var t = body.task || {}, lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = directorSheet_(), rows = directorRows_(sh), idx = -1;
+    for (var i = 0; i < rows.length; i++) if (t.id && rows[i][0] === String(t.id)) { idx = i; break; }
+    var old = idx >= 0 ? rows[idx] : null, now = new Date().toISOString(), today = todayKst_();
+    if (body.action === 'directorDelete') {
+      if (!old) return directorList_();
+      if (me !== DIRECTOR && me !== old[2]) throw new Error('작성자나 원장님만 지울 수 있습니다');
+      sh.deleteRow(idx + 2);
+      return directorList_();
+    }
+    var text = String(t.text == null ? (old ? old[3] : '') : t.text).trim().slice(0, 500);
+    if (!text) throw new Error('내용을 입력하세요');
+    var status = DIR_STATUS.indexOf(t.status) >= 0 ? t.status : (old ? old[4] : 'pending');
+    var prevStatus = old ? old[4] : 'pending';
+    if (status !== prevStatus && me !== DIRECTOR && !(prevStatus === 'approved' && status === 'done')) // 마케터는 승인된 숙제를 완료 처리만 가능
+      throw new Error('승인·거절은 원장님만 할 수 있습니다');
+    var decided = status === 'approved' || status === 'rejected' ? (status === prevStatus && old ? old[6] : today) : (status === 'done' && old ? old[6] : '');
+    var row = [old ? old[0] : 'D' + Date.now().toString(36), old ? old[1] : today, old ? old[2] : me, text, status,
+      String(t.due == null ? (old ? old[5] : '') : t.due).slice(0, 10), decided, status === 'done' ? (old && old[7] ? old[7] : today) : '',
+      String(t.memo == null ? (old ? old[8] : '') : t.memo).slice(0, 500), now];
+    if (old) sh.getRange(idx + 2, 1, 1, row.length).setValues([row]); else sh.appendRow(row);
+    return directorList_();
+  } finally { lock.releaseLock(); }
 }

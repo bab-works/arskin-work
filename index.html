@@ -26,6 +26,7 @@
       </div>
       <button data-view="daily">일간보고서</button>
       <div class="subnav" id="subnav"></div>
+      <button data-view="director">원장님 숙제<span class="nav-badge hidden" aria-live="polite"></span></button>
       <button data-view="revenue">월간 매출표</button>
     </nav>
     <div class="sidefoot"><a id="sheetLink" target="_blank" rel="noopener">시트 열기 ↗</a></div>
@@ -66,12 +67,14 @@
         <button data-content-view="ana" aria-pressed="false" disabled>분석</button>
         <button data-content-view="plan" aria-pressed="false" disabled>영상 기획</button>
       </nav><div id="contentHub"></div></section>
+    <section id="viewDirector" class="view hidden"><div id="directorHub" class="dir"></div></section>
     <section id="viewRevenue" class="view hidden"><div id="revenueHub"></div></section>
   </main>
 
   <nav class="bottomnav mobile-only">
     <button data-view="calendar" class="active">콘텐츠</button>
     <button data-view="daily">일간보고서</button>
+    <button data-view="director">원장님 숙제<span class="nav-badge hidden"></span></button>
     <button data-view="revenue">월간 매출표</button>
   </nav>
 </div>
