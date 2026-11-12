@@ -458,3 +458,20 @@ html.printing textarea{font-size:11px;line-height:1.35}
 .dragging{opacity:.35}
 .drop-ph{border:2px dashed #a8cbff;border-radius:var(--r-sm);background:var(--blue-weak);min-height:30px}
 html.printing .drag{display:none}
+/* F: 공용 캘린더 손잡이, 일정 체크, 타임라인 공통 일정 */
+.sc-grip{display:flex;justify-content:center;align-items:center;width:100%;min-height:28px;margin-top:8px;padding:0;background:none;cursor:ns-resize;touch-action:none;position:relative}
+.sc-grip::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+.sc-grip span{width:40px;height:5px;border-radius:5px;background:var(--grey200);transition:width var(--dur) var(--ease),background var(--dur-fast)}
+.sc-grip:hover span,.sc-grip:focus-visible span{width:56px;background:#b0b8c1}
+.sharedcal{transform:translateY(calc(var(--pull,0px) * .15))}
+.sc-ev-wrap{display:flex;gap:4px;align-items:flex-start;flex-shrink:0;min-width:0}
+.sc-ev-wrap input{flex:none;width:16px;height:16px;margin:6px 0 0;accent-color:var(--blue-dark);position:relative}
+.sc-ev-wrap input::after{content:"";position:absolute;inset:-14px}
+.sc-ev-wrap .sc-ev{flex:1;min-width:0}
+.sc-ev-wrap.done .sc-ev{background:var(--grey100);color:var(--text-2)}.sc-ev-wrap.done .sc-ev span{text-decoration:line-through}.sc-ev-wrap.done .sc-ev small{color:var(--text-2)}
+.tl-block.tl-shared{background:#f0ebff;color:#5b3cc4;left:44px;cursor:pointer;border-left:3px solid #7a5af8}
+.tl-block.tl-shared small{color:#5b3cc4}
+.tl-block.tl-shared.done{opacity:.6;text-decoration:line-through}
+@media(max-width:600px){.sc-week:not(.sc-month) .sc-ev-wrap{grid-column:2}}
+.tl-block.tl-shared{left:auto;right:2px;width:58%;z-index:2;box-shadow:-2px 0 0 var(--card)}
+.sc-collapsed .sc-grip{display:none}

@@ -390,6 +390,11 @@
     box.append(el(`<div class="tl-head"><span>타임라인 <small>${esc(state.sel.slice(5))}</small></span><button id="tlAdd" class="more">+ 블록</button></div>`));
     const grid = el('<div class="tl-grid"></div>'); grid.style.height = (H1 - H0) * PX + 'px';
     for (let h = H0; h < H1; h++) grid.append(el(`<div class="tl-hour"><span>${pad(h)}:00</span></div>`));
+    // 공용 캘린더의 회의(시간 있는 일정)는 모두의 타임라인에 같은 색으로 표시, 수정은 공용 일정 편집기로
+    state.shared.filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
+      const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정"><small>공통 · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+      place(b, r.start, r.end); b.onclick = () => openEditor(r, b); grid.append(b);
+    });
     rowsFor(state.sel, '타임라인').forEach(r => {
       const b = el(`<div class="tl-block"><small>${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
       place(b, r.start, r.end);
@@ -563,6 +568,15 @@
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
+  // 주간↔월간: 높이를 이전 값에서 새 값으로 부드럽게 (모션 줄이기면 즉시)
+  function switchCalMode(mode) {
+    const cal = $('sharedcal'), h0 = cal.offsetHeight;
+    state.sharedMode = mode; try { localStorage.sharedMode = mode; } catch {}
+    renderShared(); loadShared();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const h1 = cal.offsetHeight;
+    cal.animate([{ height: h0 + 'px', overflow: 'hidden' }, { height: h1 + 'px', overflow: 'hidden' }], { duration: 320, easing: 'cubic-bezier(.2,0,0,1)' });
+  }
   function renderShared() {
     const cal = $('sharedcal'), tasks = $('sharedtasks');
     if (!cal) return;
@@ -577,7 +591,7 @@
     const who = el(`<div class="sc-who" role="group" aria-label="담당자 필터">${['', ...C.PEOPLE.map(p => p.name)].map(n => `<button type="button" data-who="${esc(n)}" aria-pressed="${state.calWho === n}">${n ? esc(n) : '전체'}</button>`).join('')}</div>`);
     who.onclick = e => { const b = e.target.closest('[data-who]'); if (!b) return; state.calWho = b.dataset.who; try { localStorage.calWho = state.calWho; } catch {} renderShared(); };
     cal.querySelector('.sc-header').after(who);
-    cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { state.sharedMode = b.dataset.mode; localStorage.sharedMode = state.sharedMode; renderShared(); loadShared(); });
+    cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
     const nav = el(`<div class="sc-navigation"><button type="button" aria-label="이전 ${monthly ? '달' : '주'}">‹ 이전 ${monthly ? '달' : '주'}</button><button type="button">${monthly ? '이번 달' : '이번 주'}</button><button type="button" aria-label="다음 ${monthly ? '달' : '주'}">다음 ${monthly ? '달' : '주'} ›</button></div>`);
     [...nav.children].forEach((b, i) => b.onclick = () => { state.sharedAnchor = i === 1 ? today : monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 1 + (i === 0 ? -1 : 1), 1)) : shiftDate(ws, i === 0 ? -7 : 7); renderShared(); loadShared(); });
@@ -599,9 +613,12 @@
       if (state.holidays[d]) col.classList.add('holiday');
       if (!outside) {
         state.shared.filter(r => r.section === '일정' && r.date === d && (!state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-          const ev = el(`<button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button>`);
+          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button></div>`);
+          const ev = wrap.querySelector('.sc-ev');
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + r.col : ''}`;
-          ev.onclick = () => openEditor(r, ev); col.append(ev);
+          ev.onclick = () => openEditor(r, ev);
+          wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); renderShared(); renderTimeline(); };
+          col.append(wrap);
         });
         const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
         add.onclick = () => openEditor({ date: d, section: '일정', col: state.person, start: '10:00', end: '11:00', text: '', _who: SHARED }, add, true);
@@ -612,9 +629,19 @@
     body.append(grid);
     const notes = state.shared.filter(r => r.section === '일정메모' && (monthly ? r.date.startsWith(month) : r.date >= ws && r.date <= shiftDate(ws, 4)));
     if (notes.length) { const box = el('<div class="sc-notes"><h4>날짜 확인이 필요한 회의 일정</h4></div>'); notes.forEach(r => box.append(itemRow(r, { noStatus: true }))); body.append(box); }
+    const grip = el(`<button type="button" class="sc-grip" aria-label="${monthly ? '주간으로 접기' : '월간으로 펼치기'}" title="끌거나 눌러서 주간·월간 전환"><span></span></button>`);
+    grip.onpointerdown = e => {
+      const y0 = e.clientY; let moved = false; grip.setPointerCapture(e.pointerId);
+      grip.onpointermove = ev => { const dy = ev.clientY - y0; if (Math.abs(dy) > 8) moved = true; cal.style.setProperty('--pull', Math.max(-60, Math.min(60, dy)) + 'px'); };
+      grip.onpointerup = ev => {
+        grip.onpointermove = grip.onpointerup = null; cal.style.removeProperty('--pull');
+        const dy = ev.clientY - y0, want = !moved ? (monthly ? 'week' : 'month') : dy > 40 ? 'month' : dy < -40 ? 'week' : state.sharedMode;
+        if (want !== state.sharedMode) switchCalMode(want);
+      };
+    };
     const toggle = el(`<button class="sc-toggle" aria-controls="sharedCalendarBody" aria-expanded="${!state.sharedCollapsed}"><span class="sc-handle" aria-hidden="true"></span><span>${state.sharedCollapsed ? '일정 펼치기 ⌄' : '일정 접기 ⌃'}</span></button>`);
     toggle.onclick = () => { state.sharedCollapsed = !state.sharedCollapsed; localStorage.sharedCollapsed = state.sharedCollapsed ? '1' : '0'; renderShared(); };
-    cal.append(body, toggle);
+    cal.append(body, grip, toggle);
     const open = state.sharedTasksOpen;
     tasks.innerHTML = `<h3><button type="button" class="sec-toggle" aria-expanded="${open}">공통 업무 <small class="sec-count"></small><span class="chev" aria-hidden="true">${open ? '접기' : '펼치기'}</span></button></h3>`;
     tasks.querySelector('.sec-toggle').onclick = () => { state.sharedTasksOpen = !open; try { localStorage.sharedTasksOpen = open ? '0' : '1'; } catch {} renderShared(); };
