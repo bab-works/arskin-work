@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -101,8 +101,8 @@
 
   function itemRow(r, opts = {}) {
     if (r.section === '변동업무' && isProject(r)) return projectCard(r);
-    const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
-    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); render(); }));
+    const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
+    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); }));
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`); tx.textContent = r.text;
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); } else if (v !== r.text) updateRow(r, { text: v }); };
     tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); } };
@@ -211,7 +211,7 @@
   function itemList(date, section, col, opts = {}) {
     const box = document.createElement('div');
     let rows = rowsFor(date, section, col);
-    if (opts.doneLast) rows = [...rows.filter(r => !isDone(r)), ...rows.filter(isDone)];
+    if (opts.doneLast && state.doneLast) { const late = r => isDone(r) && !sortHold.has(r.id); rows = [...rows.filter(r => !late(r)), ...rows.filter(late)]; }
     const key = date + section + (col ?? '');
     const hide = state.collapse && TASK_KEYS.has(section) && !state.expanded.has(key);
     let hidden = 0;
@@ -219,6 +219,21 @@
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
     box.append(addInput(text => addRow({ date, section, col: col ?? '', text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
     return box;
+  }
+  // 완료 정렬: 방금 바꾼 행은 400ms 제자리에 두었다가 220ms 동안 새 위치로 이동(FLIP)
+  const sortHold = new Set();
+  function holdSort(id) {
+    if (!state.doneLast) return;
+    sortHold.add(id); clearTimeout(holdSort.t);
+    holdSort.t = setTimeout(() => {
+      const rows = () => document.querySelectorAll('#report .row[data-id]');
+      const before = new Map([...rows()].map(n => [n.dataset.id, n.getBoundingClientRect().top]));
+      const focused = document.activeElement?.dataset?.rid;
+      sortHold.clear(); renderReport();
+      if (focused) document.querySelector(`.st[data-rid="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' }); });
+    }, 400);
   }
   const taskSection = (d, s) => sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
   function cellGrid(d, section, keys, cls, mode) {
@@ -375,7 +390,7 @@
     let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
     const memo = cellText(d, '메모', '').trim();
     if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
-    TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L], [[...rowsFor(d, s.key).filter(r => !isDone(r)), ...rowsFor(d, s.key).filter(isDone)]]));
+    TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L], [state.doneLast ? [...rowsFor(d, s.key).filter(r => !isDone(r)), ...rowsFor(d, s.key).filter(isDone)] : rowsFor(d, s.key)]));
     h += `<h3>원장님 완료</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '원장님완료', w)));
     h += `<h3>원장님 업무리스트업</h3>` + pairTable(['원개블', '그외', '릴스 촬영 리스트업'], ['원개블', '그외', '릴스촬영'].map(c => rowsFor(d, '원장님리스트', c)));
     h += `<h3>원장님 숙제</h3>` + textTable(['영상숙제(영어)', '영상숙제'], ['영어', '영상'].map(c => cellText(d, '원장님숙제', c)));
@@ -411,7 +426,7 @@
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
-  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
+  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
   document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => {
@@ -431,6 +446,7 @@
   });
   document.querySelectorAll('[data-icon]').forEach(n => { n.outerHTML = icon(n.dataset.icon, 18); });
   $('btnCarry').onclick = carryForward;
+  $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); renderPrint(); print(); };
   $('btnReload').onclick = () => load();
