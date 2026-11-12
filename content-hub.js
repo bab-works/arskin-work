@@ -299,7 +299,7 @@ function calendarFallback(grid) {
 $('contentRefresh').onclick = () => refresh(true);
 let touchY = null, pullDistance = 0;
 root.addEventListener('touchstart', e => { touchY = window.scrollY <= 0 && !e.target.closest('input,select,textarea,.tbl,.panel') ? e.touches[0].clientY : null; pullDistance = 0; }, { passive: true });
-root.addEventListener('touchmove', e => { if (touchY === null) return; pullDistance = e.touches[0].clientY - touchY; if (pullDistance > 25) { $('pullIndicator').classList.add('visible'); $('pullIndicator').textContent = pullDistance > 85 ? '놓으면 새로고침' : '아래로 당겨 새로고침'; } }, { passive: true });
+root.addEventListener('touchmove', e => { if (touchY === null) return; pullDistance = e.touches[0].clientY - touchY; if (pullDistance > 10 && e.cancelable) e.preventDefault(); if (pullDistance > 25) { $('pullIndicator').classList.add('visible'); $('pullIndicator').textContent = pullDistance > 85 ? '놓으면 새로고침' : '아래로 당겨 새로고침'; } }, { passive: false });
 root.addEventListener('touchend', () => { if (touchY !== null && pullDistance > 85) refresh(true); else $('pullIndicator').classList.remove('visible'); touchY = null; pullDistance = 0; });
 root.addEventListener('touchcancel', () => { touchY = null; pullDistance = 0; $('pullIndicator').classList.remove('visible'); });
 window.addEventListener('focus', () => { if (!host.closest('.hidden')) refresh(false, true); });

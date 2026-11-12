@@ -355,7 +355,7 @@
     state.dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'); const has = state.rows.some(r => r.date === d);
       const b = el(`<button class="${d === state.sel ? 'active' : ''}${has ? '' : ' empty'}"><small>${WD[dt.getDay()]}</small><b>${dt.getDate()}</b></button>`);
-      b.title = d; b.onclick = () => { const wk = weekStart(state.sel) !== weekStart(d); state.sel = d; state.sharedAnchor = d; render(); if (wk) loadShared(); };
+      b.title = d; b.onclick = () => { state.sel = d; state.sharedAnchor = d; render(); loadShared(); };
       s.append(b);
     });
   }
