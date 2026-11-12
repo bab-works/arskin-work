@@ -266,7 +266,8 @@ async function refresh(force = false, background = false) {
     cache = { time: Date.now() }; live = true;
     $('v-ana').disabled = false; $('v-plan').disabled = false;
     if (changed || !posts.length) init(data);
-    $('syncState').textContent = '방금 동기화 · 60초마다 자동 확인';
+    const sync = data.instagram;
+    $('syncState').textContent = sync && !sync.configured ? 'Instagram 연결 설정 필요 · 시트 기록 표시 중' : sync && (sync.accounts || []).some(a => !a.ok) ? '일부 Instagram 계정 동기화 실패 · 시트 기록 표시 중' : '방금 동기화 · 60초마다 자동 확인';
   } catch (err) {
     if (!cache) {
       try {
@@ -275,7 +276,7 @@ async function refresh(force = false, background = false) {
         calendarFallback(data.grid); live = false;
         $('v-ana').disabled = true; $('v-plan').disabled = true;
         $('updated').textContent = '· 콘텐츠 캘린더 연결됨';
-        $('syncState').textContent = '분석·영상 기획 연결을 기다리고 있어요';
+        $('syncState').textContent = '계정 데이터 연결 오류 · 캘린더만 표시 중';
         render();
       } catch (fallbackError) { $('syncState').textContent = '연결 실패 · 새로고침을 눌러 다시 시도하세요'; }
     } else { $('syncState').textContent = '동기화 실패 · 마지막 확인 내용을 표시 중'; if (!background) toast('새로고침 실패: ' + err.message, true); }

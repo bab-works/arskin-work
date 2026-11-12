@@ -20,7 +20,7 @@ var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '�
 function doGet(e) {
   var p = e.parameter || {};
   if (p.key !== API_KEY) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 3, content: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 4, content: true, instagram: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
@@ -137,10 +137,11 @@ var CONTENT_SOURCES = [
   { ch: 'jasa', sheet: '블로그 업로드', col: 9, width: 4 }
 ];
 function contentData(fresh) {
+  var instagram = instagramSync_(fresh);
   var cache = CacheService.getScriptCache(), hit = cache.get('content-v3');
-  if (hit && !fresh) return JSON.parse(hit);
+  if (hit && !fresh) { var cached = JSON.parse(hit); cached.instagram = instagram; return cached; }
   var ss = SpreadsheetApp.openById(CALENDAR_SS_ID);
-  var out = { updated: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss') };
+  var out = { updated: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), instagram: instagram };
   CONTENT_SOURCES.forEach(function(source) {
     var sh = ss.getSheetByName(source.sheet);
     if (!sh) throw new Error('시트 연결을 확인해 주세요: ' + source.sheet);
@@ -189,3 +190,111 @@ function contentPlanWrite(body) {
     return contentPlanRead(ss);
   } finally { lock.releaseLock(); }
 }
+
+// Instagram 신규 게시물 수집. 토큰은 프로젝트 설정의 스크립트 속성에서만 읽습니다.
+// IG_ACCESS_TOKENS: Instagram 사용자 토큰들을 줄바꿈으로 구분 (계정은 /me로 자동 확인).
+// 선택: IG_GRAPH_VERSION (기본 v24.0), IG_SYNC_INTERVAL_SECONDS (기본 120).
+var IG_ACCOUNT_SHEETS = {
+  'dr.hongzz': 'dr.hongzz+영상리스트', 'dr.hongzz_global': 'dr.hongzz_global',
+  'figo_seoul': 'Figo', 'arskin_hongdae': 'arskin_hongdae'
+};
+function instagramRequest_(path, token) {
+  var version = PropertiesService.getScriptProperties().getProperty('IG_GRAPH_VERSION') || 'v24.0';
+  if (!/^v\d+\.\d+$/.test(version)) throw new Error('Instagram API 버전 설정을 확인해 주세요.');
+  var response = UrlFetchApp.fetch('https://graph.instagram.com/' + version + '/' + path, {
+    headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  var data;
+  try { data = JSON.parse(response.getContentText()); } catch (err) { throw new Error('Instagram 응답을 읽지 못했습니다.'); }
+  if (response.getResponseCode() >= 400 || data.error) {
+    var code = data.error && data.error.code;
+    throw new Error(code === 190 ? 'Instagram 토큰이 만료되었거나 유효하지 않습니다.' : 'Instagram 연결 실패' + (code ? ' (코드 ' + code + ')' : ''));
+  }
+  return data;
+}
+function instagramSync_(force) {
+  var props = PropertiesService.getScriptProperties(), raw = props.getProperty('IG_ACCESS_TOKENS') || '';
+  var tokens = raw.split(/[\s,]+/).filter(Boolean);
+  if (!tokens.length) return { configured: false, message: 'Instagram 자동 수집 설정이 필요합니다.', accounts: [] };
+  var interval = Math.max(60, Number(props.getProperty('IG_SYNC_INTERVAL_SECONDS')) || 120);
+  var last = Number(props.getProperty('IG_LAST_SYNC_MS')) || 0;
+  if (!force && Date.now() - last < interval * 1000) {
+    try { return JSON.parse(props.getProperty('IG_LAST_SYNC_RESULT') || '{}'); } catch (err) { return { configured: true }; }
+  }
+  var lock = LockService.getUserLock();
+  if (!lock.tryLock(1000)) return { configured: true, message: 'Instagram 정보를 동기화하고 있습니다.', accounts: [] };
+  var result = { configured: true, updated: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'), accounts: [] };
+  try {
+    var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), seen = {};
+    tokens.slice(0, 4).forEach(function(token, i) {
+      var username = '';
+      try {
+        var profile = instagramRequest_('me?fields=id,username', token); username = String(profile.username || '').toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(IG_ACCOUNT_SHEETS, username)) throw new Error('연결 대상 계정이 아닙니다.');
+        if (seen[username]) return; seen[username] = true;
+        var sh = ss.getSheetByName(IG_ACCOUNT_SHEETS[username]);
+        if (!sh) throw new Error('계정의 원본 시트를 찾을 수 없습니다.');
+        var media = [], after = '';
+        // 최근 50개를 조회합니다. 새 글은 permalink로 비교해 중복 없이 반영합니다.
+        for (var page = 0; page < 1; page++) {
+          var path = 'me/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50';
+          if (after) path += '&after=' + encodeURIComponent(after);
+          var batch = instagramRequest_(path, token); media = media.concat(batch.data || []);
+          if (!(batch.paging && batch.paging.next && batch.paging.cursors && batch.paging.cursors.after)) break;
+          after = batch.paging.cursors.after;
+        }
+        var writeLock = LockService.getScriptLock(); writeLock.waitLock(10000);
+        try { var added = instagramMerge_(sh, media); SpreadsheetApp.flush(); } finally { writeLock.releaseLock(); }
+        result.accounts.push({ account: username, ok: true, added: added, fetched: media.length });
+      } catch (err) { result.accounts.push({ account: username || '연결 ' + (i + 1), ok: false, error: err.message }); }
+    });
+    SpreadsheetApp.flush();
+    props.setProperty('IG_LAST_SYNC_MS', String(Date.now()));
+    props.setProperty('IG_LAST_SYNC_RESULT', JSON.stringify(result));
+    CacheService.getScriptCache().remove('content-v3');
+    return result;
+  } finally { lock.releaseLock(); }
+}
+function instagramLinkKey_(value) {
+  var match = String(value || '').match(/instagram\.com\/(?:p|reels?|tv)\/([\w-]+)/i);
+  return match ? match[1] : String(value || '').trim().replace(/\?.*$/, '').replace(/\/$/, '');
+}
+function instagramLiteral_(value) {
+  var text = String(value == null ? '' : value).slice(0, 2000);
+  return /^=/.test(text) ? "'" + text : text;
+}
+function instagramMerge_(sh, media) {
+  var last = Math.max(3, sh.getLastRow());
+  var values = last > 3 ? sh.getRange(4, 3, last - 3, 6).getDisplayValues() : [];
+  var links = {}, free = [];
+  values.forEach(function(row, i) {
+    if (row[2]) links[instagramLinkKey_(row[2])] = { row: i + 4, values: row };
+    else if (row.every(function(value) { return !String(value).trim(); })) free.push(i + 4);
+  });
+  var added = 0;
+  media.slice().sort(function(a,b) { return String(a.timestamp).localeCompare(String(b.timestamp)); }).forEach(function(item) {
+    if (!item.permalink || !item.timestamp) return;
+    var date = new Date(item.timestamp); if (isNaN(date.getTime())) return;
+    var key = instagramLinkKey_(item.permalink), old = links[key], row = old ? old.row : free.length ? free.shift() : ++last;
+    if (row < 4) row = last = 4;
+    if (row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), row - sh.getMaxRows());
+    // G열 기존 조회수는 보존합니다. 미디어 API가 제공하는 좋아요/댓글만 갱신합니다.
+    var next = [Utilities.formatDate(date, 'Asia/Seoul', 'yyyy. M. d'), instagramLiteral_(item.caption || '(제목 없음)'), item.permalink,
+      item.like_count == null ? old ? old.values[3] : '' : item.like_count,
+      old ? old.values[4] : '', item.comments_count == null ? old ? old.values[5] : '' : item.comments_count];
+    if (!old || next.some(function(value,i) { return String(value) !== String(old.values[i]); })) sh.getRange(row, 3, 1, 6).setValues([next]);
+    if (!old) added++;
+    links[key] = { row: row, values: next };
+  });
+  return added;
+}
+// Apps Script에서 한 번 직접 실행: 권한 승인 + 10분 간격 자동 수집 트리거 설치.
+function installInstagramSync() {
+  var result = instagramSync_(true);
+  if (!result.configured) throw new Error('프로젝트 설정 → 스크립트 속성에 IG_ACCESS_TOKENS를 먼저 입력해 주세요.');
+  if (!result.accounts.some(function(account) { return account.ok; })) throw new Error('Instagram 연결을 확인해 주세요. ' + result.accounts.map(function(account) { return account.error; }).join(' / '));
+  ScriptApp.getProjectTriggers().forEach(function(trigger) { if (trigger.getHandlerFunction() === 'syncInstagramNow') ScriptApp.deleteTrigger(trigger); });
+  ScriptApp.newTrigger('syncInstagramNow').timeBased().everyMinutes(10).create();
+  return result;
+}
+function syncInstagramNow() { return instagramSync_(true); }

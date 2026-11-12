@@ -11,7 +11,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -355,7 +355,7 @@
     state.dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'); const has = state.rows.some(r => r.date === d);
       const b = el(`<button class="${d === state.sel ? 'active' : ''}${has ? '' : ' empty'}"><small>${WD[dt.getDay()]}</small><b>${dt.getDate()}</b></button>`);
-      b.title = d; b.onclick = () => { const wk = weekStart(state.sel) !== weekStart(d); state.sel = d; render(); if (wk) loadShared(); };
+      b.title = d; b.onclick = () => { const wk = weekStart(state.sel) !== weekStart(d); state.sel = d; state.sharedAnchor = d; render(); if (wk) loadShared(); };
       s.append(b);
     });
   }
@@ -398,10 +398,12 @@
   const checkBackend = async () => backendOk ??= await api.get({ action: 'ping' }).then(j => j.v >= 2).catch(() => false);
   async function loadShared() {
     if (!(await checkBackend())) { state.shared = []; return renderShared(); }
-    const ws = weekStart(state.sel), from = '2026-10-01', to = shiftDate(ws, 6);
-    const requested = state.sel;
+    const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor);
+    const monthEnd = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
+    const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 4), iso(new Date())].sort().pop();
+    const requested = anchor;
 
-    try { const result = await api.get({ who: SHARED, from, to: [to, iso(new Date())].sort()[1] }); if (requested !== state.sel) return; state.shared = result.rows.map(r => ({ ...r, _who: SHARED })); }
+    try { const result = await api.get({ who: SHARED, from, to }); if (requested !== (state.sharedAnchor || state.sel)) return; state.shared = result.rows.map(r => ({ ...r, _who: SHARED })); }
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
@@ -410,28 +412,44 @@
     if (!cal) return;
     if (backendOk === false) { cal.innerHTML = '<div class="sc-head"><b>공통 캘린더</b><small>Apps Script를 새 버전으로 재배포하면 켜집니다</small></div>'; tasks.hidden = true; return; }
     tasks.hidden = false;
-    const ws = weekStart(state.sel), today = iso(new Date());
-    cal.innerHTML = `<div class="sc-head"><b>공통 캘린더</b><small>${ws.slice(5).replace('-', '.')} 주 · 모든 팀원과 연동</small></div>`;
-    const nav = el('<div><button type="button">← 이전 주</button> <button type="button">이번 주</button> <button type="button">다음 주 →</button></div>');
-    [...nav.children].forEach((b, i) => b.onclick = () => { state.sel = i === 1 ? today : shiftDate(ws, i === 0 ? -7 : 7); render(); loadShared(); });
-    cal.append(nav);
-    const grid = el('<div class="sc-week"></div>');
-    for (let i = 0; i < 7; i++) {
-      const d = shiftDate(ws, i), dt = new Date(d + 'T00:00:00');
-      const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${i > 4 ? ' wkend' : ''}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b></div></div>`);
-      state.shared.filter(r => r.section === '일정' && r.date === d).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-        const ev = el(`<button class="sc-ev"><small>${esc(r.start || '시간 미정')}</small>${esc(r.text)}</button>`);
-        ev.title = `${r.start}~${r.end} ${r.text}${r.col ? ' · ' + r.col : ''}`;
-        ev.onclick = () => openEditor(r, ev);
-        col.append(ev);
-      });
-      const add = el('<button class="sc-add" title="일정 추가">+</button>');
-      add.onclick = () => openEditor({ date: d, section: '일정', col: state.person, start: '10:00', end: '11:00', text: '', _who: SHARED }, add, true);
-      col.append(add); grid.append(col);
-    }
-    cal.append(grid);
-    const notes = state.shared.filter(r => r.section === '일정메모' && r.date >= ws && r.date <= shiftDate(ws, 6));
-    if (notes.length) { const box = el('<div class="sc-notes"><h4>날짜 확인이 필요한 회의 일정</h4></div>'); notes.forEach(r => box.append(itemRow(r, { noStatus: true }))); cal.append(box); }
+    const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor), today = iso(new Date());
+    const monthly = state.sharedMode === 'month', month = anchor.slice(0, 7);
+    cal.classList.toggle('sc-collapsed', state.sharedCollapsed);
+    cal.classList.toggle('sc-month-view', monthly);
+    cal.innerHTML = `<div class="sc-header"><div><b>마케팅 공용 캘린더</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, 4).slice(5).replace('-', '.')} · 월~금</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div></div>`;
+    cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { state.sharedMode = b.dataset.mode; localStorage.sharedMode = state.sharedMode; renderShared(); loadShared(); });
+    const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
+    const nav = el(`<div class="sc-navigation"><button type="button" aria-label="이전 ${monthly ? '달' : '주'}">‹ 이전 ${monthly ? '달' : '주'}</button><button type="button">${monthly ? '이번 달' : '이번 주'}</button><button type="button" aria-label="다음 ${monthly ? '달' : '주'}">다음 ${monthly ? '달' : '주'} ›</button></div>`);
+    [...nav.children].forEach((b, i) => b.onclick = () => { state.sharedAnchor = i === 1 ? today : monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 1 + (i === 0 ? -1 : 1), 1)) : shiftDate(ws, i === 0 ? -7 : 7); renderShared(); loadShared(); });
+    body.append(nav);
+    const grid = el(`<div class="sc-week${monthly ? ' sc-month' : ''}" role="group" aria-label="${monthly ? '월간' : '주간'} 평일 일정"></div>`);
+    const dates = [];
+    if (monthly) {
+      const first = month + '-01', end = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
+      const lastWeek = weekStart(end);
+      for (let w = weekStart(first); w <= lastWeek; w = shiftDate(w, 7)) for (let i = 0; i < 5; i++) dates.push(shiftDate(w, i));
+    } else for (let i = 0; i < 5; i++) dates.push(shiftDate(ws, i));
+    dates.forEach(d => {
+      const dt = new Date(d + 'T00:00:00'), outside = monthly && !d.startsWith(month);
+      const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b></div></div>`);
+      if (!outside) {
+        state.shared.filter(r => r.section === '일정' && r.date === d).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
+          const ev = el(`<button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button>`);
+          ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + r.col : ''}`;
+          ev.onclick = () => openEditor(r, ev); col.append(ev);
+        });
+        const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
+        add.onclick = () => openEditor({ date: d, section: '일정', col: state.person, start: '10:00', end: '11:00', text: '', _who: SHARED }, add, true);
+        col.append(add);
+      }
+      grid.append(col);
+    });
+    body.append(grid);
+    const notes = state.shared.filter(r => r.section === '일정메모' && (monthly ? r.date.startsWith(month) : r.date >= ws && r.date <= shiftDate(ws, 4)));
+    if (notes.length) { const box = el('<div class="sc-notes"><h4>날짜 확인이 필요한 회의 일정</h4></div>'); notes.forEach(r => box.append(itemRow(r, { noStatus: true }))); body.append(box); }
+    const toggle = el(`<button class="sc-toggle" aria-controls="sharedCalendarBody" aria-expanded="${!state.sharedCollapsed}"><span class="sc-handle" aria-hidden="true"></span><span>${state.sharedCollapsed ? '일정 펼치기 ⌄' : '일정 접기 ⌃'}</span></button>`);
+    toggle.onclick = () => { state.sharedCollapsed = !state.sharedCollapsed; localStorage.sharedCollapsed = state.sharedCollapsed ? '1' : '0'; renderShared(); };
+    cal.append(body, toggle);
     tasks.innerHTML = '<h3>공통 업무</h3>';
     // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
     const latest = new Map();

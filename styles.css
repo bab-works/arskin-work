@@ -228,3 +228,29 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .project-summary-entry>b{display:block;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}
 @media(max-width:600px){.project-start{font-size:10px;padding:4px}.project-card{padding:12px}.row{flex-wrap:wrap}.row .tx{flex-basis:55%}}
 @media print{.project-track{border:1px solid #ccc;print-color-adjust:exact}.project-progress{margin:5px 0}.project-progress-label{font-size:10px}}
+
+/* 마케팅 공용 달력: 평일 5열, 주간/월간 전환 */
+.sharedcal{position:relative;top:auto}
+.sc-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.sc-header b{display:block;font-size:17px}.sc-header small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.sc-mode{display:flex;gap:3px;background:var(--grey100);padding:3px;border-radius:10px}
+.sc-mode button{font-size:12px;padding:7px 12px;background:none}
+.sc-mode button[aria-pressed=true]{background:var(--card);color:var(--blue);box-shadow:0 1px 4px #0001}
+.sc-navigation{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:12px}
+.sc-navigation button{font-size:12px;padding:7px 10px;white-space:nowrap}
+.sc-week{grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible;gap:6px}
+.sc-day{max-height:none;min-height:100px;overflow:visible;min-width:0}
+.sc-ev{display:block;overflow:visible;-webkit-line-clamp:unset;white-space:normal;overflow-wrap:anywhere;word-break:normal;width:100%;min-width:0}
+.sc-ev span{display:block;white-space:pre-wrap}
+.sc-date{flex-wrap:wrap}.sc-month .sc-day{min-height:92px}
+.sc-outside{background:transparent;opacity:.35;border:1px dashed var(--line)}
+.sc-toggle{display:none}.sc-add{min-height:28px}.sc-notes h4{font-size:12px;color:var(--muted)}
+@media(max-width:900px){
+ .sharedcal{padding:12px}.sc-header{gap:8px}.sc-header b{font-size:15px}.sc-header small{font-size:11px}
+ .sc-week{grid-template-columns:repeat(5,minmax(0,1fr));overflow:visible;gap:3px}.sc-day{padding:5px 3px;border-radius:9px;min-height:85px}
+ .sc-ev{padding:5px 3px;font-size:11px;line-height:1.5;border-radius:6px}.sc-ev small{font-size:9px;white-space:normal;overflow-wrap:anywhere}
+ .sc-navigation button{padding:7px 8px;font-size:11px}.sc-date{font-size:10px;gap:3px}.sc-date b{font-size:13px}
+ .sc-toggle{display:flex;width:100%;align-items:center;flex-direction:column;gap:4px;background:none;padding:12px 0 2px;margin-top:10px;color:var(--muted);font-size:11px;border-top:1px solid var(--line)}
+ .sc-handle{width:32px;height:4px;border-radius:4px;background:var(--grey200)}
+ .sc-collapsed .sc-body{display:none}.sc-collapsed .sc-header{margin-bottom:0}.sc-toggle:focus-visible{outline-offset:0}
+}
