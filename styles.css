@@ -3,6 +3,8 @@
   --grey50:#f9fafb; --grey100:#f2f4f6; --grey200:#e5e8eb;
   --blue:#3182f6; --blue-dark:#1b64da; --blue-weak:#e8f3ff;
   --green:#03b26c; --red:#f04452;
+  --text-2:#5f6b78; /* 보조 글자: 흰·회색 배경 모두 4.5:1 이상 */
+  --st-todo:#6b7684; --st-doing:#3182f6; --st-done:#0a8f55; --st-check:#e8590c; /* 상태 아이콘: 3:1 이상 */
   --r-lg:20px; --r-md:14px; --r-sm:10px;
   --side:232px; --tl:320px;
 }
@@ -83,14 +85,24 @@ input,textarea{font:inherit;color:inherit}
 .col h4,.cell h4{margin:0 0 6px;font-size:13px;color:var(--muted);font-weight:600}
 .row{display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-radius:var(--r-sm);break-inside:avoid}
 .row:hover{background:var(--grey50)}
-.row .st{flex:none;width:28px;height:24px;text-align:center;background:none;padding:0;font-size:15px;line-height:24px;border-radius:8px}
-.row .st:hover{background:var(--grey100)}
+.st{flex:none;display:grid;place-items:center;width:44px;height:44px;margin:-10px -8px;padding:0;background:none;border-radius:12px;color:var(--st-todo)} /* 히트 영역 44px, 보이는 자리는 기존 28×24 */
+.st:hover{background:var(--grey100)}
+.st:focus-visible{outline-offset:-2px}
+.st .sti{display:block}
+.st-doing{color:var(--st-doing)}.st-done{color:var(--st-done)}.st-check{color:var(--st-check)}
+.st-menu{position:fixed;z-index:60;min-width:148px;padding:6px;background:var(--card);border-radius:var(--r-md);box-shadow:0 12px 32px rgba(0,27,55,.16);display:flex;flex-direction:column;gap:2px}
+.st-menu button{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;background:none;text-align:left;font-weight:500;color:var(--text)}
+.st-menu button:hover,.st-menu button:focus-visible{background:var(--grey100)}
+.st-menu button[aria-checked=true]{font-weight:700}
+.st-menu [data-k=todo],.st-menu [data-k=hold],.st-menu [data-k=repeat]{color:var(--st-todo)}.st-menu [data-k=doing]{color:var(--st-doing)}.st-menu [data-k=done]{color:var(--st-done)}.st-menu [data-k=check]{color:var(--st-check)}
+.st-menu button span{color:var(--text)}
+.pst .sti{width:13px;height:13px;vertical-align:-2px}
 .row .tx{flex:1;outline:none;padding:1px 2px;min-width:0;white-space:pre-wrap;word-break:break-word;line-height:22px;border-radius:6px}
 .row .tx:focus{background:var(--blue-weak)}
 .row .del{flex:none;background:none;color:var(--muted);padding:0 6px;visibility:hidden;font-weight:400}
 .row:hover .del{visibility:visible}
 .row.collapsed{display:none}
-.row.done .tx{color:var(--muted);text-decoration:line-through}
+.row.done .tx{color:var(--text-2)}
 .add{display:flex;gap:6px;margin-top:4px}
 .add input{flex:1;border:none;border-radius:var(--r-sm);padding:10px 12px;background:var(--grey50);outline:none}
 .add input:focus{background:var(--blue-weak)}
@@ -227,7 +239,7 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .subtask{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:13px}
 .subtask input{flex:none;width:16px;height:16px;margin:3px 0;accent-color:var(--blue)}
 .subtask-text{flex:1;min-width:0;outline:none;overflow-wrap:anywhere;white-space:pre-wrap}
-.subtask-text.done{color:var(--muted);text-decoration:line-through}
+.subtask-text.done{color:var(--text-2)}
 .subtask button{background:none;padding:0 4px;color:var(--muted)}
 .project-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
 .project-summary-entry{background:var(--grey50);border-radius:12px;padding:14px;min-width:0}

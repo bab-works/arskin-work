@@ -1,6 +1,26 @@
 (() => {
   const C = window.CONFIG;
-  const STATUSES = ['🔷', '▶️', '⭕', '⏸️', '🔄'];
+  // 상태: 시트에는 기존 이모지 값을 그대로 저장하고(데이터 무변경), 화면에서만 코드로 읽는다.
+  const STAT = {
+    todo:   { v: '🔷', label: '시작 전' },
+    doing:  { v: '▶️', label: '진행 중' },
+    done:   { v: '⭕', label: '완료' },
+    check:  { v: '?',  label: '확인 필요' },
+    hold:   { v: '⏸️', label: '보류' },
+    repeat: { v: '🔄', label: '반복' },
+  };
+  const statusCode = v => Object.keys(STAT).find(k => k === v || STAT[k].v === v) || 'todo'; // '' 등 미지정은 시작 전으로 표시
+  const nextStatus = c => c === 'todo' ? 'doing' : c === 'doing' ? 'done' : c === 'done' ? 'todo' : 'doing';
+  const isDone = r => statusCode(r.status) === 'done';
+  const ICON = {
+    todo: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/>',
+    doing: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 3.5a6.5 6.5 0 0 0 0 13z" fill="currentColor"/>',
+    done: '<circle cx="10" cy="10" r="8" fill="currentColor"/><path class="ck" d="M6.4 10.3l2.4 2.4 4.8-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    check: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8.1a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="13.9" r=".95" fill="currentColor"/>',
+    hold: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.2 7v6M11.8 7v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+    repeat: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2.2"/><path d="M7.2 10a2.8 2.8 0 0 1 4.9-1.9M12.8 10a2.8 2.8 0 0 1-4.9 1.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+  };
+  const statusIcon = c => `<svg class="sti sti-${c}" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">${ICON[c]}</svg>`;
   const TASK_SECTIONS = [
     { key: '주간고정', L: '주간고정', R: '주간고정 완료' },
     { key: '데일리고정', L: '데일리 고정업무', R: '' },
@@ -79,12 +99,8 @@
 
   function itemRow(r, opts = {}) {
     if (r.section === '변동업무' && isProject(r)) return projectCard(r);
-    const row = el(`<div class="row${r.status === '⭕' ? ' done' : ''}"></div>`);
-    if (!opts.noStatus) {
-      const st = el(`<button class="st" title="상태 변경">${r.status || '·'}</button>`);
-      st.onclick = () => { const i = STATUSES.indexOf(r.status); updateRow(r, { status: STATUSES[(i + 1) % STATUSES.length] }); render(); };
-      row.append(st);
-    }
+    const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
+    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: STAT[code].v }); render(); }));
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`); tx.textContent = r.text;
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); } else if (v !== r.text) updateRow(r, { text: v }); };
     tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); } };
@@ -94,10 +110,43 @@
     if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
     row.append(del); return row;
   }
+  // 상태 버튼: 클릭/Space/Enter = 다음 상태, 우클릭·길게 누르기·Shift+F10 = 상태 바로 선택 메뉴
+  function statusButton(r, set) {
+    const c = statusCode(r.status), n = nextStatus(c);
+    const b = el(`<button type="button" class="st st-${c}" title="${STAT[c].label} · 클릭: ${STAT[n].label} / 우클릭: 상태 선택" aria-label="상태: ${STAT[c].label}. 눌러서 ${STAT[n].label}(으)로 변경" aria-haspopup="menu">${statusIcon(c)}</button>`);
+    b.dataset.rid = r.id;
+    let timer = null, longPressed = false;
+    const apply = k => { set(k); requestAnimationFrame(() => document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.focus()); }; // 다시 그려도 키보드 포커스 유지
+    b.onclick = e => { if (longPressed) { longPressed = false; return; } apply(n); };
+    b.oncontextmenu = e => { e.preventDefault(); statusMenu(b, c, apply); };
+    b.onpointerdown = e => { if (e.pointerType === 'mouse') return; longPressed = false; timer = setTimeout(() => { longPressed = true; statusMenu(b, c, apply); }, 450); };
+    b.onpointerup = b.onpointercancel = b.onpointerleave = () => clearTimeout(timer);
+    return b;
+  }
+  function statusMenu(anchor, current, set) {
+    document.querySelector('.st-menu')?.remove();
+    const m = el(`<div class="st-menu" role="menu" aria-label="상태 선택">${Object.keys(STAT).map(k => `<button type="button" role="menuitemradio" aria-checked="${k === current}" data-k="${k}">${statusIcon(k)}<span>${STAT[k].label}</span></button>`).join('')}</div>`);
+    document.body.append(m);
+    const a = anchor.getBoundingClientRect(), h = m.offsetHeight;
+    m.style.left = Math.min(innerWidth - m.offsetWidth - 8, a.left) + 'px';
+    m.style.top = (a.bottom + h + 8 > innerHeight ? a.top - h - 4 : a.bottom + 4) + 'px';
+    const items = [...m.querySelectorAll('button')];
+    const close = (refocus = true) => { m.remove(); removeEventListener('pointerdown', outside, true); if (refocus && anchor.isConnected) anchor.focus(); };
+    const outside = e => { if (!m.contains(e.target)) close(false); };
+    addEventListener('pointerdown', outside, true);
+    items.forEach((it, i) => {
+      it.onclick = () => { close(false); if (it.dataset.k !== current) set(it.dataset.k); };
+      it.onkeydown = e => {
+        if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); close(); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
+      };
+    });
+    (items.find(x => x.dataset.k === current) || items[0]).focus();
+  }
   const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
   const isProject = r => state.rows.some(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id && x.date === r.date);
   function progressOf(r) {
-    const children = childrenOf(r), done = children.filter(x => x.status === '⭕').length;
+    const children = childrenOf(r), done = children.filter(isDone).length;
     return { total: children.length, done, percent: children.length ? Math.round(done / children.length * 100) : 0 };
   }
   function progressBar(r) {
@@ -110,7 +159,7 @@
     const who = state.person;
     const children = childrenOf(parent).filter(x => !deleting || x.id !== child.id).map(x => x.id === child.id ? { ...x, ...patch } : x);
     if (!deleting && !children.some(x => x.id === child.id)) children.push({ ...child, ...patch });
-    const status = children.length && children.every(x => x.status === '⭕') ? '⭕' : children.some(x => x.status === '⭕') ? '▶️' : '🔷';
+    const status = children.length && children.every(isDone) ? STAT.done.v : children.some(isDone) ? STAT.doing.v : STAT.todo.v;
     try {
       if (deleting) await api.post({ action: 'delete', ids: [child.date + '|' + child.id], who });
       await api.post({ action: 'upsert', rows: [{ ...parent, status }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
@@ -163,7 +212,7 @@
     const key = date + section + col;
     const hide = state.collapse && TASK_KEYS.has(section) && !state.expanded.has(key);
     let hidden = 0;
-    rows.forEach(r => { const n = itemRow(r, opts); if (hide && r.status === '⭕') { n.classList.add('collapsed'); hidden++; } box.append(n); });
+    rows.forEach(r => { const n = itemRow(r, opts); if (hide && isDone(r)) { n.classList.add('collapsed'); hidden++; } box.append(n); });
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
     box.append(addInput(text => addRow({ date, section, col, text, status: opts.noStatus ? '' : (opts.defaultStatus || '🔷') })));
     return box;
@@ -218,7 +267,7 @@
       srcRows = j.rows.filter(r => r.date === src);
     }
     if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 ⭕ 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
-    const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && r.status === '⭕'));
+    const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && isDone(r)));
     const ids = new Map(parents.map(r => [r.id, newId(d)]));
     const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, status: r.section === '데일리고정' ? '🔷' : r.status }));
     srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, col: ids.get(r.col) }));
@@ -331,7 +380,7 @@
   function renderPrint() {
     const d = state.sel, box = $('printReport'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) return;
-    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst">${esc(r.status)}</span>` : ''}${esc(r.text)}${r.section === '변동업무' && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${c.status === '⭕' ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
+    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst" title="${STAT[statusCode(r.status)].label}">${statusIcon(statusCode(r.status))}</span>` : ''}${esc(r.text)}${r.section === '변동업무' && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${isDone(c) ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
     const pairTable = (labels, lists) => {
       const n = Math.max(...lists.map(l => l.length), 1);
       let h = `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
