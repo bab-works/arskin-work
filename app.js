@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, dir: { tasks: [], me: '' }, calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -235,7 +235,23 @@
       rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' }); });
     }, 400);
   }
-  const taskSection = (d, s) => sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
+  function taskSection(d, s) {
+    const all = rowsFor(d, s.key), done = all.filter(isDone).length;
+    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
+    node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
+    return node;
+  }
+  function sectionChips(d) { // 섹션 바로가기 칩: 남은 개수 표시
+    const nav = el('<nav class="sec-chips" aria-label="섹션 바로가기"></nav>');
+    TASK_SECTIONS.forEach(s => {
+      const left = rowsFor(d, s.key).filter(r => !isDone(r)).length;
+      const b = el(`<button type="button">${esc(s.L)}<b>${left}</b></button>`);
+      b.setAttribute('aria-label', `${s.L} 남은 업무 ${left}건으로 이동`);
+      b.onclick = () => $('sec-' + s.key)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      nav.append(b);
+    });
+    return nav;
+  }
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) {
@@ -245,6 +261,7 @@
       return;
     }
     box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
+    box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
     box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
@@ -507,7 +524,10 @@
     const toggle = el(`<button class="sc-toggle" aria-controls="sharedCalendarBody" aria-expanded="${!state.sharedCollapsed}"><span class="sc-handle" aria-hidden="true"></span><span>${state.sharedCollapsed ? '일정 펼치기 ⌄' : '일정 접기 ⌃'}</span></button>`);
     toggle.onclick = () => { state.sharedCollapsed = !state.sharedCollapsed; localStorage.sharedCollapsed = state.sharedCollapsed ? '1' : '0'; renderShared(); };
     cal.append(body, toggle);
-    tasks.innerHTML = '<h3>공통 업무</h3>';
+    const open = state.sharedTasksOpen;
+    tasks.innerHTML = `<h3><button type="button" class="sec-toggle" aria-expanded="${open}">공통 업무 <small class="sec-count"></small><span class="chev" aria-hidden="true">${open ? '접기' : '펼치기'}</span></button></h3>`;
+    tasks.querySelector('.sec-toggle').onclick = () => { state.sharedTasksOpen = !open; try { localStorage.sharedTasksOpen = open ? '0' : '1'; } catch {} renderShared(); };
+    tasks.classList.toggle('folded', !open);
     // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
     const latest = new Map();
     // 장식용 앞 기호와 공백만 무시한다. 내용이 다른 업무는 각각 유지한다.
@@ -517,6 +537,7 @@
       .forEach(r => latest.set(taskKey(r.text), r));
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
     [...latest.values()].forEach(r => list.append(itemRow(r)));
+    tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     tasks.append(list);
     tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: 'todo', _who: SHARED })));
   }
