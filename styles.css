@@ -82,7 +82,8 @@ table.meet td .tx{display:block;width:100%;min-height:22px}
 .tl-hour span{position:absolute;left:0;top:-7px;background:#fff;padding-right:4px}
 .tl-hour::after{content:"";position:absolute;left:34px;right:0;top:24px;border-top:1px dashed #f0f0f0}
 .tl-block{position:absolute;left:38px;right:4px;background:var(--sky);border-left:3px solid var(--navy);border-radius:4px;padding:2px 6px;font-size:12px;overflow:hidden;cursor:grab}
-.tl-block small{display:block;color:var(--navy);font-size:10px}
+.tl-block{white-space:nowrap;text-overflow:ellipsis;line-height:1.5}
+.tl-block small{color:var(--navy);font-size:10px;margin-right:4px}
 .tl-block.ghost{background:rgba(11,83,148,.15);border-style:dashed;pointer-events:none}
 .popover{position:fixed;z-index:50;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.15);padding:12px;width:260px;display:flex;flex-direction:column;gap:8px}
 .popover input{border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
