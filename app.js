@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -655,10 +655,26 @@
       .forEach(r => latest.set(taskKey(r.text), r));
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
     const latestRows = [...latest.values()], lateS = r => state.doneLast && isDone(r) && !sortHold.has(r.id);
-    [...latestRows.filter(r => !lateS(r)), ...latestRows.filter(lateS)].forEach(r => list.append(itemRow(r)));
+    const catOf = r => r.text.match(CAT_RE)?.[1] || '';
+    const cats = [...new Set(latestRows.map(catOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+    // 카테고리 정렬·필터: '전체'는 카테고리 이름순으로 묶어 보여주고, 칩을 누르면 그 카테고리만
+    const bar = el(`<div class="cat-bar" role="group" aria-label="카테고리 필터">${['', ...cats].map(c => `<button type="button" data-cat="${esc(c)}" aria-pressed="${state.sharedCat === c}">${c ? esc(c) : '전체'}</button>`).join('')}</div>`);
+    bar.onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; state.sharedCat = b.dataset.cat; renderShared(); };
+    if (cats.length) tasks.append(bar);
+    const shown = latestRows.filter(r => !state.sharedCat || catOf(r) === state.sharedCat).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
+    [...shown.filter(r => !lateS(r)), ...shown.filter(lateS)].forEach(r => list.append(itemRow(r)));
     tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     tasks.append(list);
-    tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: 'todo', _who: SHARED })));
+    // 등록할 때 카테고리를 고르거나 새로 입력 → '분류) 내용' 형식으로 저장
+    const form = el(`<form class="cat-add"><input class="cat-in" list="catList" placeholder="분류" aria-label="카테고리" value="${esc(state.sharedCat)}" maxlength="12"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist><input class="txt-in" placeholder="+ 공통 업무 추가 (Enter)" aria-label="공통 업무 내용"><button type="submit" hidden>추가</button></form>`);
+    form.onsubmit = e => {
+      e.preventDefault(); const [ci, ti] = form.querySelectorAll('input'); const t = ti.value.trim(); if (!t) return;
+      const c = ci.value.trim().replace(/[)\s]/g, '');
+      addRow({ date: today, section: '공통업무', col: state.person, text: c ? `${c}) ${t}` : t, status: 'todo', _who: SHARED }); render();
+      document.querySelector('.cat-add .txt-in')?.focus();
+    };
+    form.querySelector('.txt-in').onkeydown = e => { if (e.isComposing) e.stopPropagation(); if (e.key === 'Escape') e.target.value = ''; };
+    tasks.append(form);
   }
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
   addEventListener('focus', () => loadShared());

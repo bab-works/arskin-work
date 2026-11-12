@@ -475,3 +475,12 @@ html.printing .drag{display:none}
 @media(max-width:600px){.sc-week:not(.sc-month) .sc-ev-wrap{grid-column:2}}
 .tl-block.tl-shared{left:auto;right:2px;width:58%;z-index:2;box-shadow:-2px 0 0 var(--card)}
 .sc-collapsed .sc-grip{display:none}
+/* G: 공통업무 카테고리 */
+.cat-bar{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
+.cat-bar button{min-height:32px;padding:0 12px;font-size:13px;font-weight:500;border-radius:999px;background:var(--grey100);color:var(--text-2);position:relative}
+.cat-bar button::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+.cat-bar button[aria-pressed=true]{background:var(--text-1);color:#fff}
+.cat-add{display:flex;gap:6px;margin-top:6px}
+.cat-add input{min-height:44px;border:none;border-radius:var(--r-sm);background:var(--grey50);padding:0 12px;font:inherit;outline:none}
+.cat-add input:focus{background:var(--blue-weak)}
+.cat-add .cat-in{flex:0 0 96px;min-width:0}.cat-add .txt-in{flex:1;min-width:0}
