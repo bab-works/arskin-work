@@ -23,12 +23,14 @@ function memberFor_(code) {
   if (!raw || !code) return '';
   try { var map = JSON.parse(raw); return Object.prototype.hasOwnProperty.call(map, code) ? String(map[code]) : ''; } catch (e) { return ''; }
 }
-var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '종료', '수정시각'];
+var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '종료', '수정시각', '생성일', '완료일', '원본id'];
+var NCOL = HEADER.length;
+function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
 
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 6, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 7, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
@@ -71,7 +73,7 @@ function monthSheet(who, date, create) {
   var sh = ss.getSheetByName(name);
   if (!sh && create) {
     sh = ss.insertSheet(name, 0);
-    sh.getRange('A:I').setNumberFormat('@');
+    sh.getRange('A:L').setNumberFormat('@');
     sh.appendRow(HEADER);
     sh.setFrozenRows(1);
   }
@@ -88,7 +90,7 @@ function listRows(who, from, to) {
   Object.keys(months).forEach(function (m) {
     var sh = monthSheet(who, m + '-01', false);
     if (!sh || sh.getLastRow() < 2) return;
-    sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues().forEach(function (r) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, NCOL).getDisplayValues().forEach(function (r) {
       if (r[1] >= from && r[1] <= to) out.push(toObj(r));
     });
   });
@@ -96,15 +98,19 @@ function listRows(who, from, to) {
 }
 
 function toObj(r) {
-  return { id: r[0], date: r[1], section: r[2], col: r[3], status: r[4], text: r[5], start: r[6], end: r[7], updated: r[8] };
+  return { id: r[0], date: r[1], section: r[2], col: r[3], status: r[4], text: r[5], start: r[6], end: r[7], updated: r[8], created: r[9] || r[1], completed: r[10], origin: r[11] || r[0] };
 }
 
 function upsertRow(who, o) {
   if (!o.id || !o.date) return;
   var sh = monthSheet(who, o.date, true);
-  var vals = [o.id, o.date, o.section || '', o.col || '', o.status || '', o.text || '', o.start || '', o.end || '', new Date().toISOString()];
   var idx = findRow(sh, o.id);
-  if (idx) sh.getRange(idx, 1, 1, 9).setValues([vals]);
+  // 생성일·완료일·원본id 는 서버가 관리: 클라이언트가 안 보내도 기존 값을 유지한다
+  var prev = idx ? sh.getRange(idx, 10, 1, 3).getDisplayValues()[0] : ['', '', ''];
+  var done = o.status === 'done' || o.status === '⭕';
+  var vals = [o.id, o.date, o.section || '', o.col || '', o.status || '', o.text || '', o.start || '', o.end || '', new Date().toISOString(),
+    o.created || prev[0] || todayKst_(), done ? (prev[1] || todayKst_()) : '', o.origin || prev[2] || o.id];
+  if (idx) sh.getRange(idx, 1, 1, NCOL).setValues([vals]);
   else sh.appendRow(vals);
 }
 

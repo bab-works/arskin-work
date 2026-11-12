@@ -269,8 +269,8 @@
     if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
     const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && isDone(r)));
     const ids = new Map(parents.map(r => [r.id, newId(d)]));
-    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, status: r.section === '데일리고정' ? 'todo' : r.status }));
-    srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, col: ids.get(r.col) }));
+    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, origin: r.origin || r.id, status: r.section === '데일리고정' ? 'todo' : r.status }));
+    srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, origin: r.origin || r.id, col: ids.get(r.col) }));
     state.rows.push(...copies);
     await save(copies);
     render();
