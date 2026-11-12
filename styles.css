@@ -340,3 +340,9 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 
 ::placeholder{color:var(--text-3);opacity:1}
 .note-empty{color:var(--text-2)}
+/* 작업 3: 누르는 영역 44px. 줄 단위 컨트롤은 높이를, 작은 컨트롤은 보이지 않는 확장 영역을 키운다 */
+.actions button,.subnav button,.people button,.seg button,.sc-toggle,.add input{min-height:44px}
+.actions button{min-width:44px;justify-content:center}
+.bottomnav button{min-height:48px}
+.sc-mode button,.sc-navigation button,.sc-add,.sc-ev,.row .del,.project-start,.project-delete,.more,.subtask button,.sidefoot a{position:relative}
+.sc-mode button::after,.sc-navigation button::after,.sc-add::after,.sc-ev::after,.row .del::after,.project-start::after,.project-delete::after,.more::after,.subtask button::after,.sidefoot a::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
