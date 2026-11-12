@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>아르스킨 업무보고</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">아르스킨<br><small>업무보고</small></div>
+    <nav class="nav">
+      <button data-view="daily" class="active">📝 일간 보고서</button>
+      <button data-view="calendar">📅 콘텐츠 캘린더</button>
+    </nav>
+    <div class="legend">
+      <span>⭕ 완료</span><span>▶️ 진행 중</span><span>🔷 시작 전</span><span>⏸️ 보류</span><span>🔄 반복</span>
+    </div>
+    <div class="sidefoot"><a id="sheetLink" target="_blank" rel="noopener">시트 열기 ↗</a></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="datestrip" id="datestrip"></div>
+      <div class="actions">
+        <button id="btnCarry" title="직전 근무일의 미완료 항목을 오늘로 복사">⤵ 전일 가져오기</button>
+        <button id="btnCollapse" title="완료 항목 접기">✅ 완료 접기</button>
+        <button id="btnPrint" title="Ctrl+P">🖨 인쇄</button>
+        <button id="btnReload">↻</button>
+      </div>
+    </header>
+
+    <section id="viewDaily" class="view">
+      <div class="seg mobile-only">
+        <button data-pane="report" class="active">보고서</button>
+        <button data-pane="timeline">타임라인</button>
+      </div>
+      <div class="daily">
+        <article class="report" id="report"></article>
+        <article class="print-report" id="printReport"></article>
+        <aside class="timeline" id="timeline"></aside>
+      </div>
+    </section>
+
+    <section id="viewCalendar" class="view hidden">
+      <div id="calendar"></div>
+    </section>
+  </main>
+
+  <nav class="bottomnav mobile-only">
+    <button data-view="daily" class="active">📝 일간</button>
+    <button data-view="calendar">📅 캘린더</button>
+  </nav>
+</div>
+
+<div id="blockEditor" class="popover hidden">
+  <input id="beTitle" placeholder="무슨 일?">
+  <div class="be-times"><input id="beStart" type="time" step="900"> ~ <input id="beEnd" type="time" step="900"></div>
+  <div class="be-actions"><button id="beDelete" class="danger">삭제</button><button id="beCancel">취소</button><button id="beSave" class="primary">저장</button></div>
+</div>
+<div id="toast" class="toast hidden"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
