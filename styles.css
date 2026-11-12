@@ -105,6 +105,8 @@ table.meet td .tx{display:block;width:100%;min-height:22px}
 .today-pub{margin-top:8px;font-size:12px}
 .today-pub .chip{display:inline-block;margin:2px 4px 2px 0}
 
+.legacy-bar{font-size:12px;color:var(--muted);margin-bottom:6px}
+#legacyFrame{width:100%;height:calc(100vh - 110px);border:1px solid var(--line);border-radius:10px;background:#fff}
 .mobile-only{display:none!important}
 .seg{display:flex;gap:0;margin-bottom:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{flex:1;border:none;border-radius:0}
@@ -135,7 +137,7 @@ table.meet td .tx{display:block;width:100%;min-height:22px}
 @media print{
   @page{size:A4 portrait;margin:10mm}
   html,body{background:#fff;font-size:10.5px}
-  .sidebar,.topbar,.timeline,.seg,.bottomnav,.popover,.toast,#viewCalendar,.report{display:none!important}
+  .sidebar,.topbar,.timeline,.seg,.bottomnav,.popover,.toast,#viewCalendar,#viewLegacy,.report{display:none!important}
   .app{display:block}.main{padding:0}.daily{display:block}
   .print-report{display:block}
   .print-report h3{margin:8px 0 3px;font-size:11px;color:var(--navy);background:var(--sky);display:block;width:max-content;padding:2px 8px;border-radius:4px;break-after:avoid}

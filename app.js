@@ -335,6 +335,8 @@
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
+    $('viewLegacy').classList.toggle('hidden', v !== 'legacy');
+    if (v === 'legacy' && !$('legacyFrame').src) $('legacyFrame').src = C.LEGACY_URL; // 처음 열 때만 로드
     if (v === 'calendar') renderCalendar();
   }
   function render() { renderDatestrip(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
@@ -350,6 +352,7 @@
   $('btnPrint').onclick = () => print();
   $('btnReload').onclick = () => load();
   addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); });
+  $('legacyOpen').href = C.LEGACY_URL;
   $('sheetLink').href = 'https://docs.google.com/spreadsheets/d/1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw/edit';
 
   async function load() {

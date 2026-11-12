@@ -13,6 +13,7 @@
     <nav class="nav">
       <button data-view="daily" class="active">📝 일간 보고서</button>
       <button data-view="calendar">📅 콘텐츠 캘린더</button>
+      <button data-view="legacy">🗂 기존 캘린더 앱</button>
     </nav>
     <div class="legend">
       <span>⭕ 완료</span><span>▶️ 진행 중</span><span>🔷 시작 전</span><span>⏸️ 보류</span><span>🔄 반복</span>
@@ -46,11 +47,17 @@
     <section id="viewCalendar" class="view hidden">
       <div id="calendar"></div>
     </section>
+
+    <section id="viewLegacy" class="view hidden">
+      <div class="legacy-bar">로그인 화면이나 빈 화면이 나오면 <a id="legacyOpen" target="_blank" rel="noopener">새 탭에서 열기 ↗</a></div>
+      <iframe id="legacyFrame" title="기존 캘린더 앱" allow="clipboard-write"></iframe>
+    </section>
   </main>
 
   <nav class="bottomnav mobile-only">
     <button data-view="daily" class="active">📝 일간</button>
     <button data-view="calendar">📅 캘린더</button>
+    <button data-view="legacy">🗂 기존</button>
   </nav>
 </div>
 
