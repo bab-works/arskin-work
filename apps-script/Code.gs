@@ -5,7 +5,12 @@
  * - 데이터는 월별 탭("2026-11")에 한 행 = 한 항목으로 저장된다.
  *   id | 날짜 | 구분 | 열 | 상태 | 내용 | 시작 | 종료 | 수정시각
  */
-var REPORT_SS_ID = '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw';
+// 사람별 일일보고 시트(허용 목록). 웹앱은 이름(who)만 보내고, 여기 없는 이름은 거부한다.
+var REPORT_SHEETS = {
+  '박선희': '',
+  '전성환': '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw',
+  '양욱정': '',
+};
 var CALENDAR_SS_ID = '1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo';
 var CALENDAR_TAB = '컨텐츠 캘린더';
 var API_KEY = 'arskin'; // config.js 의 API_KEY 와 같아야 한다. 바꿔서 쓸 것.
@@ -15,17 +20,20 @@ function doGet(e) {
   var p = e.parameter || {};
   if (p.key !== API_KEY) return json({ error: 'unauthorized' });
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
-  return json({ rows: listRows(p.from, p.to) });
+  if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
+  return json({ rows: listRows(p.who, p.from, p.to) });
 }
 
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (body.key !== API_KEY) return json({ error: 'unauthorized' });
+  var who = body.who;
+  if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    if (body.action === 'upsert') (body.rows || []).forEach(upsertRow);
-    else if (body.action === 'delete') (body.ids || []).forEach(deleteRow);
+    if (body.action === 'upsert') (body.rows || []).forEach(function (o) { upsertRow(who, o); });
+    else if (body.action === 'delete') (body.ids || []).forEach(function (id) { deleteRow(who, id); });
     else return json({ error: 'unknown action' });
   } finally {
     lock.releaseLock();
@@ -33,12 +41,16 @@ function doPost(e) {
   return json({ ok: true });
 }
 
+function sheetIdFor(who) {
+  return Object.prototype.hasOwnProperty.call(REPORT_SHEETS, who) ? REPORT_SHEETS[who] : '';
+}
+
 function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function monthSheet(date, create) {
-  var ss = SpreadsheetApp.openById(REPORT_SS_ID);
+function monthSheet(who, date, create) {
+  var ss = SpreadsheetApp.openById(sheetIdFor(who));
   var name = String(date).slice(0, 7);
   var sh = ss.getSheetByName(name);
   if (!sh && create) {
@@ -51,14 +63,14 @@ function monthSheet(date, create) {
 }
 
 // from, to: 'YYYY-MM-DD' (둘 다 포함)
-function listRows(from, to) {
+function listRows(who, from, to) {
   var out = [];
   var months = {};
   var d = new Date(from + 'T00:00:00');
   var end = new Date(to + 'T00:00:00');
   for (; d <= end; d.setDate(d.getDate() + 1)) months[isoDate(d).slice(0, 7)] = 1;
   Object.keys(months).forEach(function (m) {
-    var sh = monthSheet(m + '-01', false);
+    var sh = monthSheet(who, m + '-01', false);
     if (!sh || sh.getLastRow() < 2) return;
     sh.getRange(2, 1, sh.getLastRow() - 1, 9).getDisplayValues().forEach(function (r) {
       if (r[1] >= from && r[1] <= to) out.push(toObj(r));
@@ -71,21 +83,21 @@ function toObj(r) {
   return { id: r[0], date: r[1], section: r[2], col: r[3], status: r[4], text: r[5], start: r[6], end: r[7], updated: r[8] };
 }
 
-function upsertRow(o) {
+function upsertRow(who, o) {
   if (!o.id || !o.date) return;
-  var sh = monthSheet(o.date, true);
+  var sh = monthSheet(who, o.date, true);
   var vals = [o.id, o.date, o.section || '', o.col || '', o.status || '', o.text || '', o.start || '', o.end || '', new Date().toISOString()];
   var idx = findRow(sh, o.id);
   if (idx) sh.getRange(idx, 1, 1, 9).setValues([vals]);
   else sh.appendRow(vals);
 }
 
-function deleteRow(idWithDate) {
+function deleteRow(who, idWithDate) {
   // "YYYY-MM-DD|id" 또는 id 만 (id 앞 8자리가 날짜)
   var parts = String(idWithDate).split('|');
   var id = parts[parts.length - 1];
   var date = parts.length > 1 ? parts[0] : id.slice(0, 4) + '-' + id.slice(4, 6) + '-' + id.slice(6, 8);
-  var sh = monthSheet(date, false);
+  var sh = monthSheet(who, date, false);
   if (!sh) return;
   var idx = findRow(sh, id);
   if (idx) sh.deleteRow(idx);

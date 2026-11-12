@@ -4,16 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>아르스킨 업무보고</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">아르스킨<br><small>업무보고</small></div>
+    <div class="brand">아르스킨<small>업무보고</small></div>
     <nav class="nav">
-      <button data-view="daily" class="active">📝 일간 보고서</button>
-      <button data-view="calendar">📅 콘텐츠 캘린더</button>
-      <button data-view="legacy">🗂 기존 캘린더 앱</button>
+      <button data-view="daily" class="active">일간 보고서</button>
+      <div class="subnav" id="subnav"></div>
+      <button data-view="calendar">콘텐츠 캘린더</button>
+      <button data-view="legacy">기존 캘린더 앱</button>
     </nav>
     <div class="legend">
       <span>⭕ 완료</span><span>▶️ 진행 중</span><span>🔷 시작 전</span><span>⏸️ 보류</span><span>🔄 반복</span>
@@ -33,6 +35,7 @@
     </header>
 
     <section id="viewDaily" class="view">
+      <div class="people mobile-only" id="peopleM"></div>
       <div class="seg mobile-only">
         <button data-pane="report" class="active">보고서</button>
         <button data-pane="timeline">타임라인</button>
@@ -55,9 +58,9 @@
   </main>
 
   <nav class="bottomnav mobile-only">
-    <button data-view="daily" class="active">📝 일간</button>
-    <button data-view="calendar">📅 캘린더</button>
-    <button data-view="legacy">🗂 기존</button>
+    <button data-view="daily" class="active">일간 보고서</button>
+    <button data-view="calendar">캘린더</button>
+    <button data-view="legacy">기존 앱</button>
   </nav>
 </div>
 

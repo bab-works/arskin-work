@@ -12,7 +12,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
+  const state = { person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -36,13 +36,13 @@
   const api = {
     async get(params) {
       const u = new URL(C.API_URL);
-      Object.entries({ key: C.API_KEY, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
+      Object.entries({ key: C.API_KEY, who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
       const j = await (await fetch(u)).json();
       if (j.error) throw new Error(j.error);
       return j;
     },
     async post(body) { // text/plain body → CORS preflight 없이 Apps Script 로 전달
-      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ key: C.API_KEY, ...body }) })).json();
+      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ key: C.API_KEY, who: state.person, ...body }) })).json();
       if (j.error) throw new Error(j.error);
       return j;
     },
@@ -143,7 +143,7 @@
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
     }
-    box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(C.NAME)}</span></div>`));
+    box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
     box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     box.append(sec('회의', meetingBlock(d)));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
@@ -307,7 +307,7 @@
       return h + '</tbody></table>';
     };
     const textTable = (labels, texts) => `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody><tr>${texts.map(t => `<td class="pre">${esc(t)}</td>`).join('')}</tr></tbody></table>`;
-    let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(C.NAME)}</span></div>`;
+    let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
     const memo = cellText(d, '메모', '').trim();
     if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
     h += `<h3>회의</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '회의', w)));
@@ -329,6 +329,15 @@
       b.title = d; b.onclick = () => { state.sel = d; render(); };
       s.append(b);
     });
+  }
+  const personInfo = () => C.PEOPLE.find(p => p.name === state.person);
+  function renderPeople() {
+    const make = () => C.PEOPLE.map(p => {
+      const b = el(`<button class="${p.name === state.person ? 'active' : ''}">${esc(p.name)}${p.sheet ? '' : '<small>연결 대기</small>'}</button>`);
+      b.onclick = () => { if (p.name === state.person) return setView('daily'); state.person = p.name; localStorage.person = p.name; state.rows = []; state.expanded.clear(); setView('daily'); load(); };
+      return b;
+    });
+    $('subnav').replaceChildren(...make()); $('peopleM').replaceChildren(...make());
   }
   function setView(v) {
     state.view = v;
@@ -357,8 +366,15 @@
 
   async function load() {
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
+    renderPeople();
+    if (!personInfo().sheet) { // 시트 미연결: 다른 사람 데이터를 실수로 보여주지 않도록 요청 자체를 안 보낸다
+      state.rows = []; renderDatestrip(); $('timeline').innerHTML = ''; $('printReport').innerHTML = '';
+      $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 일일보고 시트가 아직 연결되지 않았습니다.<br><small>공유 시트 링크를 전달해 주시면 연결됩니다.</small></div>`;
+      return;
+    }
+    const asked = state.person;
     $('report').innerHTML = '<div class="empty-note">불러오는 중…</div>';
-    try { state.rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; }
+    try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return; state.rows = rows; }
     catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL / API_KEY 와 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
     render();
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'calendar') renderCalendar(); else renderReport(); }).catch(() => {});
