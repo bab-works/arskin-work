@@ -484,3 +484,14 @@ html.printing .drag{display:none}
 .cat-add input{min-height:44px;border:none;border-radius:var(--r-sm);background:var(--grey50);padding:0 12px;font:inherit;outline:none}
 .cat-add input:focus{background:var(--blue-weak)}
 .cat-add .cat-in{flex:0 0 96px;min-width:0}.cat-add .txt-in{flex:1;min-width:0}
+/* H: 원장님 워크시트 */
+.grid6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+@media(max-width:700px){.grid6,.grid3{grid-template-columns:1fr 1fr}}
+.dir-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dc-dow{text-align:center;font-size:12px;font-weight:600;color:var(--text-2);padding:4px 0}.dc-dow.sun{color:#c92a2a}.dc-dow.sat{color:var(--blue-text)}
+.dc-day{min-height:56px;padding:6px;border-radius:var(--r-sm);background:var(--grey50);text-align:left;display:flex;flex-direction:column;gap:2px;font-weight:500;cursor:default}
+.dc-day b{font-size:15px}.dc-day small{font-size:12px;color:#c92a2a;overflow-wrap:anywhere;line-height:1.2}
+.dc-day.off{background:#fff5f5}.dc-day.off b{color:#c92a2a}.dc-day.sat:not(.off) b{color:var(--blue-text)}
+.dc-day.out{opacity:.45}
+.dc-day.has{cursor:pointer}.dc-day.has:hover{box-shadow:inset 0 0 0 1px var(--blue)}
+.dc-day.today{box-shadow:inset 0 0 0 2px var(--blue-dark)}.dc-day.sel{background:var(--blue-weak)}

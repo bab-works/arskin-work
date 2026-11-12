@@ -28,7 +28,8 @@
   const shiftDate = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
   const fmtDate = s => { const d = new Date(s + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WD[d.getDay()]})`; };
   const todayKst = () => new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10); // 기기 시간대와 무관하게 한국 날짜
-  const isWorkday = d => new Date(d + 'T00:00:00Z').getUTCDay() % 6 && !state.holidays[d];
+  const isDirector = () => !!C.PEOPLE.find(p => p.name === state.person)?.director;
+  const isWorkday = d => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return wd !== 0 && (wd !== 6 || isDirector()) && !state.holidays[d]; }; // 마케터 월~금, 원장님 월~토
   function workDates(n) { // 당일 + 이전 근무일(월~금, 공휴일 제외)
     const out = [todayKst()]; let d = out[0];
     while (out.length < n) { d = shiftDate(d, -1); if (isWorkday(d)) out.push(d); }
@@ -350,6 +351,37 @@
     });
     return nav;
   }
+  /* ---------- 원장님 워크시트: 월~토 시트, 월~일 달력(휴일 색) ---------- */
+  function cellGrid(d, section, keys, cls, mode) {
+    const g = el(`<div class="${cls}"></div>`);
+    keys.forEach(([col, label]) => {
+      const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`);
+      if (mode === 'list') c.append(itemList(d, section, col, { noStatus: true }));
+      else c.append(textarea('', cellText(d, section, col), v => setCellText(d, section, col, v), ''));
+      g.append(c);
+    });
+    return g;
+  }
+  function renderDirectorReport(d, box) {
+    box.append(sec('원장님 숙제', cellGrid(d, '원장님숙제', [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], 'cols', 'text')));
+    box.append(sec('원장님 업무리스트업', cellGrid(d, '원장님리스트', [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']], 'grid3', 'list')));
+    box.append(sec('원장님 완료', cellGrid(d, '원장님완료', ['월', '화', '수', '목', '금', '토'].map(w => [w, w]), 'grid6', 'text')));
+    box.append(sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
+    box.querySelectorAll('textarea').forEach(autosize);
+  }
+  function renderDirCal(cal) {
+    const anchor = state.sel, month = anchor.slice(0, 7), first = new Date(month + '-01T00:00:00Z');
+    const start = shiftDate(month + '-01', -((first.getUTCDay() + 6) % 7)), today = todayKst(); // 월요일 시작
+    let html = `<div class="sc-header"><div><b>원장님 일정</b><small>${month.replace('-', '년 ')}월 · 월~일 · 휴일은 빨간색</small></div></div><div class="dir-cal" role="grid" aria-label="${month} 달력">`;
+    html += ['월', '화', '수', '목', '금', '토', '일'].map(w => `<div class="dc-dow${w === '일' ? ' sun' : w === '토' ? ' sat' : ''}">${w}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = shiftDate(start, i); if (i >= 35 && !d.startsWith(month)) break;
+      const wd = (i % 7), hol = state.holidays[d], cls = ['dc-day', !d.startsWith(month) && 'out', (wd === 6 || hol) && 'off', wd === 5 && 'sat', d === today && 'today', d === state.sel && 'sel', state.dates.includes(d) && 'has'].filter(Boolean).join(' ');
+      html += `<button type="button" class="${cls}" data-date="${d}" ${state.dates.includes(d) ? '' : 'aria-disabled="true"'} title="${d}${hol ? ' ' + esc(hol.name) : ''}"><b>${+d.slice(8)}</b>${hol ? `<small>${esc(hol.name)}</small>` : ''}</button>`;
+    }
+    cal.innerHTML = html + '</div>'; cal.className = 'sharedcal';
+    cal.querySelectorAll('.dc-day.has').forEach(b => b.onclick = () => { state.sel = b.dataset.date; render(); });
+  }
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) {
@@ -359,6 +391,7 @@
       return;
     }
     box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
+    if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
@@ -500,7 +533,7 @@
   const personInfo = () => C.PEOPLE.find(p => p.name === state.person);
   function renderPeople() {
     const make = () => C.PEOPLE.map(p => {
-      const b = el(`<button class="${p.name === state.person ? 'active' : ''}">${esc(p.name)}${p.sheet ? '' : '<small>연결 대기</small>'}</button>`);
+      const b = el(`<button class="${p.name === state.person ? 'active' : ''}">${esc(p.label || p.name)}${p.sheet ? '' : '<small>연결 대기</small>'}</button>`);
       b.onclick = () => { if (p.name === state.person) return setView('daily'); state.person = p.name; localStorage.person = p.name; state.rows = []; state.expanded.clear(); setView('daily'); load(); };
       return b;
     });
@@ -580,6 +613,7 @@
   function renderShared() {
     const cal = $('sharedcal'), tasks = $('sharedtasks');
     if (!cal) return;
+    if (isDirector()) { tasks.hidden = true; return renderDirCal(cal); }
     if (backendOk === false) { cal.innerHTML = '<div class="sc-head"><b>공통 캘린더</b><small>Apps Script를 새 버전으로 재배포하면 켜집니다</small></div>'; tasks.hidden = true; return; }
     tasks.hidden = false;
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor), today = todayKst();

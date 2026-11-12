@@ -9,6 +9,7 @@ window.CONFIG = {
     { name: '박선희', sheet: '1uQzBVCdV0h840CFLDAbAXP2riNBSM7iuw0MjmdGgrtQ' },
     { name: '전성환', sheet: '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw' },
     { name: '양욱정', sheet: '1h4kk5Q8EIOrm8T9Gfsb5dSa-xuw6o7usf_K0vLKR1SQ' },
+    { name: '원장님', label: '원장님 워크시트', sheet: '1P3QPPH6vb7ZuEfiZ0F2UeZxppuGFnlkAZoLWlTpvdnM', director: true }, // 월~토
   ],
   DEFAULT_PERSON: '전성환',
   DAYS: 5,            // 당일 기준 보여줄 근무일 수

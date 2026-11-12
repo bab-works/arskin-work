@@ -11,6 +11,7 @@ var REPORT_SHEETS = {
   '전성환': '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw',
   '양욱정': '1h4kk5Q8EIOrm8T9Gfsb5dSa-xuw6o7usf_K0vLKR1SQ',
   '공통': '1i4kLJttpdo0uQwdUspIDgMBcVdkojFEAJp7lDrUmMMU', // 공유 캘린더(구분=일정)·공통 업무
+  '원장님': '1P3QPPH6vb7ZuEfiZ0F2UeZxppuGFnlkAZoLWlTpvdnM', // 원장님 워크시트 (월~토)
 };
 var CALENDAR_SS_ID = '1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo';
 var CALENDAR_TAB = '컨텐츠 캘린더';
@@ -30,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 12, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 13, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -502,9 +503,9 @@ function isoWeek_(d) { // 'YYYY-Www' (월요일 시작, ISO 8601)
 }
 function shiftKst_(d, n) { var t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
 function newId_(d, i) { return d.replace(/-/g, '') + '-' + Date.now().toString(36) + ('00' + i.toString(36)).slice(-3); }
-function isWorkday_(d) {
+function isWorkday_(d, who) { // 마케터 월~금, 원장님 월~토 (공휴일 제외)
   var wd = new Date(d + 'T00:00:00Z').getUTCDay();
-  return wd % 6 !== 0 && !holidays_(false).some(function (h) { return h.date === d; });
+  return wd !== 0 && (wd !== 6 || who === DIRECTOR) && !holidays_(false).some(function (h) { return h.date === d; });
 }
 // 멱등: 같은 사람·날짜는 한 번만 자동 생성 (사용자가 그날 행을 지워도 다시 만들지 않음). force 는 '전일 가져오기' 버튼.
 // shortcut: 생성 기록을 스크립트 속성에 쌓음, 수천 건이 되면 오래된 키 정리 필요
@@ -523,6 +524,7 @@ function generateDay_(who, d, force) {
     // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
     var newWeek = isoWeek_(d) !== isoWeek_(src);
     var parents = srcRows.filter(function (r) {
+      if (who === DIRECTOR) return r.section !== '타임라인'; // 원장님 워크시트는 전날 내용을 그대로 이어감
       if (NO_CARRY_.indexOf(r.section) >= 0) return false;
       if (r.section === '데일리고정' || r.section === '주간고정') return true;
       return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));
@@ -556,8 +558,7 @@ function copyOf_(r, id, d, status, col) {
 // 트리거 진입점: 평일(공휴일 제외) 00:05 KST 에 모든 사람의 그날 보고서 생성
 function dailyGenerate() {
   var d = todayKst_();
-  if (!isWorkday_(d)) return;
-  Object.keys(REPORT_SHEETS).forEach(function (who) { if (who !== '공통') try { generateDay_(who, d, false); } catch (e) { console.error(who, e); } });
+  Object.keys(REPORT_SHEETS).forEach(function (who) { if (who !== '공통' && isWorkday_(d, who)) try { generateDay_(who, d, false); } catch (e) { console.error(who, e); } });
 }
 // 편집기에서 한 번만 실행: 기존 트리거를 지우고 매일 00:05(Asia/Seoul) 트리거를 다시 만든다
 function setupDailyTrigger() {
