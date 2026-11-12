@@ -20,7 +20,8 @@ var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '�
 function doGet(e) {
   var p = e.parameter || {};
   if (p.key !== API_KEY) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 2 }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 3, content: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -29,6 +30,9 @@ function doGet(e) {
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (body.key !== API_KEY) return json({ error: 'unauthorized' });
+  if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
+    try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
+  }
   var who = body.who;
   if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
   var lock = LockService.getScriptLock();
@@ -120,4 +124,68 @@ function calendarGrid() {
 
 function isoDate(d) {
   return Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd');
+}
+
+
+// 콘텐츠 스튜디오. 원본 시트의 셀/열 배치와 기존 보고서 API는 유지합니다.
+var CONTENT_SOURCES = [
+  { ch: 'hongzz', sheet: 'dr.hongzz+영상리스트', col: 3, width: 6 },
+  { ch: 'global', sheet: 'dr.hongzz_global', col: 3, width: 6 },
+  { ch: 'figo', sheet: 'Figo', col: 3, width: 6 },
+  { ch: 'arskin', sheet: 'arskin_hongdae', col: 3, width: 6 },
+  { ch: 'won', sheet: '블로그 업로드', col: 3, width: 4 },
+  { ch: 'jasa', sheet: '블로그 업로드', col: 9, width: 4 }
+];
+function contentData(fresh) {
+  var cache = CacheService.getScriptCache(), hit = cache.get('content-v3');
+  if (hit && !fresh) return JSON.parse(hit);
+  var ss = SpreadsheetApp.openById(CALENDAR_SS_ID);
+  var out = { updated: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss') };
+  CONTENT_SOURCES.forEach(function(source) {
+    var sh = ss.getSheetByName(source.sheet);
+    if (!sh) throw new Error('시트 연결을 확인해 주세요: ' + source.sheet);
+    var count = sh.getLastRow() - 3;
+    out[source.ch] = count > 0 ? sh.getRange(4, source.col, count, source.width).getDisplayValues().filter(function(r) { return r[0] && r[2]; }) : [];
+  });
+  out.plan = contentPlanRead(ss);
+  var payload = JSON.stringify(out);
+  // Apps Script 캐시 항목 제한(100 KB)을 넘는 데이터는 캐시 없이 정상 반환합니다.
+  if (Utilities.newBlob(payload).getBytes().length < 95000) cache.put('content-v3', payload, 30);
+  return out;
+}
+function contentPlanSheet(ss) {
+  var sh = ss.getSheetByName('dr.hongzz+영상리스트');
+  if (!sh) throw new Error('영상 기획 시트를 찾을 수 없습니다.');
+  return sh;
+}
+function contentPlanRead(ss) {
+  var sh = contentPlanSheet(ss), count = sh.getLastRow() - 3;
+  if (count < 1) return [];
+  return sh.getRange(4, 10, count, 7).getDisplayValues().map(function(v, i) { return { row: i + 4, v: v }; }).filter(function(r) { return r.v.some(function(x) { return String(x).trim(); }); });
+}
+function contentClean(values) {
+  if (!Array.isArray(values) || values.length !== 7) throw new Error('입력 형식을 확인해 주세요.');
+  return values.map(function(x) { return String(x == null ? '' : x).slice(0, 2000); });
+}
+function contentPlanWrite(body) {
+  var after = contentClean(body.action === 'contentPlanAdd' ? body.values : body.after);
+  if (!after.some(function(x) { return x.trim(); })) throw new Error('내용을 하나 이상 입력해 주세요.');
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), sh = contentPlanSheet(ss), row;
+    if (body.action === 'contentPlanSave') {
+      row = Number(body.row); var before = contentClean(body.before);
+      if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('행 번호가 올바르지 않습니다.');
+      var now = sh.getRange(row, 10, 1, 7).getDisplayValues()[0];
+      if (!now.every(function(x, i) { return String(x).trim() === before[i].trim(); })) throw new Error('다른 사람이 먼저 수정했어요. 새로고침 후 다시 저장해 주세요.');
+    } else {
+      var last = Math.max(4, sh.getLastRow()), values = sh.getRange(4, 10, last - 3, 7).getDisplayValues(); row = last + 1;
+      for (var i = 0; i < values.length; i++) if (values[i].every(function(x) { return !String(x).trim(); })) { row = i + 4; break; }
+      if (row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 1);
+    }
+    // 사용자 입력이 수식으로 실행되지 않도록 문자열로 저장합니다.
+    sh.getRange(row, 10, 1, 7).setValues([after.map(function(x) { return /^=/.test(x) ? "'" + x : x; })]);
+    SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    return contentPlanRead(ss);
+  } finally { lock.releaseLock(); }
 }

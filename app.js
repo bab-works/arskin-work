@@ -327,26 +327,6 @@
     const w = el(`<div class="today-pub">${items.length ? items.map(chip).join('') : '<span style="color:#999">발행 예정 없음</span>'}</div>`);
     return w;
   }
-  function renderCalendar() {
-    const box = $('calendar'); box.innerHTML = '';
-    const c = state.calendar;
-    if (!c) { box.append(el('<div class="empty-note">캘린더를 불러오는 중…</div>')); return; }
-    const y = new Date().getFullYear(), m = c.month;
-    box.append(el(`<div class="cal-title">${y}년 ${m}월 콘텐츠 캘린더 <small style="font-weight:400;color:#777">(아르스킨 인스타 관리 시트)</small></div>`));
-    const first = new Date(y, m - 1, 1).getDay(), last = new Date(y, m, 0).getDate(), today = iso(new Date());
-    const cal = el('<div class="cal"></div>');
-    WD.forEach(w => cal.append(el(`<div class="dow">${w}</div>`)));
-    for (let i = 0; i < first; i++) cal.append(el('<div></div>'));
-    const list = el('<div class="cal-list"></div>');
-    for (let d = 1; d <= last; d++) {
-      const items = c.days[d] || [];
-      const isT = today === `${y}-${pad(m)}-${pad(d)}`;
-      cal.append(el(`<div class="day${isT ? ' today' : ''}"><b>${d}</b>${items.map(chip).join('')}</div>`));
-      if (items.length) list.append(el(`<div class="d"><b>${m}/${d} (${WD[new Date(y, m - 1, d).getDay()]})</b>${items.map(chip).join('')}</div>`));
-    }
-    box.append(cal, list);
-  }
-
   /* ---------- print-only layout: 시트처럼 좌/우 항목을 한 줄씩 짝지은 표 (행 단위로만 페이지 분할) ---------- */
   function renderPrint() {
     const d = state.sel, box = $('printReport'); box.innerHTML = '';
@@ -393,9 +373,8 @@
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
-    $('viewLegacy').classList.toggle('hidden', v !== 'legacy');
-    if (v === 'legacy' && !$('legacyFrame').src) $('legacyFrame').src = C.LEGACY_URL; // 처음 열 때만 로드
-    if (v === 'calendar') renderCalendar();
+    window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
+    if (v === 'calendar') window.ContentHub.open();
   }
   function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
 
@@ -410,7 +389,6 @@
   $('btnPrint').onclick = () => print();
   $('btnReload').onclick = () => load();
   addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); });
-  $('legacyOpen').href = C.LEGACY_URL;
 
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
@@ -483,7 +461,7 @@
     try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return; state.rows = rows; }
     catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL / API_KEY 와 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
     render();
-    api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'calendar') renderCalendar(); else renderReport(); }).catch(() => {});
+    api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   load();
 })();
