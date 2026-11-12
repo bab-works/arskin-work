@@ -403,3 +403,7 @@ button.sc-date:hover b{color:var(--blue-text);text-decoration:underline}
 .cat{flex:none;align-self:center;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;line-height:1;padding:5px 8px;border-radius:6px;background:var(--grey100);color:var(--text-2)}
 .cat[hidden]{display:none}
 .row.done .cat{opacity:.75}
+/* 작업 13: 단축키 도움말 */
+.keys-dlg dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;margin:12px 0 20px;align-items:center}
+.keys-dlg dt{white-space:nowrap}.keys-dlg dd{margin:0;color:var(--text-2)}
+kbd{font:600 12px/1 inherit;padding:4px 7px;border-radius:6px;background:var(--grey100);border:1px solid var(--line);color:var(--text-1)}

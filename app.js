@@ -110,7 +110,11 @@
     paint();
     tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
-    tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); tx.blur(); } };
+    tx.onkeydown = e => {
+      if (e.isComposing) return; // 한글 조합 중 Enter·Esc 는 무시
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); }
+      if (e.key === 'Escape') { tx.textContent = r.text; tx.blur(); } // 편집 취소
+    };
     const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`);
     del.onclick = () => { deleteRow(r); render(); };
     row.append(chip, tx);
@@ -185,7 +189,7 @@
     const del = el('<button class="project-delete" title="프로젝트 삭제">삭제</button>'); del.onclick = () => { deleteRow(r); render(); }; head.append(del);
     const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
     title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
-    title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); title.blur(); } };
+    title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); title.blur(); } };
     card.append(head, title, el(progressBar(r)));
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
@@ -194,7 +198,7 @@
       check.onchange = () => { if (changeSubtask.busy) { check.checked = isDone(child); return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' }); };
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
-      text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); } };
+      text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
       const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
       line.append(check, text, remove); list.append(line);
     });
@@ -210,7 +214,14 @@
   }
   function addInput(onAdd, ph = '+ 추가 (Enter)') {
     const w = el(`<div class="add"><input placeholder="${ph}"></div>`); const i = w.firstChild;
-    i.onkeydown = e => { if (e.key === 'Enter' && i.value.trim()) { onAdd(i.value.trim()); i.value = ''; render(); } };
+    i.onkeydown = e => {
+      if (e.isComposing) return;
+      if (e.key === 'Escape') { i.value = ''; i.blur(); }
+      if (e.key !== 'Enter' || !i.value.trim()) return;
+      const idx = [...document.querySelectorAll('.add input')].indexOf(i);
+      onAdd(i.value.trim()); i.value = ''; render();
+      document.querySelectorAll('.add input')[idx]?.focus(); // 연속 입력: 같은 자리의 입력칸으로 포커스 복귀
+    };
     return w;
   }
   function itemList(date, section, col, opts = {}) {
@@ -359,7 +370,7 @@
     closeEditor(); renderTimeline(); renderShared();
   };
   $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); renderShared(); };
-  $('beTitle').onkeydown = e => { if (e.key === 'Enter') $('beSave').click(); if (e.key === 'Escape') closeEditor(); };
+  $('beTitle').onkeydown = e => { if (e.isComposing) return; if (e.key === 'Enter') $('beSave').click(); if (e.key === 'Escape') closeEditor(); };
 
   /* ---------- content calendar ---------- */
   function parseCalendar(grid) {
@@ -635,6 +646,27 @@
     try { localStorage.dirSeen = new Date().toISOString(); } catch {}
     paintDirBadge();
   }
+
+  /* ---------- 단축키: N 새 업무, ? 도움말, Esc 닫기/취소 (입력 중에는 동작 안 함) ---------- */
+  const typing = t => t.closest('input,textarea,select,[contenteditable]:not([contenteditable=false])');
+  function openShortcuts() {
+    if (document.querySelector('.keys-dlg')) return;
+    const dlg = el(`<dialog class="code-dlg keys-dlg" aria-labelledby="keysTitle"><h2 id="keysTitle">단축키</h2><dl>
+      <dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
+      <dt><kbd>Esc</kbd></dt><dd>수정 취소, 창·메뉴 닫기</dd><dt><kbd>Space</kbd></dt><dd>상태 버튼에서 다음 상태로</dd><dt><kbd>Shift</kbd>+<kbd>F10</kbd></dt><dd>상태 선택 메뉴</dd><dt><kbd>?</kbd></dt><dd>이 도움말</dd></dl>
+      <button type="button" class="primary">닫기</button></dialog>`);
+    dlg.querySelector('button').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove();
+    document.body.append(dlg); dlg.showModal();
+  }
+  document.addEventListener('keydown', e => {
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || document.querySelector('dialog[open]')) return;
+    if (e.key === '?') { e.preventDefault(); openShortcuts(); }
+    if ((e.key === 'n' || e.key === 'N' || e.key === 'ㅜ') && state.view === 'daily') {
+      const i = document.querySelector('#sec-변동업무 .add input') || document.querySelector('#report .add input');
+      if (i) { e.preventDefault(); i.scrollIntoView({ block: 'center' }); i.focus(); }
+    }
+    if (e.key === 'Escape') closeEditor();
+  });
 
   load();
   loadDirector();
