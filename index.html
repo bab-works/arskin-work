@@ -36,11 +36,13 @@
     <header class="topbar">
       <div class="datestrip" id="datestrip"></div>
       <div class="actions">
-        <button id="btnCarry" title="직전 근무일의 미완료 항목을 오늘로 복사"><i data-icon="carry"></i>전일 가져오기</button>
-        <button id="btnDoneSort" title="완료한 업무를 목록 아래로 정렬" aria-pressed="true"><i data-icon="done"></i>완료 아래로</button>
-        <button id="btnCollapse" title="완료 항목 접기"><i data-icon="sort"></i>완료 접기</button>
-        <button id="btnPrint" title="Ctrl+P"><i data-icon="print"></i>인쇄</button>
-        <button id="btnReload" title="새로고침" aria-label="새로고침"><i data-icon="reload"></i></button>
+        <button id="btnCarry" title="직전 근무일의 이어갈 항목을 이 날짜로 복사"><i data-icon="carry"></i>전일 가져오기</button>
+        <span class="act-sep" aria-hidden="true"></span>
+        <button id="btnDoneSort" class="icon-btn" title="완료한 업무를 목록 아래로" aria-label="완료 업무 아래로 정렬" aria-pressed="true"><i data-icon="sinkdone"></i></button>
+        <button id="btnCollapse" class="icon-btn" title="완료한 업무 접기" aria-label="완료 업무 접기" aria-pressed="false"><i data-icon="hide"></i></button>
+        <button id="btnPrint" class="icon-btn" title="인쇄 (Ctrl+P)" aria-label="인쇄"><i data-icon="print"></i></button>
+        <button id="btnReload" class="icon-btn" title="새로고침" aria-label="새로고침"><i data-icon="reload"></i></button>
+        <button id="btnKeys" class="icon-btn" title="단축키 (?)" aria-label="단축키 보기">?</button>
       </div>
     </header>
 

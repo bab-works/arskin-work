@@ -429,3 +429,9 @@ kbd{font:600 12px/1 inherit;padding:4px 7px;border-radius:6px;background:var(--g
  .sc-week:not(.sc-month) .sc-ev small{flex:none;white-space:nowrap}
  .sc-week:not(.sc-month) .sc-add{grid-column:3;grid-row:1;margin:0;min-width:32px}
 }
+/* 작업 16: 상단 도구 정리 — 주요 동작만 글자, 나머지는 아이콘 + 툴팁 */
+.actions{align-items:center}
+.act-sep{width:1px;height:24px;background:var(--grey200);margin:0 2px}
+.actions .icon-btn{width:44px;padding:0;font-size:16px;font-weight:700;color:var(--text-2)}
+.actions .icon-btn.on{color:var(--blue-text)}
+@media(max-width:600px){#btnPrint,.act-sep{display:none}} /* 휴대폰에서는 인쇄를 숨겨 한 줄에 맞춤 */
