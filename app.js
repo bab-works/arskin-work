@@ -373,8 +373,10 @@
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
+    $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
     if (v === 'calendar') window.ContentHub.open();
+    if (v === 'revenue') window.RevenueHub.open();
   }
   function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
 
@@ -482,4 +484,5 @@
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   load();
+  setView('calendar');
 })();
