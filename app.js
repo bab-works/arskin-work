@@ -2,7 +2,6 @@
   const C = window.CONFIG;
   const STATUSES = ['🔷', '▶️', '⭕', '⏸️', '🔄'];
   const TASK_SECTIONS = [
-    { key: '마케팅공통', L: '마케팅 공통', R: '마케팅 추가 업무' },
     { key: '주간고정', L: '주간고정', R: '주간고정 완료' },
     { key: '데일리고정', L: '데일리 고정업무', R: '' },
     { key: '배치예정', L: '업무 배치 예정', R: '' },
@@ -111,20 +110,6 @@
     });
     return sec(s.L, cols);
   }
-  function meetingBlock(d) {
-    const t = el('<table class="meet"><tr></tr><tr></tr></table>');
-    const [h, b] = t.rows;
-    ['월', '화', '수', '목', '금'].forEach((w, i) => {
-      h.append(el(`<th class="${i === 0 ? 'mon' : ''}">${w}</th>`));
-      const td = document.createElement('td');
-      td.append(textarea('tx', cellText(d, '회의', w), v => setCellText(d, '회의', w, v), '')); b.append(td);
-    });
-    const list = document.createElement('div');
-    list.append(el('<h4 style="margin:8px 0 2px;font-size:12px;color:#444">금주 일정</h4>'));
-    [...rowsFor(d, '회의', '일정'), ...rowsFor(d, '회의일정')].forEach(r => list.append(itemRow(r, { noStatus: !r.status })));
-    list.append(addInput(text => addRow({ date: d, section: '회의', col: '일정', text }), '+ 일정 추가'));
-    const wrap = document.createElement('div'); wrap.append(t, list); return wrap;
-  }
   function cellGrid(d, section, keys, cls, mode) {
     const g = el(`<div class="${cls}"></div>`);
     keys.forEach(([col, label]) => {
@@ -145,7 +130,6 @@
     }
     box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
     box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
-    box.append(sec('회의', meetingBlock(d)));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
     box.append(sec('원장님 완료', cellGrid(d, '원장님완료', ['월', '화', '수', '목', '금'].map(w => [w, w]), 'grid5', 'text')));
     box.append(sec('원장님 업무리스트업', cellGrid(d, '원장님리스트', [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']], 'grid3', 'list')));
@@ -169,7 +153,7 @@
     }
     if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 ⭕ 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
     const copies = srcRows
-      .filter(r => r.section !== '타임라인' && !(TASK_KEYS.has(r.section) && r.status === '⭕'))
+      .filter(r => !['타임라인', '마케팅공통', '회의', '회의일정'].includes(r.section) && !(TASK_KEYS.has(r.section) && r.status === '⭕'))
       .map(r => ({ ...r, id: newId(d), date: d, status: r.section === '데일리고정' ? '🔷' : r.status }));
     state.rows.push(...copies);
     await save(copies);
@@ -245,7 +229,8 @@
     if (!editing) return;
     const text = $('beTitle').value.trim(), start = $('beStart').value, end = $('beEnd').value;
     if (!text) return toast('내용을 입력하세요');
-    if (!start || !end || toMin(end) <= toMin(start)) return toast('종료 시각이 시작보다 뒤여야 합니다');
+    if (editing.r.section === '타임라인' && (!start || !end)) return toast('시작과 종료 시각을 입력하세요');
+    if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
     if (editing.isNew) addRow({ ...editing.r, text, start, end }); else updateRow(editing.r, { text, start, end });
     closeEditor(); renderTimeline(); renderShared();
   };
@@ -310,9 +295,6 @@
     let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
     const memo = cellText(d, '메모', '').trim();
     if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
-    h += `<h3>회의</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '회의', w)));
-    const sched = [...rowsFor(d, '회의', '일정'), ...rowsFor(d, '회의일정')];
-    if (sched.length) h += pairTable(['금주 일정'], [sched]);
     TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L, s.R || s.L], [rowsFor(d, s.key, 'L'), rowsFor(d, s.key, 'R')]));
     h += `<h3>원장님 완료</h3>` + textTable(['월', '화', '수', '목', '금'], ['월', '화', '수', '목', '금'].map(w => cellText(d, '원장님완료', w)));
     h += `<h3>원장님 업무리스트업</h3>` + pairTable(['원개블', '그외', '릴스 촬영 리스트업'], ['원개블', '그외', '릴스촬영'].map(c => rowsFor(d, '원장님리스트', c)));
@@ -371,10 +353,11 @@
   const checkBackend = async () => backendOk ??= await api.get({ action: 'ping' }).then(j => j.v >= 2).catch(() => false);
   async function loadShared() {
     if (!(await checkBackend())) { state.shared = []; return renderShared(); }
-    const ws = weekStart(state.sel), from = [ws, state.sel.slice(0, 8) + '01'].sort()[0], to = shiftDate(ws, 6);
-    // shortcut: 공통 업무는 이번 달(+이번 주) 범위만 불러온다. 이월이 필요해지면 월 경계 처리 추가.
-    try { state.shared = (await api.get({ who: SHARED, from, to: [to, state.sel].sort()[1] })).rows.map(r => ({ ...r, _who: SHARED })); }
-    catch (e) { state.shared = []; }
+    const ws = weekStart(state.sel), from = '2026-10-01', to = shiftDate(ws, 6);
+    const requested = state.sel;
+
+    try { const result = await api.get({ who: SHARED, from, to: [to, iso(new Date())].sort()[1] }); if (requested !== state.sel) return; state.shared = result.rows.map(r => ({ ...r, _who: SHARED })); }
+    catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
   function renderShared() {
@@ -384,12 +367,15 @@
     tasks.hidden = false;
     const ws = weekStart(state.sel), today = iso(new Date());
     cal.innerHTML = `<div class="sc-head"><b>공통 캘린더</b><small>${ws.slice(5).replace('-', '.')} 주 · 모든 팀원과 연동</small></div>`;
+    const nav = el('<div><button type="button">← 이전 주</button> <button type="button">이번 주</button> <button type="button">다음 주 →</button></div>');
+    [...nav.children].forEach((b, i) => b.onclick = () => { state.sel = i === 1 ? today : shiftDate(ws, i === 0 ? -7 : 7); render(); loadShared(); });
+    cal.append(nav);
     const grid = el('<div class="sc-week"></div>');
     for (let i = 0; i < 7; i++) {
       const d = shiftDate(ws, i), dt = new Date(d + 'T00:00:00');
       const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${i > 4 ? ' wkend' : ''}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b></div></div>`);
       state.shared.filter(r => r.section === '일정' && r.date === d).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-        const ev = el(`<button class="sc-ev"><small>${esc(r.start)}</small>${esc(r.text)}</button>`);
+        const ev = el(`<button class="sc-ev"><small>${esc(r.start || '시간 미정')}</small>${esc(r.text)}</button>`);
         ev.title = `${r.start}~${r.end} ${r.text}${r.col ? ' · ' + r.col : ''}`;
         ev.onclick = () => openEditor(r, ev);
         col.append(ev);
@@ -399,9 +385,13 @@
       col.append(add); grid.append(col);
     }
     cal.append(grid);
+    const notes = state.shared.filter(r => r.section === '일정메모' && r.date >= ws && r.date <= shiftDate(ws, 6));
+    if (notes.length) { const box = el('<div class="sc-notes"><h4>날짜 확인이 필요한 회의 일정</h4></div>'); notes.forEach(r => box.append(itemRow(r, { noStatus: true }))); cal.append(box); }
     tasks.innerHTML = '<h3>공통 업무</h3>';
-    const list = state.shared.filter(r => r.section === '공통업무');
-    list.forEach(r => tasks.append(itemRow(r)));
+    // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
+    const latest = new Map();
+    state.shared.filter(r => r.section === '공통업무' && r.date <= state.sel).sort((a, b) => a.date.localeCompare(b.date)).forEach(r => latest.set(r.text.replace(/\s+/g, ''), r));
+    [...latest.values()].forEach(r => tasks.append(itemRow(r)));
     tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: '🔷', _who: SHARED })));
   }
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
