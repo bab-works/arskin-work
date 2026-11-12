@@ -12,7 +12,7 @@
   const statusIcon = c => icon(c, 20, 'sti sti-' + c);
   const TASK_SECTIONS = [ // 예전 L/R 두 칸(진행/완료)은 한 목록으로 합침. 시트의 열 값은 그대로 둔다
     { key: '주간고정', L: '주간고정' },
-    { key: '데일리고정', L: '데일리 고정업무' },
+    { key: '데일리고정', L: '데일리 고정업무 (매일 반복)' },
     { key: '배치예정', L: '업무 배치 예정' },
     { key: '팔로업', L: '진행중 작업 팔로업' },
     { key: '변동업무', L: '변동업무' },
@@ -82,7 +82,7 @@
   }
   function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); }
   function deleteRow(r) {
-    const related = r.section === '변동업무' ? state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id) : [];
+    const related = SUBTASKABLE.has(r.section) ? state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id) : [];
     if (related.some(x => x.section === '하위업무') && !confirm('이 업무와 하위 업무를 모두 삭제할까요?')) return;
     // 화면에서 바로 빼고 5초 뒤에 시트에서 지운다. 되돌리기를 누르면 시트는 건드리지 않는다.
     // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽), 필요하면 pagehide 에서 전송
@@ -110,9 +110,9 @@
 
   const CAT_RE = /^\P{L}*?([\p{L}\p{N}][^\s)]{0,11})\)\s*/u; // 앞 장식 기호 + 12자 이내 분류 + ')'
   function itemRow(r, opts = {}) {
-    if (r.section === '변동업무' && isProject(r)) return projectCard(r);
+    if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
-    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); }));
+    if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
     const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? m[1] : ''; tx.textContent = rest || r.text; };
@@ -125,9 +125,20 @@
       if (e.key === 'Escape') { tx.textContent = r.text; tx.blur(); } // 편집 취소
     };
     const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
-    del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); }, () => { deleteRow(r); render(); });
+    del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); });
     row.append(chip, tx);
-    if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
+    if (SUBTASKABLE.has(r.section)) { // 하위 업무 입력칸만 열고, 실제로 하나 입력해야 프로젝트가 된다 (Esc·빈칸으로 벗어나면 취소)
+      const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>');
+      project.onclick = () => {
+        if (row.nextElementSibling?.classList.contains('sub-add')) return row.nextElementSibling.querySelector('input').focus();
+        const box = addInput(text => { changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: 'todo', text, start: '', end: '' }, {}); }, '하위 업무 입력 후 Enter · Esc 취소');
+        box.classList.add('sub-add'); const i = box.querySelector('input');
+        i.addEventListener('blur', () => setTimeout(() => { if (!i.value.trim()) box.remove(); }, 150));
+        i.addEventListener('keydown', e => { if (e.key === 'Escape') box.remove(); });
+        row.after(box); i.focus();
+      };
+      row.append(project);
+    }
     row.append(del); return row;
   }
   // 상태 버튼: 클릭/Space/Enter = 다음 상태, 우클릭·길게 누르기·Shift+F10 = 상태 바로 선택 메뉴
@@ -164,7 +175,11 @@
     (items.find(x => x.dataset.k === current) || items[0]).focus();
   }
   const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
-  const isProject = r => state.rows.some(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id && x.date === r.date);
+  const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
+  // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
+  const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무') holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
+  const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
     return { total: children.length, done, percent: children.length ? Math.round(done / children.length * 100) : 0 };
@@ -182,13 +197,14 @@
     const status = children.length && children.every(isDone) ? 'done' : children.some(isDone) ? 'doing' : 'todo';
     try {
       if (deleting) await api.post({ action: 'delete', ids: [child.date + '|' + child.id], who });
-      await api.post({ action: 'upsert', rows: [{ ...parent, status }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
+      const section = SUBTASKABLE.has(parent.section) && children.length ? '팔로업' : parent.section;
+      await api.post({ action: 'upsert', rows: [{ ...parent, status, section }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
       if (state.person !== who) return;
       const index = state.rows.findIndex(x => x.id === child.id);
       if (deleting) state.rows = state.rows.filter(x => x.id !== child.id);
       else if (index >= 0) state.rows[index] = { ...child, ...patch };
       else state.rows.push({ ...child, ...patch });
-      parent.status = status; render();
+      parent.status = status; parent.section = section; render();
     } catch (e) { toast('하위 업무 저장 실패: ' + e.message); load(); }
     finally { changeSubtask.busy = false; }
   }
@@ -215,7 +231,7 @@
     return card;
   }
   function projectSummary(d) {
-    const projects = rowsFor(d, '변동업무').filter(isProject);
+    const projects = state.rows.filter(r => r.date === d && SUBTASKABLE.has(r.section) && isProject(r));
     if (!projects.length) return null;
     const box = el('<div class="project-summary"></div>');
     projects.forEach(r => { const entry = el('<div class="project-summary-entry"></div>'); const title = el('<b></b>'); title.textContent = r.text; entry.append(title, el(progressBar(r))); box.append(entry); });
@@ -251,10 +267,10 @@
     if (!state.doneLast) return;
     sortHold.add(id); clearTimeout(holdSort.t);
     holdSort.t = setTimeout(() => {
-      const rows = () => document.querySelectorAll('#report .row[data-id]');
+      const rows = () => document.querySelectorAll('#report .row[data-id], #sharedtasks .row[data-id]');
       const before = new Map([...rows()].map(n => [n.dataset.id, n.getBoundingClientRect().top]));
       const focused = document.activeElement?.dataset?.rid;
-      sortHold.clear(); renderReport();
+      sortHold.clear(); renderReport(); renderShared();
       if (focused) document.querySelector(`.st[data-rid="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' } /* = --dur, --ease */); });
@@ -262,7 +278,7 @@
   }
   function taskSection(d, s) {
     const all = rowsFor(d, s.key), done = all.filter(isDone).length;
-    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true }));
+    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo' }));
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
     return node;
   }
@@ -368,6 +384,7 @@
     $('beTitle').focus();
   }
   function closeEditor() { $('blockEditor').classList.add('hidden'); editing = null; }
+  addEventListener('pointerdown', e => { if (editing && !$('blockEditor').contains(e.target) && !e.target.closest('.sc-add,.sc-ev,.tl-block,.tl-grid')) closeEditor(); }, true);
   $('beCancel').onclick = closeEditor;
   $('beSave').onclick = () => {
     if (!editing) return;
@@ -408,7 +425,7 @@
   function renderPrint() {
     const d = state.sel, box = $('printReport'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) return;
-    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst" title="${STAT[statusCode(r.status)].label}">${statusIcon(statusCode(r.status))}</span>` : ''}${esc(r.text)}${r.section === '변동업무' && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${isDone(c) ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
+    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst" title="${STAT[statusCode(r.status)].label}">${statusIcon(statusCode(r.status))}</span>` : ''}${esc(r.text)}${SUBTASKABLE.has(r.section) && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${isDone(c) ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
     const pairTable = (labels, lists) => {
       const n = Math.max(...lists.map(l => l.length), 1);
       let h = `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
@@ -562,7 +579,8 @@
       .sort((a, b) => a.date.localeCompare(b.date) || (a.updated || '').localeCompare(b.updated || '') || a.id.localeCompare(b.id))
       .forEach(r => latest.set(taskKey(r.text), r));
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
-    [...latest.values()].forEach(r => list.append(itemRow(r)));
+    const latestRows = [...latest.values()], lateS = r => state.doneLast && isDone(r) && !sortHold.has(r.id);
+    [...latestRows.filter(r => !lateS(r)), ...latestRows.filter(lateS)].forEach(r => list.append(itemRow(r)));
     tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     tasks.append(list);
     tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: 'todo', _who: SHARED })));

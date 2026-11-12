@@ -457,6 +457,7 @@ function holidayEdit_(body) {
 
 /* ---------- 날짜 보고서 자동 생성: 직전 근무일의 이어갈 업무를 그날로 복사 ---------- */
 var TASK_KEYS_ = ['주간고정', '데일리고정', '배치예정', '팔로업', '변동업무', '릴스업무'];
+var FLOW_ = ['배치예정', '변동업무', '팔로업'];
 var NO_CARRY_ = ['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무', '원장님완료', '원장님리스트', '원장님숙제']; // 원장님 섹션은 원장님 숙제 페이지로 대체
 function isoWeek_(d) { // 'YYYY-Www' (월요일 시작, ISO 8601)
   var t = new Date(d + 'T00:00:00Z'), wd = t.getUTCDay() || 7;
@@ -496,6 +497,8 @@ function generateDay_(who, d, force) {
       ids[r.id] = newId_(d, n++);
       var st = r.section === '데일리고정' || (r.section === '주간고정' && newWeek) ? 'todo' : r.status;
       var c = copyOf_(r, ids[r.id], d, st, r.col);
+      if (FLOW_.indexOf(r.section) >= 0) // 자동 배치: 하위 업무 있으면 팔로업, 시작 전이면 배치예정, 진행 중이면 변동업무
+        c.section = srcRows.some(function (x) { return x.section === '하위업무' && x.col === r.id; }) ? '팔로업' : (st === 'todo' || !st) ? '배치예정' : '변동업무';
       if (st === r.status && isDone(r)) c.completed = r.completed; // 같은 주 주간업무는 완료일도 유지
       copies.push(c);
     });
