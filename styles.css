@@ -378,3 +378,13 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .dir-acts [data-st=approved]{background:#e6f6ee;color:#0a7a4a}.dir-acts [data-st=rejected]{background:#fff0f0;color:#c92a2a}
 .dir-del{width:44px;padding:0!important;background:none!important;color:var(--text-2);display:grid;place-items:center}
 @media(max-width:600px){.dir{padding:16px 0 96px}.dir-item:has([data-st]){flex-wrap:wrap}.dir-acts:has([data-st]){width:100%;justify-content:flex-end}}
+/* 작업 10: 오늘 강조, 캘린더→보고서, 담당자 필터 */
+button.sc-date{background:none;padding:0;border-radius:6px;width:100%;text-align:left;font-weight:500;position:relative}
+button.sc-date::after{content:"";position:absolute;left:0;right:0;top:50%;height:max(100%,44px);transform:translateY(-50%)}
+button.sc-date:hover b{color:var(--blue-text);text-decoration:underline}
+.datestrip button.today:not(.active){box-shadow:inset 0 0 0 2px var(--blue-dark)}
+.datestrip button.today small{font-weight:700}.datestrip button.today:not(.active) small{color:var(--blue-text)}
+.sc-who{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 10px}
+.sc-who button{min-height:36px;padding:0 12px;font-size:13px;font-weight:500;background:var(--grey100);color:var(--text-2);border-radius:999px;position:relative}
+.sc-who button::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+.sc-who button[aria-pressed=true]{background:var(--text-1);color:#fff}
