@@ -256,26 +256,13 @@
     box.querySelectorAll('textarea').forEach(autosize);
   }
 
-  async function carryForward() {
+  async function carryForward() { // 복사 규칙은 서버(generateDay_) 한 곳에만 있다
     const d = state.sel;
-    let src = state.rows.filter(r => r.date < d).map(r => r.date).sort().pop();
-    let srcRows;
-    if (src) srcRows = state.rows.filter(r => r.date === src);
-    else {
-      const j = await api.get({ from: shiftDate(d, -30), to: shiftDate(d, -1) }).catch(e => (toast(e.message), null));
-      if (!j) return;
-      src = j.rows.map(r => r.date).sort().pop();
-      if (!src) return toast('가져올 이전 보고서가 없습니다');
-      srcRows = j.rows.filter(r => r.date === src);
-    }
-    if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
-    const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && isDone(r)));
-    const ids = new Map(parents.map(r => [r.id, newId(d)]));
-    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, origin: r.origin || r.id, status: r.section === '데일리고정' ? 'todo' : r.status }));
-    srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, origin: r.origin || r.id, col: ids.get(r.col) }));
-    state.rows.push(...copies);
-    await save(copies);
-    render();
+    if (!confirm(`직전 근무일의 이어갈 항목을 ${d}(으)로 가져올까요?\n(완료 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
+    const j = await api.post({ action: 'generate', date: d, force: true }).catch(e => (toast(e.message), null));
+    if (!j) return;
+    if (!j.src) return toast('가져올 이전 보고서가 없습니다');
+    state.rows.push(...j.rows); render(); toast(`${j.src} 항목 ${j.rows.length}개를 가져왔습니다`);
   }
 
   /* ---------- timeline ---------- */
@@ -566,6 +553,8 @@
     try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return; state.rows = rows; }
     catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL / API_KEY 와 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
     render();
+    const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
+    if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   load();

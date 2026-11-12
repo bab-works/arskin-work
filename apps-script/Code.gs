@@ -30,7 +30,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 8, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 9, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
@@ -46,6 +46,7 @@ function doPost(e) {
   if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
   }
+  if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
   if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
@@ -450,4 +451,61 @@ function holidayEdit_(body) {
     holidayWrite_(sh, rows);
     return rows.map(function (r) { return { date: r[0], name: r[1], source: r[2] }; });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 날짜 보고서 자동 생성: 직전 근무일의 이어갈 업무를 그날로 복사 ---------- */
+var TASK_KEYS_ = ['주간고정', '데일리고정', '배치예정', '팔로업', '변동업무', '릴스업무'];
+var NO_CARRY_ = ['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'];
+function shiftKst_(d, n) { var t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
+function newId_(d, i) { return d.replace(/-/g, '') + '-' + Date.now().toString(36) + ('00' + i.toString(36)).slice(-3); }
+function isWorkday_(d) {
+  var wd = new Date(d + 'T00:00:00Z').getUTCDay();
+  return wd % 6 !== 0 && !holidays_(false).some(function (h) { return h.date === d; });
+}
+// 멱등: 같은 사람·날짜는 한 번만 자동 생성 (사용자가 그날 행을 지워도 다시 만들지 않음). force 는 '전일 가져오기' 버튼.
+// shortcut: 생성 기록을 스크립트 속성에 쌓음, 수천 건이 되면 오래된 키 정리 필요
+function generateDay_(who, d, force) {
+  if (!sheetIdFor(who) || who === '공통') throw new Error('no sheet for ' + who);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d))) throw new Error('날짜 형식이 올바르지 않습니다');
+  var props = PropertiesService.getScriptProperties(), mark = 'GEN_' + who + '_' + d;
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    if (!force && (props.getProperty(mark) || listRows(who, d, d).length)) return { rows: [], skipped: true };
+    var prev = listRows(who, shiftKst_(d, -30), shiftKst_(d, -1));
+    var src = prev.map(function (r) { return r.date; }).sort().pop();
+    if (!src) { props.setProperty(mark, '1'); return { rows: [], src: '' }; }
+    var srcRows = prev.filter(function (r) { return r.date === src; });
+    var isDone = function (r) { return r.status === 'done' || r.status === '⭕'; };
+    var parents = srcRows.filter(function (r) { return NO_CARRY_.indexOf(r.section) < 0 && !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r)); });
+    var ids = {}, n = 0, copies = [];
+    parents.forEach(function (r) {
+      ids[r.id] = newId_(d, n++);
+      copies.push(copyOf_(r, ids[r.id], d, r.section === '데일리고정' ? 'todo' : r.status, r.col));
+    });
+    srcRows.forEach(function (r) {
+      if ((r.section === '프로젝트' || r.section === '하위업무') && ids[r.col]) copies.push(copyOf_(r, newId_(d, n++), d, r.status, ids[r.col]));
+    });
+    if (copies.length) {
+      var sh = monthSheet(who, d, true), now = new Date().toISOString();
+      sh.getRange(sh.getLastRow() + 1, 1, copies.length, NCOL).setValues(copies.map(function (o) {
+        return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, '', o.origin];
+      }));
+    }
+    props.setProperty(mark, '1');
+    return { rows: copies, src: src };
+  } finally { lock.releaseLock(); }
+}
+function copyOf_(r, id, d, status, col) {
+  return { id: id, date: d, section: r.section, col: col || '', status: status || '', text: r.text, start: r.start, end: r.end, created: r.created || r.date, completed: '', origin: r.origin || r.id };
+}
+// 트리거 진입점: 평일(공휴일 제외) 00:05 KST 에 모든 사람의 그날 보고서 생성
+function dailyGenerate() {
+  var d = todayKst_();
+  if (!isWorkday_(d)) return;
+  Object.keys(REPORT_SHEETS).forEach(function (who) { if (who !== '공통') try { generateDay_(who, d, false); } catch (e) { console.error(who, e); } });
+}
+// 편집기에서 한 번만 실행: 기존 트리거를 지우고 매일 00:05(Asia/Seoul) 트리거를 다시 만든다
+function setupDailyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyGenerate') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('dailyGenerate').timeBased().everyDays(1).atHour(0).nearMinute(5).inTimezone('Asia/Seoul').create();
 }
