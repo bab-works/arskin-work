@@ -50,9 +50,9 @@ input,textarea{font:inherit;color:inherit}
 .datestrip button{background:var(--card);border-radius:var(--r-md);padding:8px 14px;min-width:60px;line-height:1.25;text-align:center}
 .datestrip button b{display:block;font-size:18px;font-weight:700}
 .datestrip button small{color:var(--muted);font-size:12px;font-weight:500}
-.datestrip button.active{background:var(--blue);color:#fff}
-.datestrip button.active small{color:#cfe2ff}
-.datestrip button.empty{opacity:.5}
+.datestrip button.active{background:var(--blue-dark);color:#fff}
+.datestrip button.active small{color:#e8f3ff}
+.datestrip button.empty{color:var(--text-2)}
 
 /* daily split */
 .daily{display:grid;grid-template-columns:1fr var(--tl);gap:16px;align-items:start}
