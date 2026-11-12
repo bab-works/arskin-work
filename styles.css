@@ -205,3 +205,26 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
   .pst{display:inline-block;width:16px;margin-right:2px}
   .titlebar,.print-report h3,table.pt th,.pmemo{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* 프로젝트 및 하위 업무 */
+.project-start{flex:none;background:var(--blue-weak);color:var(--blue);font-size:11px;padding:5px 7px;white-space:nowrap}
+.project-card{border:1px solid var(--grey100);border-radius:14px;padding:14px;margin:8px 0;background:var(--card);break-inside:avoid}
+.project-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.project-badge{font-size:11px;font-weight:700;color:var(--blue);background:var(--blue-weak);padding:4px 8px;border-radius:6px}
+.project-delete{background:none;color:var(--muted);font-size:11px;padding:4px}
+.project-title{font-weight:700;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;outline:none}
+.project-progress{margin:10px 0 12px}
+.project-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted);margin-bottom:6px}
+.project-progress-label b{color:var(--blue)}
+.project-track{height:7px;border-radius:99px;background:var(--grey100);overflow:hidden}
+.project-track>span{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width .2s}
+.subtask{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:13px}
+.subtask input{flex:none;width:16px;height:16px;margin:3px 0;accent-color:var(--blue)}
+.subtask-text{flex:1;min-width:0;outline:none;overflow-wrap:anywhere;white-space:pre-wrap}
+.subtask-text.done{color:var(--muted);text-decoration:line-through}
+.subtask button{background:none;padding:0 4px;color:var(--muted)}
+.project-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+.project-summary-entry{background:var(--grey50);border-radius:12px;padding:14px;min-width:0}
+.project-summary-entry>b{display:block;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}
+@media(max-width:600px){.project-start{font-size:10px;padding:4px}.project-card{padding:12px}.row{flex-wrap:wrap}.row .tx{flex-basis:55%}}
+@media print{.project-track{border:1px solid #ccc;print-color-adjust:exact}.project-progress{margin:5px 0}.project-progress-label{font-size:10px}}

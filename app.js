@@ -55,7 +55,11 @@
     (r._who ? state.shared : state.rows).push(r); save([r], r._who); return r; // _who='공통' 이면 공통 시트
   }
   function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); }
-  function deleteRow(r) { if (r._who) state.shared = state.shared.filter(x => x !== r); else state.rows = state.rows.filter(x => x !== r); removeIds([r.date + '|' + r.id], r._who); }
+  function deleteRow(r) {
+    const related = r.section === '변동업무' ? state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id) : [];
+    if (related.some(x => x.section === '하위업무') && !confirm('이 업무와 하위 업무를 모두 삭제할까요?')) return;
+    if (related.length) { state.rows = state.rows.filter(x => !related.includes(x)); removeIds(related.map(x => x.date + '|' + x.id)); }
+    if (r._who) state.shared = state.shared.filter(x => x !== r); else state.rows = state.rows.filter(x => x !== r); removeIds([r.date + '|' + r.id], r._who); }
   const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col));
   // 같은 칸에 행이 여러 개면(과거 시트 흔적) 첫 행에 합쳐 저장한다
   function setCellText(date, section, col, text) {
@@ -74,6 +78,7 @@
   function autosize(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
 
   function itemRow(r, opts = {}) {
+    if (r.section === '변동업무' && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${r.status === '⭕' ? ' done' : ''}"></div>`);
     if (!opts.noStatus) {
       const st = el(`<button class="st" title="상태 변경">${r.status || '·'}</button>`);
@@ -85,7 +90,67 @@
     tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); } };
     const del = el(`<button class="del" title="삭제">×</button>`);
     del.onclick = () => { deleteRow(r); render(); };
-    row.append(tx, del); return row;
+    row.append(tx);
+    if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
+    row.append(del); return row;
+  }
+  const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
+  const isProject = r => state.rows.some(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id && x.date === r.date);
+  function progressOf(r) {
+    const children = childrenOf(r), done = children.filter(x => x.status === '⭕').length;
+    return { total: children.length, done, percent: children.length ? Math.round(done / children.length * 100) : 0 };
+  }
+  function progressBar(r) {
+    const p = progressOf(r);
+    return `<div class="project-progress"><div class="project-progress-label"><span>${p.total ? `${p.done}/${p.total} 완료` : '하위 업무를 추가하세요'}</span><b>${p.percent}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><span style="width:${p.percent}%"></span></div></div>`;
+  }
+  async function changeSubtask(parent, child, patch, deleting = false) {
+    if (changeSubtask.busy) return;
+    changeSubtask.busy = true;
+    const who = state.person;
+    const children = childrenOf(parent).filter(x => !deleting || x.id !== child.id).map(x => x.id === child.id ? { ...x, ...patch } : x);
+    if (!deleting && !children.some(x => x.id === child.id)) children.push({ ...child, ...patch });
+    const status = children.length && children.every(x => x.status === '⭕') ? '⭕' : children.some(x => x.status === '⭕') ? '▶️' : '🔷';
+    try {
+      if (deleting) await api.post({ action: 'delete', ids: [child.date + '|' + child.id], who });
+      await api.post({ action: 'upsert', rows: [{ ...parent, status }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
+      if (state.person !== who) return;
+      const index = state.rows.findIndex(x => x.id === child.id);
+      if (deleting) state.rows = state.rows.filter(x => x.id !== child.id);
+      else if (index >= 0) state.rows[index] = { ...child, ...patch };
+      else state.rows.push({ ...child, ...patch });
+      parent.status = status; render();
+    } catch (e) { toast('하위 업무 저장 실패: ' + e.message); load(); }
+    finally { changeSubtask.busy = false; }
+  }
+  function projectCard(r) {
+    const p = progressOf(r), card = el('<div class="project-card"></div>');
+    const head = el('<div class="project-card-head"><span class="project-badge">프로젝트</span></div>');
+    const del = el('<button class="project-delete" title="프로젝트 삭제">삭제</button>'); del.onclick = () => { deleteRow(r); render(); }; head.append(del);
+    const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
+    title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
+    title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); title.blur(); } };
+    card.append(head, title, el(progressBar(r)));
+    const list = el('<div class="subtasks"></div>');
+    childrenOf(r).forEach(child => {
+      const line = el('<div class="subtask"></div>');
+      const check = el('<input type="checkbox">'); check.checked = child.status === '⭕'; check.setAttribute('aria-label', child.text + ' 완료');
+      check.onchange = () => { if (changeSubtask.busy) { check.checked = child.status === '⭕'; return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? '⭕' : '🔷' }); };
+      const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
+      text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
+      text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); } };
+      const remove = el('<button title="하위 업무 삭제">×</button>'); remove.onclick = () => changeSubtask(r, child, {}, true);
+      line.append(check, text, remove); list.append(line);
+    });
+    card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: '🔷', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
+    return card;
+  }
+  function projectSummary(d) {
+    const projects = rowsFor(d, '변동업무').filter(isProject);
+    if (!projects.length) return null;
+    const box = el('<div class="project-summary"></div>');
+    projects.forEach(r => { const entry = el('<div class="project-summary-entry"></div>'); const title = el('<b></b>'); title.textContent = r.text; entry.append(title, el(progressBar(r))); box.append(entry); });
+    return sec('프로젝트 진행도', box);
   }
   function addInput(onAdd, ph = '+ 추가 (Enter)') {
     const w = el(`<div class="add"><input placeholder="${ph}"></div>`); const i = w.firstChild;
@@ -129,6 +194,7 @@
       return;
     }
     box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
+    const projects = projectSummary(d); if (projects) box.append(projects);
     box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
     box.append(sec('원장님 완료', cellGrid(d, '원장님완료', ['월', '화', '수', '목', '금'].map(w => [w, w]), 'grid5', 'text')));
@@ -152,9 +218,10 @@
       srcRows = j.rows.filter(r => r.date === src);
     }
     if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 ⭕ 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
-    const copies = srcRows
-      .filter(r => !['타임라인', '마케팅공통', '회의', '회의일정'].includes(r.section) && !(TASK_KEYS.has(r.section) && r.status === '⭕'))
-      .map(r => ({ ...r, id: newId(d), date: d, status: r.section === '데일리고정' ? '🔷' : r.status }));
+    const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && r.status === '⭕'));
+    const ids = new Map(parents.map(r => [r.id, newId(d)]));
+    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, status: r.section === '데일리고정' ? '🔷' : r.status }));
+    srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, col: ids.get(r.col) }));
     state.rows.push(...copies);
     await save(copies);
     render();
@@ -284,7 +351,7 @@
   function renderPrint() {
     const d = state.sel, box = $('printReport'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) return;
-    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst">${esc(r.status)}</span>` : ''}${esc(r.text)}</td>` : '<td></td>';
+    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst">${esc(r.status)}</span>` : ''}${esc(r.text)}${r.section === '변동업무' && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${c.status === '⭕' ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
     const pairTable = (labels, lists) => {
       const n = Math.max(...lists.map(l => l.length), 1);
       let h = `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
