@@ -373,7 +373,7 @@
     const [y, m, day] = d.split('-').map(Number);
     if (m !== c.month) return null;
     const items = c.days[day] || [];
-    const w = el(`<div class="today-pub">${items.length ? items.map(chip).join('') : '<span style="color:#999">발행 예정 없음</span>'}</div>`);
+    const w = el(`<div class="today-pub">${items.length ? items.map(chip).join('') : '<span class="note-empty">발행 예정 없음</span>'}</div>`);
     return w;
   }
   /* ---------- print-only layout: 시트처럼 좌/우 항목을 한 줄씩 짝지은 표 (행 단위로만 페이지 분할) ---------- */
