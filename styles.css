@@ -437,3 +437,15 @@ html.printing textarea{font-size:11px;line-height:1.35}
   .report{zoom:var(--print-zoom,1)}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;animation:none!important;transition:none!important}
 }
+/* D: 다중 선택, 휴지통 */
+.row.selected{background:var(--blue-weak);box-shadow:inset 0 0 0 1px #a8cbff}
+.trash-dlg{width:min(520px,calc(100vw - 32px))}
+.tr-list{max-height:min(420px,60vh);overflow:auto;margin:8px 0 16px;border-top:1px solid var(--line)}
+.tr-item{display:flex;gap:12px;align-items:flex-start;padding:10px 4px;border-bottom:1px solid var(--line);cursor:pointer;min-height:44px}
+.tr-item input{width:20px;height:20px;margin:2px 0 0;flex:none;accent-color:var(--blue-dark)}
+.tr-item b{display:block;font-weight:500;overflow-wrap:anywhere}.tr-item small{color:var(--text-2)}
+.tr-empty{color:var(--text-2);text-align:center;padding:24px 0}
+.tr-acts{display:flex;gap:8px}.tr-acts button{flex:1}
+@media(max-width:600px){#btnKeys{display:none}}
+.row-selecting,.row-selecting *{user-select:none!important;cursor:default}
+@media(hover:hover){.task-list .project-start{opacity:0}.task-list .row:hover .project-start,.task-list .row:focus-within .project-start{opacity:1}}

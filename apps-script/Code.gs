@@ -30,10 +30,11 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 11, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 12, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -48,6 +49,7 @@ function doPost(e) {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
   }
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -127,7 +129,40 @@ function deleteRow(who, idWithDate) {
   var sh = monthSheet(who, date, false);
   if (!sh) return;
   var idx = findRow(sh, id);
-  if (idx) sh.deleteRow(idx);
+  if (!idx) return;
+  var row = sh.getRange(idx, 1, 1, NCOL).getDisplayValues()[0];
+  trashSheet_().appendRow([new Date().toISOString(), who].concat(row)); // 휴지통에 먼저 보관
+  sh.deleteRow(idx);
+}
+
+/* ---------- 휴지통: 지운 행을 14일 보관, 복원 가능 ---------- */
+var TRASH_DAYS = 14;
+function trashSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통'));
+  var sh = ss.getSheetByName('trash');
+  if (!sh) { sh = ss.insertSheet('trash'); sh.getRange('A:N').setNumberFormat('@'); sh.appendRow(['삭제시각', '시트'].concat(HEADER)); sh.setFrozenRows(1); }
+  return sh;
+}
+function trashList_(who) {
+  var sh = trashSheet_(), last = sh.getLastRow();
+  if (last < 2) return [];
+  var vals = sh.getRange(2, 1, last - 1, NCOL + 2).getDisplayValues();
+  var cutoff = new Date(Date.now() - TRASH_DAYS * 864e5).toISOString();
+  for (var i = vals.length - 1; i >= 0; i--) if (vals[i][0] && vals[i][0] < cutoff) sh.deleteRow(i + 2); // 오래된 것 정리
+  return vals.filter(function (r) { return r[0] >= cutoff && (!who || r[1] === who || r[1] === '공통'); })
+    .map(function (r) { var o = toObj(r.slice(2)); o.deletedAt = r[0]; o.who = r[1]; return o; });
+}
+function trashRestore_(keys) { // keys: ['삭제시각|id', ...]
+  var sh = trashSheet_(), last = sh.getLastRow();
+  if (last < 2) return 0;
+  var vals = sh.getRange(2, 1, last - 1, NCOL + 2).getDisplayValues(), n = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (keys.indexOf(vals[i][0] + '|' + vals[i][2]) < 0) continue;
+    var o = toObj(vals[i].slice(2));
+    upsertRow(vals[i][1], { id: o.id, date: o.date, section: o.section, col: o.col, status: o.status, text: o.text, start: o.start, end: o.end, created: o.created, origin: o.origin });
+    sh.deleteRow(i + 2); n++;
+  }
+  return n;
 }
 
 function findRow(sh, id) {
