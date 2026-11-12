@@ -6,9 +6,9 @@ window.CONFIG = {
   // 일간보고서 하위 메뉴 순서. sheet 가 비어 있으면 "시트 연결 대기"로 표시.
   // 시트 ID 는 apps-script/Code.gs 의 REPORT_SHEETS 에도 같은 이름으로 넣어야 한다.
   PEOPLE: [
-    { name: '박선희', sheet: '' },
+    { name: '박선희', sheet: '1uQzBVCdV0h840CFLDAbAXP2riNBSM7iuw0MjmdGgrtQ' },
     { name: '전성환', sheet: '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw' },
-    { name: '양욱정', sheet: '' },
+    { name: '양욱정', sheet: '1h4kk5Q8EIOrm8T9Gfsb5dSa-xuw6o7usf_K0vLKR1SQ' },
   ],
   DEFAULT_PERSON: '전성환',
   DAYS: 5,            // 당일 기준 보여줄 근무일 수

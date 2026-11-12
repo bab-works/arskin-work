@@ -7,9 +7,10 @@
  */
 // 사람별 일일보고 시트(허용 목록). 웹앱은 이름(who)만 보내고, 여기 없는 이름은 거부한다.
 var REPORT_SHEETS = {
-  '박선희': '',
+  '박선희': '1uQzBVCdV0h840CFLDAbAXP2riNBSM7iuw0MjmdGgrtQ',
   '전성환': '1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw',
-  '양욱정': '',
+  '양욱정': '1h4kk5Q8EIOrm8T9Gfsb5dSa-xuw6o7usf_K0vLKR1SQ',
+  '공통': '1i4kLJttpdo0uQwdUspIDgMBcVdkojFEAJp7lDrUmMMU', // 공유 캘린더(구분=일정)·공통 업무
 };
 var CALENDAR_SS_ID = '1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo';
 var CALENDAR_TAB = '컨텐츠 캘린더';
@@ -19,6 +20,7 @@ var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '�
 function doGet(e) {
   var p = e.parameter || {};
   if (p.key !== API_KEY) return json({ error: 'unauthorized' });
+  if (p.action === 'ping') return json({ v: 2 }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });

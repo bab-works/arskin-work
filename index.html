@@ -10,7 +10,7 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand">아르스킨<small>업무보고</small></div>
+    <div class="brand"><img src="logo.png" alt="Arskin" onerror="this.replaceWith('아르스킨')"><small>업무보고</small></div>
     <nav class="nav">
       <button data-view="daily" class="active">일간 보고서</button>
       <div class="subnav" id="subnav"></div>
@@ -41,8 +41,12 @@
         <button data-pane="timeline">타임라인</button>
       </div>
       <div class="daily">
-        <article class="report" id="report"></article>
-        <article class="print-report" id="printReport"></article>
+        <div class="report-col">
+          <section class="sharedcal" id="sharedcal"></section>
+          <section class="sec" id="sharedtasks"></section>
+          <article class="report" id="report"></article>
+          <article class="print-report" id="printReport"></article>
+        </div>
         <aside class="timeline" id="timeline"></aside>
       </div>
     </section>

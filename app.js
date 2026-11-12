@@ -12,7 +12,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
+  const state = { shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -47,16 +47,16 @@
       return j;
     },
   };
-  const save = rows => api.post({ action: 'upsert', rows }).catch(e => toast('저장 실패: ' + e.message));
-  const removeIds = ids => api.post({ action: 'delete', ids }).catch(e => toast('삭제 실패: ' + e.message));
+  const save = (rows, who = state.person) => api.post({ action: 'upsert', rows, who }).catch(e => toast('저장 실패: ' + e.message));
+  const removeIds = (ids, who = state.person) => api.post({ action: 'delete', ids, who }).catch(e => toast('삭제 실패: ' + e.message));
 
   function addRow(o) {
     if (!(o.text || '').trim()) return null;
     const r = { id: newId(o.date), status: '', col: '', text: '', start: '', end: '', ...o };
-    state.rows.push(r); save([r]); return r;
+    (r._who ? state.shared : state.rows).push(r); save([r], r._who); return r; // _who='공통' 이면 공통 시트
   }
-  function updateRow(r, patch) { Object.assign(r, patch); save([r]); }
-  function deleteRow(r) { state.rows = state.rows.filter(x => x !== r); removeIds([r.date + '|' + r.id]); }
+  function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); }
+  function deleteRow(r) { if (r._who) state.shared = state.shared.filter(x => x !== r); else state.rows = state.rows.filter(x => x !== r); removeIds([r.date + '|' + r.id], r._who); }
   const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col));
   // 같은 칸에 행이 여러 개면(과거 시트 흔적) 첫 행에 합쳐 저장한다
   function setCellText(date, section, col, text) {
@@ -235,7 +235,7 @@
     $('beTitle').value = r.text; $('beStart').value = r.start; $('beEnd').value = r.end;
     $('beDelete').classList.toggle('hidden', !!isNew);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
-    p.style.left = Math.max(8, Math.min(innerWidth - 270, a.left - 270)) + 'px';
+    p.style.left = Math.max(8, Math.min(innerWidth - 350, a.left - 350)) + 'px';
     p.style.top = Math.max(8, Math.min(innerHeight - 170, a.top)) + 'px';
     $('beTitle').focus();
   }
@@ -247,9 +247,9 @@
     if (!text) return toast('내용을 입력하세요');
     if (!start || !end || toMin(end) <= toMin(start)) return toast('종료 시각이 시작보다 뒤여야 합니다');
     if (editing.isNew) addRow({ ...editing.r, text, start, end }); else updateRow(editing.r, { text, start, end });
-    closeEditor(); renderTimeline();
+    closeEditor(); renderTimeline(); renderShared();
   };
-  $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); };
+  $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); renderShared(); };
   $('beTitle').onkeydown = e => { if (e.key === 'Enter') $('beSave').click(); if (e.key === 'Escape') closeEditor(); };
 
   /* ---------- content calendar ---------- */
@@ -326,7 +326,7 @@
     state.dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'); const has = state.rows.some(r => r.date === d);
       const b = el(`<button class="${d === state.sel ? 'active' : ''}${has ? '' : ' empty'}"><small>${WD[dt.getDay()]}</small><b>${dt.getDate()}</b></button>`);
-      b.title = d; b.onclick = () => { state.sel = d; render(); };
+      b.title = d; b.onclick = () => { const wk = weekStart(state.sel) !== weekStart(d); state.sel = d; render(); if (wk) loadShared(); };
       s.append(b);
     });
   }
@@ -348,12 +348,12 @@
     if (v === 'legacy' && !$('legacyFrame').src) $('legacyFrame').src = C.LEGACY_URL; // 처음 열 때만 로드
     if (v === 'calendar') renderCalendar();
   }
-  function render() { renderDatestrip(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
+  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
   document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => {
     document.querySelectorAll('[data-pane]').forEach(x => x.classList.toggle('active', x === b));
-    $('report').classList.toggle('hidden-m', b.dataset.pane !== 'report');
+    $('report').parentElement.classList.toggle('hidden-m', b.dataset.pane !== 'report');
     $('timeline').classList.toggle('hidden-m', b.dataset.pane !== 'timeline');
   });
   $('btnCarry').onclick = carryForward;
@@ -362,11 +362,60 @@
   $('btnReload').onclick = () => load();
   addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); });
   $('legacyOpen').href = C.LEGACY_URL;
-  $('sheetLink').href = 'https://docs.google.com/spreadsheets/d/1wx4ttcTh2Wro7xjFLIss6wcEqkAWouM1FYYnuiGIltw/edit';
+
+  /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
+  const SHARED = '공통';
+  const weekStart = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
+  // 옛 배포(v1)는 who 를 무시하고 전성환 시트에 쓰므로, v2 확인 전에는 다른 사람·공통 데이터를 막는다
+  let backendOk = null;
+  const checkBackend = async () => backendOk ??= await api.get({ action: 'ping' }).then(j => j.v >= 2).catch(() => false);
+  async function loadShared() {
+    if (!(await checkBackend())) { state.shared = []; return renderShared(); }
+    const ws = weekStart(state.sel), from = [ws, state.sel.slice(0, 8) + '01'].sort()[0], to = shiftDate(ws, 6);
+    // shortcut: 공통 업무는 이번 달(+이번 주) 범위만 불러온다. 이월이 필요해지면 월 경계 처리 추가.
+    try { state.shared = (await api.get({ who: SHARED, from, to: [to, state.sel].sort()[1] })).rows.map(r => ({ ...r, _who: SHARED })); }
+    catch (e) { state.shared = []; }
+    renderShared();
+  }
+  function renderShared() {
+    const cal = $('sharedcal'), tasks = $('sharedtasks');
+    if (!cal) return;
+    if (backendOk === false) { cal.innerHTML = '<div class="sc-head"><b>공통 캘린더</b><small>Apps Script를 새 버전으로 재배포하면 켜집니다</small></div>'; tasks.hidden = true; return; }
+    tasks.hidden = false;
+    const ws = weekStart(state.sel), today = iso(new Date());
+    cal.innerHTML = `<div class="sc-head"><b>공통 캘린더</b><small>${ws.slice(5).replace('-', '.')} 주 · 모든 팀원과 연동</small></div>`;
+    const grid = el('<div class="sc-week"></div>');
+    for (let i = 0; i < 7; i++) {
+      const d = shiftDate(ws, i), dt = new Date(d + 'T00:00:00');
+      const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${i > 4 ? ' wkend' : ''}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b></div></div>`);
+      state.shared.filter(r => r.section === '일정' && r.date === d).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
+        const ev = el(`<button class="sc-ev"><small>${esc(r.start)}</small>${esc(r.text)}</button>`);
+        ev.title = `${r.start}~${r.end} ${r.text}${r.col ? ' · ' + r.col : ''}`;
+        ev.onclick = () => openEditor(r, ev);
+        col.append(ev);
+      });
+      const add = el('<button class="sc-add" title="일정 추가">+</button>');
+      add.onclick = () => openEditor({ date: d, section: '일정', col: state.person, start: '10:00', end: '11:00', text: '', _who: SHARED }, add, true);
+      col.append(add); grid.append(col);
+    }
+    cal.append(grid);
+    tasks.innerHTML = '<h3>공통 업무</h3>';
+    const list = state.shared.filter(r => r.section === '공통업무');
+    list.forEach(r => tasks.append(itemRow(r)));
+    tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: '🔷', _who: SHARED })));
+  }
+  setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
+  addEventListener('focus', () => loadShared());
 
   async function load() {
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
-    renderPeople();
+    renderPeople(); loadShared();
+    $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;
+    if (state.person !== C.DEFAULT_PERSON && !(await checkBackend())) {
+      state.rows = []; renderDatestrip(); $('timeline').innerHTML = ''; $('printReport').innerHTML = '';
+      $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 시트는 연결됐지만 Apps Script가 옛 버전입니다.<br><small>apps-script/Code.gs 를 붙여넣고 새 버전으로 재배포하면 열립니다.</small></div>`;
+      return;
+    }
     if (!personInfo().sheet) { // 시트 미연결: 다른 사람 데이터를 실수로 보여주지 않도록 요청 자체를 안 보낸다
       state.rows = []; renderDatestrip(); $('timeline').innerHTML = ''; $('printReport').innerHTML = '';
       $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 일일보고 시트가 아직 연결되지 않았습니다.<br><small>공유 시트 링크를 전달해 주시면 연결됩니다.</small></div>`;
