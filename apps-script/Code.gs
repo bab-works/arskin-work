@@ -14,13 +14,21 @@ var REPORT_SHEETS = {
 };
 var CALENDAR_SS_ID = '1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo';
 var CALENDAR_TAB = '컨텐츠 캘린더';
-var API_KEY = 'arskin'; // config.js 의 API_KEY 와 같아야 한다. 바꿔서 쓸 것.
+// 인증: 비밀값은 코드에 두지 않고 스크립트 속성(프로젝트 설정 → 스크립트 속성)에서만 읽는다.
+//   ACCESS_CODES      = {"사람별코드":"이름", ...}  (JSON)
+//   REVENUE_VIEW_KEY  = 매출표 비밀번호
+// 속성이 없으면 모든 요청을 거부한다(실패 시 차단).
+function memberFor_(code) {
+  var raw = PropertiesService.getScriptProperties().getProperty('ACCESS_CODES');
+  if (!raw || !code) return '';
+  try { var map = JSON.parse(raw); return Object.prototype.hasOwnProperty.call(map, code) ? String(map[code]) : ''; } catch (e) { return ''; }
+}
 var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '종료', '수정시각'];
 
 function doGet(e) {
   var p = e.parameter || {};
-  if (p.key !== API_KEY) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 5, content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
+  if (p.action === 'ping') return json({ v: 6, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
@@ -29,7 +37,8 @@ function doGet(e) {
 
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
-  if (body.key !== API_KEY) return json({ error: 'unauthorized' });
+  if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
+  if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenue') { try { return json(revenueData_(body.viewKey)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
@@ -302,6 +311,15 @@ function syncInstagramNow() { return instagramSync_(true); }
 
 // 월간 매출표: 공개 API_KEY와 별개인 비공개 조회키가 있어야 읽을 수 있습니다.
 var REVENUE_SS_ID = '1XoxsdvRVo8-L_zSuZp6kWzLdlHLqikXRVhYgnIZmQpw';
+// 매출표 원본(월간요약 A1:AF100)을 비밀번호 확인 후 표시값 그대로 돌려준다. 화면 파싱은 revenue-model.js가 한다.
+function revenueRows_(provided) {
+  var expected = PropertiesService.getScriptProperties().getProperty('REVENUE_VIEW_KEY');
+  if (!expected) throw new Error('매출표 비밀번호가 아직 설정되지 않았습니다.');
+  if (String(provided || '') !== expected) throw new Error('매출 비밀번호가 맞지 않습니다.');
+  var sh = SpreadsheetApp.openById(REVENUE_SS_ID).getSheetByName('월간요약');
+  if (!sh || sh.getSheetId() !== 1411519381) throw new Error('월간요약 시트를 확인해 주세요.');
+  return sh.getRange('A1:AF100').getDisplayValues();
+}
 function revenueData_(provided) {
   var expected = PropertiesService.getScriptProperties().getProperty('REVENUE_VIEW_KEY');
   if (!expected) throw new Error('매출표 조회 연결을 준비 중입니다.');

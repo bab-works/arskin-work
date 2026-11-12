@@ -9,9 +9,9 @@
   let host, data, sourceMode = '', busy = false, chartMode = 'daily', selectedDay;
   const $ = id => document.getElementById(id);
   const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? (sourceMode ? '<button id="rvRefresh">↻ 새로고침</button>' : '') + '<button id="rvLock">닫기</button>' : ''}</div></div>`;
-  window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); load(); } }, refresh() { if (sourceMode) load(); } };
+  window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) load(); } }, refresh() { if (sourceMode) load(); } };
   function renderLocked(message = '') {
-    data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약</h2><p>연결된 Google 시트의 월간요약을 불러옵니다.</p><button class="primary" id="rvConnect">시트에서 불러오기</button><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 월간요약 탭에서 다운로드한 CSV를 이 기기에서 분석합니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".csv,text/csv"></details></section>`;
+    data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약</h2><p>연결된 Google 시트의 월간요약을 불러옵니다.</p><form class="rv-pass" id="rvPassForm"><label for="rvPass">매출 비밀번호</label><input type="password" id="rvPass" autocomplete="current-password" required><button class="primary" id="rvConnect">불러오기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 월간요약 탭에서 다운로드한 CSV를 이 기기에서 분석합니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".csv,text/csv"></details></section>`;
     $('rvFile').onchange = async e => {
       const file = e.target.files[0]; if (!file) return;
       try {
@@ -21,17 +21,20 @@
         generation++; sourceMode = ''; data = parsed; data.updated = 'CSV 파일'; selectedDay = null; render();
       } catch (err) { $('rvMessage').textContent = err.message; e.target.value = ''; }
     };
-    $('rvConnect').onclick = load;
+    $('rvPassForm').onsubmit = e => { e.preventDefault(); load($('rvPass').value); };
   }
-  async function load() {
+  const savedKey = () => { try { return localStorage.revenueKey || ''; } catch { return ''; } };
+  async function load(entered) {
     if (busy) return; busy = true; const requestGeneration = generation;
     const button = $('rvRefresh') || $('rvConnect'); if (button) { button.disabled = true; button.textContent = '불러오는 중…'; }
     try {
-      const source = new URL('https://docs.google.com/spreadsheets/d/1XoxsdvRVo8-L_zSuZp6kWzLdlHLqikXRVhYgnIZmQpw/export');
-      source.search = new URLSearchParams({ format: 'csv', gid: '1411519381', range: 'A1:AF100', cache: Date.now().toString() });
-      const response = await fetch(source, { credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20000) });
-      if (!response.ok || !(response.headers.get('content-type') || '').includes('text/csv')) throw new Error('시트를 불러오지 못했습니다. 원본 시트 접근 상태를 확인하고 다시 시도해 주세요.');
-      const rows = window.RevenueModel.csv(await response.text());
+      // 매출은 Apps Script가 비밀번호를 확인한 뒤에만 돌려준다(공개 CSV 사용 안 함).
+      const key = entered ?? savedKey(); if (!key) throw new Error('매출 비밀번호를 입력해 주세요.');
+      const body = { key: window.CONFIG.API_KEY, code: localStorage.accessCode || '', action: 'revenueRows', revenueKey: key };
+      const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })).json();
+      if (res.error) { if (/비밀번호/.test(res.error)) localStorage.removeItem('revenueKey'); throw new Error(res.error); }
+      localStorage.revenueKey = key;
+      const rows = res.rows;
       const result = window.RevenueModel.parse(rows, rows);
       if (requestGeneration !== generation) return;
       sourceMode = 'sheet';
@@ -41,7 +44,7 @@
       if (requestGeneration !== generation) return;
       if (data) { $('rvStatus').textContent = '새로고침 실패 · 이전 확인 내용을 표시 중: ' + error.message; }
       else { sourceMode = ''; renderLocked(error.message); }
-    } finally { busy = false; if (button?.isConnected) { button.disabled = false; button.textContent = data ? '↻ 새로고침' : '시트에서 불러오기'; } }
+    } finally { busy = false; if (button?.isConnected) { button.disabled = false; button.textContent = data ? '새로고침' : '시트에서 불러오기'; } }
   }
   function card(label, value, note) { return `<article class="rv-kpi"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`; }
   function barList(items, total, money = true) {

@@ -1,31 +1,20 @@
 (() => {
   const C = window.CONFIG;
-  // 상태: 시트에는 기존 이모지 값을 그대로 저장하고(데이터 무변경), 화면에서만 코드로 읽는다.
-  const STAT = {
-    todo:   { v: '🔷', label: '시작 전' },
-    doing:  { v: '▶️', label: '진행 중' },
-    done:   { v: '⭕', label: '완료' },
-    check:  { v: '?',  label: '확인 필요' },
-    hold:   { v: '⏸️', label: '보류' },
-    repeat: { v: '🔄', label: '반복' },
-  };
-  const statusCode = v => Object.keys(STAT).find(k => k === v || STAT[k].v === v) || 'todo'; // '' 등 미지정은 시작 전으로 표시
+  // 상태 코드는 시트에 그대로 저장한다. 옛 이모지 값도 읽을 수 있게 별칭으로 둔다(보류·반복은 시작 전으로 합침).
+  const STAT = { todo: { label: '시작 전' }, doing: { label: '진행 중' }, done: { label: '완료' }, check: { label: '확인 필요' } };
+  const STATUS_ALIAS = { '🔷': 'todo', '▶️': 'doing', '⭕': 'done', '?': 'check', '⏸️': 'todo', '🔄': 'todo', hold: 'todo', repeat: 'todo' };
+  const statusCode = v => STAT[v] ? v : STATUS_ALIAS[v] || 'todo'; // '' 등 미지정은 시작 전으로 표시
   const nextStatus = c => c === 'todo' ? 'doing' : c === 'doing' ? 'done' : c === 'done' ? 'todo' : 'doing';
   const isDone = r => statusCode(r.status) === 'done';
-  const ICON = {
-    todo: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/>',
-    doing: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 3.5a6.5 6.5 0 0 0 0 13z" fill="currentColor"/>',
-    done: '<circle cx="10" cy="10" r="8" fill="currentColor"/><path class="ck" d="M6.4 10.3l2.4 2.4 4.8-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-    check: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 8.1a2 2 0 1 1 2.9 1.8c-.6.3-.9.7-.9 1.3v.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="13.9" r=".95" fill="currentColor"/>',
-    hold: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8.2 7v6M11.8 7v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
-    repeat: '<circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2.2"/><path d="M7.2 10a2.8 2.8 0 0 1 4.9-1.9M12.8 10a2.8 2.8 0 0 1-4.9 1.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
-  };
-  const statusIcon = c => `<svg class="sti sti-${c}" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">${ICON[c]}</svg>`;
+  // 아이콘: Phosphor Icons (MIT, https://phosphoricons.com)
+  const ICONS = {"todo": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z\"/>", "doing": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24ZM40,128a88.1,88.1,0,0,1,88-88V216A88.1,88.1,0,0,1,40,128Z\"/>", "done": "<path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z\"/>", "check": "<path d=\"M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"/>", "carry": "<path d=\"M229.66,157.66l-48,48a8,8,0,0,1-11.32-11.32L204.69,160H128A104.11,104.11,0,0,1,24,56a8,8,0,0,1,16,0,88.1,88.1,0,0,0,88,88h76.69l-34.35-34.34a8,8,0,0,1,11.32-11.32l48,48A8,8,0,0,1,229.66,157.66Z\"/>", "sort": "<path d=\"M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z\"/>", "print": "<path d=\"M214.67,72H200V40a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8V72H41.33C27.36,72,16,82.77,16,96v80a8,8,0,0,0,8,8H56v32a8,8,0,0,0,8,8H192a8,8,0,0,0,8-8V184h32a8,8,0,0,0,8-8V96C240,82.77,228.64,72,214.67,72ZM72,48H184V72H72ZM184,208H72V160H184Zm40-40H200V152a8,8,0,0,0-8-8H64a8,8,0,0,0-8,8v16H32V96c0-4.41,4.19-8,9.33-8H214.67c5.14,0,9.33,3.59,9.33,8Zm-24-52a12,12,0,1,1-12-12A12,12,0,0,1,200,116Z\"/>", "reload": "<path d=\"M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z\"/>", "x": "<path d=\"M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z\"/>", "more": "<path d=\"M140,128a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm56-12a12,12,0,1,0,12,12A12,12,0,0,0,196,116ZM60,116a12,12,0,1,0,12,12A12,12,0,0,0,60,116Z\"/>"};
+  const icon = (name, size = 20, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 256 256" width="${size}" height="${size}" fill="currentColor" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
+  const statusIcon = c => icon(c, 20, 'sti sti-' + c);
   const TASK_SECTIONS = [
     { key: '주간고정', L: '주간고정', R: '주간고정 완료' },
     { key: '데일리고정', L: '데일리 고정업무', R: '' },
     { key: '배치예정', L: '업무 배치 예정', R: '' },
-    { key: '팔로업', L: '🔥 진행중 작업 팔로업', R: '' },
+    { key: '팔로업', L: '진행중 작업 팔로업', R: '' },
     { key: '변동업무', L: '변동업무', R: '변동업무 진행중&완료' },
     { key: '릴스업무', L: '릴스 업무', R: '릴스 완료' },
   ];
@@ -52,17 +41,28 @@
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2500); }
 
   /* ---------- api (Apps Script) ---------- */
+  // 접속 코드: 사람별로 1회 입력해 브라우저에 저장. 서버가 거부하면 다시 묻는다.
+  const accessCode = () => { try { return localStorage.accessCode || ''; } catch { return ''; } };
+  function askCode(message) {
+    if (document.getElementById('codeDlg')) return;
+    const d = el(`<dialog id="codeDlg" class="code-dlg" aria-labelledby="codeTitle"><form method="dialog"><h2 id="codeTitle">접속 코드</h2><p>${esc(message)}</p><input id="codeInput" type="password" autocomplete="current-password" aria-label="접속 코드" required><button class="primary">확인</button></form></dialog>`);
+    document.body.append(d);
+    d.querySelector('form').onsubmit = () => { localStorage.accessCode = d.querySelector('#codeInput').value.trim(); location.reload(); };
+    d.addEventListener('cancel', e => e.preventDefault()); // 코드 없이 닫지 않음
+    d.showModal();
+  }
+  const checkAuth = j => { if (j.error === 'unauthorized') askCode(accessCode() ? '코드가 맞지 않습니다. 다시 입력해 주세요.' : '팀에서 받은 접속 코드를 입력해 주세요.'); };
   const api = {
     async get(params) {
       const u = new URL(C.API_URL);
-      Object.entries({ key: C.API_KEY, who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
+      Object.entries({ key: C.API_KEY, code: accessCode(), who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
       const j = await (await fetch(u)).json();
-      if (j.error) throw new Error(j.error);
+      checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
     async post(body) { // text/plain body → CORS preflight 없이 Apps Script 로 전달
-      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ key: C.API_KEY, who: state.person, ...body }) })).json();
-      if (j.error) throw new Error(j.error);
+      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ key: C.API_KEY, code: accessCode(), who: state.person, ...body }) })).json();
+      checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
   };
@@ -100,11 +100,11 @@
   function itemRow(r, opts = {}) {
     if (r.section === '변동업무' && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
-    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: STAT[code].v }); render(); }));
+    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); render(); }));
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`); tx.textContent = r.text;
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); } else if (v !== r.text) updateRow(r, { text: v }); };
     tx.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); } };
-    const del = el(`<button class="del" title="삭제">×</button>`);
+    const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`);
     del.onclick = () => { deleteRow(r); render(); };
     row.append(tx);
     if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
@@ -159,7 +159,7 @@
     const who = state.person;
     const children = childrenOf(parent).filter(x => !deleting || x.id !== child.id).map(x => x.id === child.id ? { ...x, ...patch } : x);
     if (!deleting && !children.some(x => x.id === child.id)) children.push({ ...child, ...patch });
-    const status = children.length && children.every(isDone) ? STAT.done.v : children.some(isDone) ? STAT.doing.v : STAT.todo.v;
+    const status = children.length && children.every(isDone) ? 'done' : children.some(isDone) ? 'doing' : 'todo';
     try {
       if (deleting) await api.post({ action: 'delete', ids: [child.date + '|' + child.id], who });
       await api.post({ action: 'upsert', rows: [{ ...parent, status }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
@@ -183,15 +183,15 @@
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
       const line = el('<div class="subtask"></div>');
-      const check = el('<input type="checkbox">'); check.checked = child.status === '⭕'; check.setAttribute('aria-label', child.text + ' 완료');
-      check.onchange = () => { if (changeSubtask.busy) { check.checked = child.status === '⭕'; return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? '⭕' : '🔷' }); };
+      const check = el('<input type="checkbox">'); check.checked = isDone(child); check.setAttribute('aria-label', child.text + ' 완료');
+      check.onchange = () => { if (changeSubtask.busy) { check.checked = isDone(child); return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' }); };
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); text.blur(); } };
-      const remove = el('<button title="하위 업무 삭제">×</button>'); remove.onclick = () => changeSubtask(r, child, {}, true);
+      const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
       line.append(check, text, remove); list.append(line);
     });
-    card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: '🔷', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
+    card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: 'todo', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
     return card;
   }
   function projectSummary(d) {
@@ -214,7 +214,7 @@
     let hidden = 0;
     rows.forEach(r => { const n = itemRow(r, opts); if (hide && isDone(r)) { n.classList.add('collapsed'); hidden++; } box.append(n); });
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
-    box.append(addInput(text => addRow({ date, section, col, text, status: opts.noStatus ? '' : (opts.defaultStatus || '🔷') })));
+    box.append(addInput(text => addRow({ date, section, col, text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
     return box;
   }
   function taskSection(d, s) {
@@ -237,7 +237,7 @@
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) {
-      box.append(el(`<div class="empty-note">${fmtDate(d)} 보고서가 비어 있습니다.<br><button id="emptyCarry" class="primary">⤵ 직전 근무일 항목 가져오기</button> <button id="emptyNew">빈 보고서 시작</button></div>`));
+      box.append(el(`<div class="empty-note">${fmtDate(d)} 보고서가 비어 있습니다.<br><button id="emptyCarry" class="primary">직전 근무일 항목 가져오기</button> <button id="emptyNew">빈 보고서 시작</button></div>`));
       $('emptyCarry').onclick = carryForward;
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
@@ -266,10 +266,10 @@
       if (!src) return toast('가져올 이전 보고서가 없습니다');
       srcRows = j.rows.filter(r => r.date === src);
     }
-    if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 ⭕ 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
+    if (!confirm(`${src} 항목을 ${d}(으)로 가져올까요?\n(완료 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
     const parents = srcRows.filter(r => !['타임라인', '마케팅공통', '회의', '회의일정', '프로젝트', '하위업무'].includes(r.section) && !(TASK_KEYS.has(r.section) && isDone(r)));
     const ids = new Map(parents.map(r => [r.id, newId(d)]));
-    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, status: r.section === '데일리고정' ? '🔷' : r.status }));
+    const copies = parents.map(r => ({ ...r, id: ids.get(r.id), date: d, status: r.section === '데일리고정' ? 'todo' : r.status }));
     srcRows.filter(r => ['프로젝트', '하위업무'].includes(r.section) && ids.has(r.col)).forEach(r => copies.push({ ...r, id: newId(d), date: d, col: ids.get(r.col) }));
     state.rows.push(...copies);
     await save(copies);
@@ -445,6 +445,7 @@
       button.disabled = button.dataset.contentView !== 'cal' && !detail.available;
     });
   });
+  document.querySelectorAll('[data-icon]').forEach(n => { n.outerHTML = icon(n.dataset.icon, 18); });
   $('btnCarry').onclick = carryForward;
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); renderPrint(); print(); };
@@ -522,7 +523,7 @@
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
     [...latest.values()].forEach(r => list.append(itemRow(r)));
     tasks.append(list);
-    tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: '🔷', _who: SHARED })));
+    tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: 'todo', _who: SHARED })));
   }
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
   addEventListener('focus', () => loadShared());

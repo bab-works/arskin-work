@@ -11,7 +11,7 @@
     let pending = false, saving = false, cache = null, signature = '';
     async function request(params, post = false) {
       const config = window.CONFIG, u = new URL(config.API_URL);
-      const body = { key: config.API_KEY, who: config.DEFAULT_PERSON, ...params };
+      const body = { key: config.API_KEY, code: localStorage.accessCode || '', who: config.DEFAULT_PERSON, ...params };
       if (!post) Object.entries(body).forEach(([k,v]) => u.searchParams.set(k,v));
       const resp = await fetch(u, post ? { method: 'POST', body: JSON.stringify(body) } : {});
       if (!resp.ok) throw new Error('연결 오류 (' + resp.status + ')'); const data = await resp.json(); if (data.error) throw new Error(data.error); return data;

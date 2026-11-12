@@ -94,7 +94,7 @@ input,textarea{font:inherit;color:inherit}
 .st-menu button{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;background:none;text-align:left;font-weight:500;color:var(--text)}
 .st-menu button:hover,.st-menu button:focus-visible{background:var(--grey100)}
 .st-menu button[aria-checked=true]{font-weight:700}
-.st-menu [data-k=todo],.st-menu [data-k=hold],.st-menu [data-k=repeat]{color:var(--st-todo)}.st-menu [data-k=doing]{color:var(--st-doing)}.st-menu [data-k=done]{color:var(--st-done)}.st-menu [data-k=check]{color:var(--st-check)}
+.st-menu [data-k=todo]{color:var(--st-todo)}.st-menu [data-k=doing]{color:var(--st-doing)}.st-menu [data-k=done]{color:var(--st-done)}.st-menu [data-k=check]{color:var(--st-check)}
 .st-menu button span{color:var(--text)}
 .pst .sti{width:13px;height:13px;vertical-align:-2px}
 .row .tx{flex:1;outline:none;padding:1px 2px;min-width:0;white-space:pre-wrap;word-break:break-word;line-height:22px;border-radius:6px}
@@ -321,3 +321,16 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 @media(prefers-reduced-motion:reduce){.rv-card,.rv-kpi,.rv-hero,.rv-weekday-track i{animation:none;transition:none}}
 
 .brand img.brand-logo{width:180px;height:58px;max-width:100%;object-fit:cover;object-position:center}
+
+/* 아이콘(Phosphor) · 접속 코드 · 매출 비밀번호 */
+.ico{display:block;flex:none}
+.actions button{display:inline-flex;align-items:center;gap:6px}
+.row .del{display:inline-grid;place-items:center}
+.code-dlg{border:none;border-radius:var(--r-lg);padding:28px;width:min(360px,calc(100vw - 32px));box-shadow:0 24px 64px rgba(0,27,55,.2)}
+.code-dlg::backdrop{background:rgba(25,31,40,.45)}
+.code-dlg h2{margin:0 0 6px;font-size:20px}.code-dlg p{margin:0 0 16px;color:var(--text-2)}
+.code-dlg input,.rv-pass input{width:100%;min-height:48px;border:none;border-radius:var(--r-sm);background:var(--grey100);padding:0 14px;font:inherit;margin-bottom:12px}
+.code-dlg button{width:100%;min-height:48px}
+.rv-pass{display:flex;flex-direction:column;align-items:stretch;width:min(320px,100%);margin:8px auto 0;text-align:left}
+.rv-pass label{font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.rv-pass button{min-height:48px}
