@@ -103,7 +103,7 @@
   function itemRow(r, opts = {}) {
     if (r.section === '변동업무' && isProject(r)) return projectCard(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
-    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); }));
+    if (!opts.noStatus) row.append(statusButton(r, code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); }));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
     const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? m[1] : ''; tx.textContent = rest || r.text; };
@@ -248,7 +248,7 @@
       sortHold.clear(); renderReport();
       if (focused) document.querySelector(`.st[data-rid="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
       if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' }); });
+      rows().forEach(n => { const dy = (before.get(n.dataset.id) ?? NaN) - n.getBoundingClientRect().top; if (dy) n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,0,0,1)' } /* = --dur, --ease */); });
     }, 400);
   }
   function taskSection(d, s) {

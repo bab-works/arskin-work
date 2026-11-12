@@ -8,12 +8,13 @@
   --text-3:#8b95a1; /* 비활성·플레이스홀더 전용(3:1), 정보 글자에 쓰지 않음 */
   --blue-text:#1b64da; /* 연파랑 배경 위 파란 글자: 4.8:1 */
   --st-todo:#6b7684; --st-doing:#3182f6; --st-done:#0a8f55; --st-check:#e8590c; /* 상태 아이콘: 3:1 이상 */
+  --dur-fast:120ms; --dur:220ms; --ease:cubic-bezier(.2,0,0,1); /* 모션 토큰: 짧은 반응 / 위치·상태 변화 */
   --r-lg:20px; --r-md:14px; --r-sm:10px;
   --side:232px; --tl:320px;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Pretendard,"Pretendard Variable",-apple-system,"Apple SD Gothic Neo",system-ui,sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
-button{font:inherit;color:inherit;cursor:pointer;border:none;background:var(--grey100);border-radius:var(--r-sm);padding:9px 14px;font-weight:600;transition:background .15s}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:var(--grey100);border-radius:var(--r-sm);padding:9px 14px;font-weight:600;transition:background var(--dur-fast) var(--ease)}
 button:hover{background:var(--grey200)}
 button.primary{background:var(--blue);color:#fff}button.primary:hover{background:var(--blue-dark)}
 button.danger{color:var(--red);background:#fff0f1}
@@ -238,7 +239,7 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .project-progress-label{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted);margin-bottom:6px}
 .project-progress-label b{color:var(--blue-text)}
 .project-track{height:7px;border-radius:99px;background:var(--grey100);overflow:hidden}
-.project-track>span{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width .2s}
+.project-track>span{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width var(--dur) var(--ease)}
 .subtask{display:flex;align-items:flex-start;gap:8px;padding:7px 0;font-size:13px}
 .subtask input{flex:none;width:16px;height:16px;margin:3px 0;accent-color:var(--blue)}
 .subtask-text{flex:1;min-width:0;outline:none;overflow-wrap:anywhere;white-space:pre-wrap}
@@ -407,3 +408,10 @@ button.sc-date:hover b{color:var(--blue-text);text-decoration:underline}
 .keys-dlg dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;margin:12px 0 20px;align-items:center}
 .keys-dlg dt{white-space:nowrap}.keys-dlg dd{margin:0;color:var(--text-2)}
 kbd{font:600 12px/1 inherit;padding:4px 7px;border-radius:6px;background:var(--grey100);border:1px solid var(--line);color:var(--text-1)}
+/* 작업 14: 모션 토큰 적용과 완료 마이크로 인터랙션 */
+.row .tx,.subtask-text{transition:color var(--dur) var(--ease)}
+.st .sti{transition:transform var(--dur-fast) var(--ease)}
+.st:active .sti{transform:scale(.88)}
+.st.just-done .sti{animation:st-pop var(--dur) var(--ease)}
+@keyframes st-pop{0%{transform:scale(.7)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){:root{--dur-fast:0ms;--dur:0ms}.st.just-done .sti{animation:none}}
