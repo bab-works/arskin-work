@@ -415,3 +415,17 @@ kbd{font:600 12px/1 inherit;padding:4px 7px;border-radius:6px;background:var(--g
 .st.just-done .sti{animation:st-pop var(--dur) var(--ease)}
 @keyframes st-pop{0%{transform:scale(.7)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){:root{--dur-fast:0ms;--dur:0ms}.st.just-done .sti{animation:none}}
+/* 작업 15: 행 메뉴(상태·삭제), 되돌리기 토스트, 모바일 아젠다 보기 */
+.row:focus-within .del{visibility:visible}
+.st-menu .st-del{border-top:1px solid var(--line);color:#c92a2a}
+.toast{display:flex;align-items:center;gap:14px}
+.toast button{min-height:44px;margin:-10px -8px -10px 0;padding:0 12px;background:none;color:#9cc8ff;font-weight:700}
+@media(max-width:600px){ /* 주간 보기는 하루 한 줄짜리 아젠다로 */
+ .sc-week:not(.sc-month){display:flex;flex-direction:column;gap:6px}
+ .sc-week:not(.sc-month) .sc-day{display:grid;grid-template-columns:64px 1fr auto;align-items:start;gap:4px 8px;min-height:52px;padding:8px 10px}
+ .sc-week:not(.sc-month) .sc-date{grid-column:1;grid-row:1/span 9;flex-direction:column;align-items:flex-start;gap:0}
+ .sc-week:not(.sc-month) .sc-date b{font-size:17px}
+ .sc-week:not(.sc-month) .sc-ev{grid-column:2;display:flex;gap:8px;align-items:baseline;padding:6px 8px}
+ .sc-week:not(.sc-month) .sc-ev small{flex:none;white-space:nowrap}
+ .sc-week:not(.sc-month) .sc-add{grid-column:3;grid-row:1;margin:0;min-width:32px}
+}

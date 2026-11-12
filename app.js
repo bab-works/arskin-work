@@ -40,7 +40,11 @@
   const $ = id => document.getElementById(id);
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const toTime = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
-  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2500); }
+  function toast(msg, action) { // action: { label, ms, run } → 되돌리기 같은 버튼
+    const t = $('appToast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t);
+    if (action) { const b = el(`<button type="button">${esc(action.label)}</button>`); b.onclick = () => { clearTimeout(toast.t); t.classList.add('hidden'); action.run(); }; t.append(b); }
+    toast.t = setTimeout(() => t.classList.add('hidden'), action?.ms || 2500);
+  }
 
   /* ---------- api (Apps Script) ---------- */
   // 접속 코드: 사람별로 1회 입력해 브라우저에 저장. 서버가 거부하면 다시 묻는다.
@@ -80,8 +84,13 @@
   function deleteRow(r) {
     const related = r.section === '변동업무' ? state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && x.col === r.id) : [];
     if (related.some(x => x.section === '하위업무') && !confirm('이 업무와 하위 업무를 모두 삭제할까요?')) return;
-    if (related.length) { state.rows = state.rows.filter(x => !related.includes(x)); removeIds(related.map(x => x.date + '|' + x.id)); }
-    if (r._who) state.shared = state.shared.filter(x => x !== r); else state.rows = state.rows.filter(x => x !== r); removeIds([r.date + '|' + r.id], r._who); }
+    // 화면에서 바로 빼고 5초 뒤에 시트에서 지운다. 되돌리기를 누르면 시트는 건드리지 않는다.
+    // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽), 필요하면 pagehide 에서 전송
+    const list = r._who ? 'shared' : 'rows', at = state[list].indexOf(r);
+    state.rows = state.rows.filter(x => !related.includes(x)); state[list] = state[list].filter(x => x !== r);
+    const timer = setTimeout(() => { if (related.length) removeIds(related.map(x => x.date + '|' + x.id)); removeIds([r.date + '|' + r.id], r._who); }, 5000);
+    toast('삭제했습니다', { label: '되돌리기', ms: 5000, run: () => { clearTimeout(timer); state[list].splice(Math.max(0, at), 0, r); state.rows.push(...related); render(); } });
+  }
   const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col));
   // 같은 칸에 행이 여러 개면(과거 시트 흔적) 첫 행에 합쳐 저장한다
   function setCellText(date, section, col, text) {
@@ -115,8 +124,8 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); tx.blur(); }
       if (e.key === 'Escape') { tx.textContent = r.text; tx.blur(); } // 편집 취소
     };
-    const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`);
-    del.onclick = () => { deleteRow(r); render(); };
+    const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
+    del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => { updateRow(r, { status: code }); if (TASK_KEYS.has(r.section)) holdSort(r.id); render(); }, () => { deleteRow(r); render(); });
     row.append(chip, tx);
     if (r.section === '변동업무') { const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>'); project.onclick = () => { addRow({ date: r.date, section: '프로젝트', col: r.id, text: '프로젝트' }); render(); }; row.append(project); }
     row.append(del); return row;
@@ -134,9 +143,9 @@
     b.onpointerup = b.onpointercancel = b.onpointerleave = () => clearTimeout(timer);
     return b;
   }
-  function statusMenu(anchor, current, set) {
+  function statusMenu(anchor, current, set, onDelete) {
     document.querySelector('.st-menu')?.remove();
-    const m = el(`<div class="st-menu" role="menu" aria-label="상태 선택">${Object.keys(STAT).map(k => `<button type="button" role="menuitemradio" aria-checked="${k === current}" data-k="${k}">${statusIcon(k)}<span>${STAT[k].label}</span></button>`).join('')}</div>`);
+    const m = el(`<div class="st-menu" role="menu" aria-label="${onDelete ? '업무 메뉴' : '상태 선택'}">${Object.keys(STAT).map(k => `<button type="button" role="menuitemradio" aria-checked="${k === current}" data-k="${k}">${statusIcon(k)}<span>${STAT[k].label}</span></button>`).join('')}${onDelete ? `<button type="button" role="menuitem" class="st-del" data-del>${icon('x', 20)}<span>삭제</span></button>` : ''}</div>`);
     document.body.append(m);
     const a = anchor.getBoundingClientRect(), h = m.offsetHeight;
     m.style.left = Math.min(innerWidth - m.offsetWidth - 8, a.left) + 'px';
@@ -146,7 +155,7 @@
     const outside = e => { if (!m.contains(e.target)) close(false); };
     addEventListener('pointerdown', outside, true);
     items.forEach((it, i) => {
-      it.onclick = () => { close(false); if (it.dataset.k !== current) set(it.dataset.k); };
+      it.onclick = () => { close(false); if ('del' in it.dataset) onDelete(); else if (it.dataset.k !== current) set(it.dataset.k); };
       it.onkeydown = e => {
         if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); close(); }
         else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
