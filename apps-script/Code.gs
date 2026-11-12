@@ -30,9 +30,10 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 7, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 8, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
+  if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
 }
@@ -45,6 +46,7 @@ function doPost(e) {
   if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
   }
+  if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
   if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
   var lock = LockService.getScriptLock();
@@ -395,4 +397,57 @@ function revenueParse_(values, display) {
   daily.forEach(function(d) { var i = Math.floor((d.day-1+firstOffset)/7); if (!weeks[i]) weeks[i]={ name: (i+1)+'주차', total: 0, count: 0, days: 0, valid: true }; weeks[i].days++; if(d.total==null||d.count==null) weeks[i].valid=false; else { weeks[i].total+=d.total; weeks[i].count+=d.count; } });
   return { schema: 1, title: title, year: year, month: month, metric: metric, daily: daily, staff: staff, payments: payments, countries: countries, categories: categories, weeks: weeks.filter(Boolean),
     checks: { staffDifference: staff.length && staff.every(function(s) { return s.total != null; }) ? total-staff.reduce(function(sum,s) { return sum+s.total; },0) : null, cumulativeDifference: daily.length && daily[daily.length-1].cumulative != null ? total-daily[daily.length-1].cumulative : null, dailyDifference: sumDaily == null ? null : total-sumDaily, countDifference: sumCount == null ? null : count-sumCount, paymentDifference: sumPayments == null ? null : total-sumPayments, countryDifference: sumCountries == null ? null : total-sumCountries } };
+}
+
+/* ---------- 공휴일: '대한민국의 휴일' 캘린더를 공통 시트 holidays 탭에 캐시 ---------- */
+var HOLIDAY_CAL = 'ko.south_korea#holiday@group.v.calendar.google.com';
+var HOLIDAY_HEADER = ['날짜', '이름', '출처']; // 출처: auto(캘린더) | manual(직접 추가)
+
+function holidaySheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통'));
+  var sh = ss.getSheetByName('holidays');
+  if (!sh) { sh = ss.insertSheet('holidays'); sh.getRange('A:C').setNumberFormat('@'); sh.appendRow(HOLIDAY_HEADER); sh.setFrozenRows(1); }
+  return sh;
+}
+function holidayRows_(sh) { return sh.getLastRow() < 2 ? [] : sh.getRange(2, 1, sh.getLastRow() - 1, 3).getDisplayValues().filter(function (r) { return r[0]; }); }
+function holidayWrite_(sh, rows) {
+  rows.sort(function (a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent();
+  if (rows.length) sh.getRange(2, 1, rows.length, 3).setValues(rows);
+}
+function holidayFetch_(year) {
+  var cal = CalendarApp.getCalendarById(HOLIDAY_CAL) || CalendarApp.subscribeToCalendar(HOLIDAY_CAL);
+  var out = [];
+  cal.getEvents(new Date(year, 0, 1), new Date(year + 1, 0, 1)).forEach(function (ev) {
+    if (!ev.isAllDayEvent() || /기념일/.test(ev.getDescription())) return; // 어버이날 같은 기념일은 휴일이 아님
+    for (var d = new Date(ev.getAllDayStartDate()); d < ev.getAllDayEndDate(); d.setDate(d.getDate() + 1))
+      out.push([Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd'), ev.getTitle(), 'auto']);
+  });
+  return out;
+}
+// 올해·내년 auto 행이 없거나 fresh 요청이면 캘린더에서 다시 받아 그 해의 auto 행만 교체 (manual 행은 유지)
+function holidays_(fresh) {
+  var sh = holidaySheet_(), rows = holidayRows_(sh), y = Number(todayKst_().slice(0, 4)), changed = false;
+  [y, y + 1].forEach(function (yr) {
+    var has = rows.some(function (r) { return r[2] === 'auto' && r[0].slice(0, 4) === String(yr); });
+    if (has && !fresh) return;
+    var got = holidayFetch_(yr);
+    if (!got.length) return; // 캘린더 응답이 비면 기존 캐시 유지
+    rows = rows.filter(function (r) { return !(r[2] === 'auto' && r[0].slice(0, 4) === String(yr)); }).concat(got);
+    changed = true;
+  });
+  if (changed) { var lock = LockService.getScriptLock(); lock.waitLock(10000); try { holidayWrite_(sh, rows); } finally { lock.releaseLock(); } }
+  return rows.map(function (r) { return { date: r[0], name: r[1], source: r[2] }; });
+}
+function holidayEdit_(body) {
+  var date = String(body.date || ''), name = String(body.name || '').trim().slice(0, 40);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('날짜 형식이 올바르지 않습니다');
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = holidaySheet_();
+    var rows = holidayRows_(sh).filter(function (r) { return !(r[2] === 'manual' && r[0] === date); }); // 직접 추가한 휴일만 지울 수 있음
+    if (body.action === 'holidayAdd') rows.push([date, name || '휴무', 'manual']);
+    holidayWrite_(sh, rows);
+    return rows.map(function (r) { return { date: r[0], name: r[1], source: r[2] }; });
+  } finally { lock.releaseLock(); }
 }

@@ -27,9 +27,11 @@
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const shiftDate = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
   const fmtDate = s => { const d = new Date(s + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WD[d.getDay()]})`; };
-  function workDates(n) { // 당일 + 이전 근무일(월~금)
-    const out = []; const d = new Date(); out.push(iso(d));
-    while (out.length < n) { d.setDate(d.getDate() - 1); if (d.getDay() % 6) out.push(iso(d)); }
+  const todayKst = () => new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10); // 기기 시간대와 무관하게 한국 날짜
+  const isWorkday = d => new Date(d + 'T00:00:00Z').getUTCDay() % 6 && !state.holidays[d];
+  function workDates(n) { // 당일 + 이전 근무일(월~금, 공휴일 제외)
+    const out = [todayKst()]; let d = out[0];
+    while (out.length < n) { d = shiftDate(d, -1); if (isWorkday(d)) out.push(d); }
     return out.reverse();
   }
   const newId = date => `${date.replace(/-/g, '')}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -462,7 +464,7 @@
     if (!(await checkBackend())) { state.shared = []; return renderShared(); }
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor);
     const monthEnd = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
-    const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 4), iso(new Date())].sort().pop();
+    const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 4), todayKst()].sort().pop();
     const requested = anchor;
 
     try { const result = await api.get({ who: SHARED, from, to }); if (requested !== (state.sharedAnchor || state.sel)) return; state.shared = result.rows.map(r => ({ ...r, _who: SHARED })); }
@@ -474,11 +476,12 @@
     if (!cal) return;
     if (backendOk === false) { cal.innerHTML = '<div class="sc-head"><b>공통 캘린더</b><small>Apps Script를 새 버전으로 재배포하면 켜집니다</small></div>'; tasks.hidden = true; return; }
     tasks.hidden = false;
-    const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor), today = iso(new Date());
+    const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor), today = todayKst();
     const monthly = state.sharedMode === 'month', month = anchor.slice(0, 7);
     cal.classList.toggle('sc-collapsed', state.sharedCollapsed);
     cal.classList.toggle('sc-month-view', monthly);
-    cal.innerHTML = `<div class="sc-header"><div><b>마케팅 공용 캘린더</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, 4).slice(5).replace('-', '.')} · 월~금</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div></div>`;
+    cal.innerHTML = `<div class="sc-header"><div><b>마케팅 공용 캘린더</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, 4).slice(5).replace('-', '.')} · 월~금</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div><button type="button" class="more sc-holbtn">휴일 관리</button></div>`;
+    cal.querySelector('.sc-holbtn').onclick = openHolidays;
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { state.sharedMode = b.dataset.mode; localStorage.sharedMode = state.sharedMode; renderShared(); loadShared(); });
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
     const nav = el(`<div class="sc-navigation"><button type="button" aria-label="이전 ${monthly ? '달' : '주'}">‹ 이전 ${monthly ? '달' : '주'}</button><button type="button">${monthly ? '이번 달' : '이번 주'}</button><button type="button" aria-label="다음 ${monthly ? '달' : '주'}">다음 ${monthly ? '달' : '주'} ›</button></div>`);
@@ -493,7 +496,8 @@
     } else for (let i = 0; i < 5; i++) dates.push(shiftDate(ws, i));
     dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'), outside = monthly && !d.startsWith(month);
-      const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b></div></div>`);
+      const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><div class="sc-date"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b>${state.holidays[d] ? `<em class="sc-hol">${esc(state.holidays[d].name)}</em>` : ''}</div></div>`);
+      if (state.holidays[d]) col.classList.add('holiday');
       if (!outside) {
         state.shared.filter(r => r.section === '일정' && r.date === d).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
           const ev = el(`<button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button>`);
@@ -528,7 +532,22 @@
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
   addEventListener('focus', () => loadShared());
 
+  const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
+  function openHolidays() {
+    const dlg = el(`<dialog class="code-dlg hol-dlg" aria-labelledby="holTitle"><h2 id="holTitle">휴일 관리</h2><p>공휴일은 Google 캘린더에서 자동으로 가져옵니다. 회사 휴무일만 직접 추가하세요.</p>
+      <form class="hol-add"><input type="date" required aria-label="날짜"><input placeholder="이름 (예: 창립기념일)" aria-label="휴일 이름" maxlength="40"><button class="primary">추가</button></form><ul class="hol-list"></ul><button type="button" class="hol-close">닫기</button></dialog>`);
+    const list = dlg.querySelector('.hol-list'), [dIn, nIn] = dlg.querySelectorAll('input');
+    const paint = () => { list.innerHTML = Object.values(state.holidays).filter(h => h.date >= todayKst().slice(0, 4)).sort((a, b) => a.date < b.date ? -1 : 1)
+      .map(h => `<li><span>${h.date.slice(5).replace('-', '.')} (${WD[new Date(h.date + 'T00:00:00').getDay()]})</span><b>${esc(h.name)}</b>${h.source === 'manual' ? `<button type="button" data-date="${h.date}" aria-label="${esc(h.name)} 삭제">${icon('x', 14)}</button>` : '<small>공휴일</small>'}</li>`).join(''); };
+    const edit = async body => { try { setHolidays((await api.post(body)).holidays); paint(); state.dates = workDates(C.DAYS); render(); } catch (e) { toast(e.message); } };
+    dlg.querySelector('form').onsubmit = e => { e.preventDefault(); edit({ action: 'holidayAdd', date: dIn.value, name: nIn.value }); nIn.value = ''; };
+    list.onclick = e => { const b = e.target.closest('[data-date]'); if (b) edit({ action: 'holidayDelete', date: b.dataset.date }); };
+    dlg.querySelector('.hol-close').onclick = () => dlg.close();
+    dlg.onclose = () => dlg.remove();
+    document.body.append(dlg); paint(); dlg.showModal();
+  }
   async function load() {
+    if (!state.holidays) { state.holidays = {}; await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); } // 옛 서버면 빈 목록
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
     renderPeople(); loadShared();
     $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;

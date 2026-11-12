@@ -346,3 +346,13 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 .bottomnav button{min-height:48px}
 .sc-mode button,.sc-navigation button,.sc-add,.sc-ev,.row .del,.project-start,.project-delete,.more,.subtask button,.sidefoot a{position:relative}
 .sc-mode button::after,.sc-navigation button::after,.sc-add::after,.sc-ev::after,.row .del::after,.project-start::after,.project-delete::after,.more::after,.subtask button::after,.sidefoot a::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
+/* 작업 5: 공휴일 */
+.sc-hol{font-style:normal;font-size:12px;font-weight:600;color:#c92a2a;overflow-wrap:anywhere}
+.sc-day.holiday{background:#fff5f5}.sc-day.holiday .sc-date b{color:#c92a2a}
+.sc-holbtn{margin-left:auto;font-size:13px}
+.hol-dlg{width:min(420px,calc(100vw - 32px))}
+.hol-add{display:flex;gap:8px;flex-wrap:wrap}.hol-add input{flex:1 1 140px;margin:0}.hol-add button{width:auto;flex:none}
+.hol-list{list-style:none;margin:16px 0;padding:0;max-height:300px;overflow:auto}
+.hol-list li{display:flex;align-items:center;gap:10px;min-height:44px;border-bottom:1px solid var(--line)}
+.hol-list li span{color:var(--text-2);font-variant-numeric:tabular-nums;flex:none;width:80px}.hol-list li b{flex:1;font-weight:500}
+.hol-list li small{color:var(--text-2)}.hol-list li button{width:44px;min-height:44px;background:none;color:var(--text-2);display:grid;place-items:center;padding:0}
