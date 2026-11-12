@@ -100,7 +100,6 @@ input,textarea{font:inherit;color:inherit}
 .st-menu button[aria-checked=true]{font-weight:700}
 .st-menu [data-k=todo]{color:var(--st-todo)}.st-menu [data-k=doing]{color:var(--st-doing)}.st-menu [data-k=done]{color:var(--st-done)}.st-menu [data-k=check]{color:var(--st-check)}
 .st-menu button span{color:var(--text)}
-.pst .sti{width:13px;height:13px;vertical-align:-2px}
 .row .tx{flex:1;outline:none;padding:1px 2px;min-width:0;white-space:pre-wrap;word-break:break-word;line-height:22px;border-radius:6px}
 .row .tx:focus{background:var(--blue-weak)}
 .row .del{flex:none;background:none;color:var(--muted);padding:0 6px;visibility:hidden;font-weight:400}
@@ -200,33 +199,6 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
   .row .del{visibility:visible}
 }
 @media (min-width:901px){.cal-list{display:none}}
-
-.print-report{display:none}
-
-/* print: only the daily report, as row-paired tables so pages break between rows only */
-@media print{
-  @page{size:A4 portrait;margin:10mm}
-  html,body{background:#fff;font-size:10.5px}
-  .sidebar,.topbar,.timeline,.seg,.people,.sharedcal,#sharedtasks,.bottomnav,.popover,.toast,#viewCalendar,#viewLegacy,.report{display:none!important}
-  .app{display:block}.main{padding:0}.daily{display:block}
-  .print-report{display:block;width:100%;max-width:190mm}
-  #viewRevenue{display:none!important}
-  #viewDaily{display:block!important}
-  .daily .report-col,.daily .report-col.hidden-m{display:block!important;width:100%;min-width:0}
-  .app,.main,.daily{min-height:0;height:auto;max-width:100%;overflow:visible}
-  .print-report .titlebar{margin:0 0 6px;padding:5px 7px;font-size:12px}
-  table.pt td{white-space:pre-wrap;overflow-wrap:anywhere}
-  .print-report h3{margin:8px 0 3px;font-size:11px;color:var(--blue-text);background:var(--blue-weak);display:block;width:max-content;padding:2px 8px;border-radius:4px;break-after:avoid}
-  .pmemo{white-space:pre-wrap;border:1px solid #ccc;background:#fffdf5;padding:5px 7px;margin-top:6px;border-radius:4px}
-  table.pt{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:2px}
-  table.pt th,table.pt td{border:1px solid #ccc;padding:2px 5px;vertical-align:top;word-break:break-word}
-  table.pt th{background:var(--grey100);font-weight:600;text-align:left;font-size:10px}
-  table.pt thead{display:table-header-group}
-  table.pt tr{break-inside:avoid;page-break-inside:avoid}
-  table.pt td.pre{white-space:pre-wrap;min-height:1.4em}
-  .pst{display:inline-block;width:16px;margin-right:2px}
-  .titlebar,.print-report h3,table.pt th,.pmemo{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-}
 
 /* 프로젝트 및 하위 업무 */
 .project-start{flex:none;background:var(--blue-weak);color:var(--blue-text);font-size:12px;padding:5px 7px;white-space:nowrap}
@@ -435,3 +407,33 @@ kbd{font:600 12px/1 inherit;padding:4px 7px;border-radius:6px;background:var(--g
 .actions .icon-btn{width:44px;padding:0;font-size:16px;font-weight:700;color:var(--text-2)}
 .actions .icon-btn.on{color:var(--blue-text)}
 @media(max-width:600px){#btnPrint,.act-sep{display:none}} /* 휴대폰에서는 인쇄를 숨겨 한 줄에 맞춤 */
+/* C: 보고서를 A4 폭으로, 업무는 2열로 촘촘히. 화면과 인쇄가 같은 모양 */
+.report{width:100%;max-width:794px} /* A4 폭(210mm) */
+.task-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:14px;align-items:start}
+.task-list>.add,.task-list>.more,.task-list>.project-card,.task-list>.sub-add{grid-column:1/-1}
+.task-list .row{padding:3px 4px;min-height:34px;align-items:center;gap:6px}
+.task-list .row .tx{flex:0 1 auto;line-height:20px}
+.task-list .row .del{margin-left:auto}
+.task-list .project-start{padding:3px 7px;min-height:26px}
+.report .sec{padding:16px 18px}
+.sub-add{margin:2px 0 6px 34px}
+/* 인쇄: html.printing 상태에서 재고, 같은 규칙으로 찍는다 (beforeprint 에서 클래스 부여) */
+html.printing,html.printing body{background:#fff}
+html.printing :is(.sidebar,.topbar,.timeline,.seg,.people,.sharedcal,#sharedtasks,.bottomnav,.popover,.toast,#viewCalendar,#viewRevenue,#viewDirector,.sec-chips,.add,.del,.project-start,.project-delete,.task-list>.more,.st-menu,dialog){display:none!important}
+html.printing :is(#viewDaily,.app,.main,.daily,.report-col){display:block!important;min-height:0;height:auto;padding:0;margin:0;overflow:visible}
+html.printing .report{width:194mm;max-width:none;gap:3px;font-size:11px}
+html.printing .report .sec,html.printing .titlebar{padding:5px 8px;border:1px solid #ddd;border-radius:6px;box-shadow:none}
+html.printing .titlebar span:first-child{font-size:15px}
+html.printing .sec h3{font-size:12px;margin:0 0 2px}
+html.printing .task-list{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:8px}
+html.printing .row.collapsed{display:flex!important}
+html.printing .task-list .row{min-height:0;padding:0 2px;gap:4px}
+html.printing .task-list .row .tx{line-height:15px}
+html.printing .st{width:auto;height:auto;margin:0}html.printing .st svg{width:12px;height:12px}
+html.printing .cat{font-size:9px;padding:2px 4px}
+html.printing textarea{font-size:11px;line-height:1.35}
+@media print{
+  @page{size:A4 portrait;margin:8mm}
+  .report{zoom:var(--print-zoom,1)}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;animation:none!important;transition:none!important}
+}

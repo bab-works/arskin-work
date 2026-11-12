@@ -250,7 +250,7 @@
     return w;
   }
   function itemList(date, section, col, opts = {}) {
-    const box = document.createElement('div');
+    const box = document.createElement('div'); if (opts.doneLast) box.className = 'task-list';
     let rows = rowsFor(date, section, col);
     if (opts.doneLast && state.doneLast) { const late = r => isDone(r) && !sortHold.has(r.id); rows = [...rows.filter(r => !late(r)), ...rows.filter(late)]; }
     const key = date + section + (col ?? '');
@@ -304,10 +304,10 @@
     box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
     box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
-    box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
     const pub = publishingFor(d);
     if (pub) box.append(sec('오늘 발행 (콘텐츠 캘린더)', pub));
+    box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
     box.querySelectorAll('textarea').forEach(autosize);
   }
 
@@ -422,22 +422,7 @@
     return w;
   }
   /* ---------- print-only layout: 시트처럼 좌/우 항목을 한 줄씩 짝지은 표 (행 단위로만 페이지 분할) ---------- */
-  function renderPrint() {
-    const d = state.sel, box = $('printReport'); box.innerHTML = '';
-    if (!state.rows.some(r => r.date === d)) return;
-    const cellHtml = r => r ? `<td>${r.status ? `<span class="pst" title="${STAT[statusCode(r.status)].label}">${statusIcon(statusCode(r.status))}</span>` : ''}${esc(r.text)}${SUBTASKABLE.has(r.section) && isProject(r) ? progressBar(r) + childrenOf(r).map(c => `<div>${isDone(c) ? '☑' : '☐'} ${esc(c.text)}</div>`).join('') : ''}</td>` : '<td></td>';
-    const pairTable = (labels, lists) => {
-      const n = Math.max(...lists.map(l => l.length), 1);
-      let h = `<table class="pt"><thead><tr>${labels.map(l => `<th>${esc(l)}</th>`).join('')}</tr></thead><tbody>`;
-      for (let i = 0; i < n; i++) h += `<tr>${lists.map(l => cellHtml(l[i])).join('')}</tr>`;
-      return h + '</tbody></table>';
-    };
-    let h = `<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`;
-    const memo = cellText(d, '메모', '').trim();
-    if (memo) h += `<div class="pmemo">${esc(memo)}</div>`;
-    TASK_SECTIONS.forEach(s => h += `<h3>${esc(s.L)}</h3>` + pairTable([s.L], [state.doneLast ? [...rowsFor(d, s.key).filter(r => !isDone(r)), ...rowsFor(d, s.key).filter(isDone)] : rowsFor(d, s.key)]));
-    box.innerHTML = h;
-  }
+
 
   /* ---------- shell ---------- */
   function renderDatestrip() {
@@ -471,7 +456,7 @@
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
-  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); renderPrint(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
+  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
   document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => {
@@ -494,10 +479,16 @@
   $('btnKeys').onclick = () => openShortcuts();
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
-  $('btnPrint').onclick = () => { setView('daily'); renderPrint(); print(); };
+  $('btnPrint').onclick = () => { setView('daily'); print(); };
   $('btnReload').onclick = () => load();
-  addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); renderPrint(); });
-
+  // A4 한 장 맞춤: 인쇄 폭(194mm)으로 잰 높이가 한 장(281mm)을 넘으면 그만큼 축소
+  addEventListener('beforeprint', () => {
+    if (state.view !== 'daily') setView('daily');
+    document.documentElement.classList.add('printing');
+    const mm = 96 / 25.4, h = $('report').scrollHeight;
+    document.documentElement.style.setProperty('--print-zoom', Math.min(1, (279 * mm) / h).toFixed(3));
+  });
+  addEventListener('afterprint', () => document.documentElement.classList.remove('printing'));
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
   const weekStart = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
@@ -608,12 +599,12 @@
     renderPeople(); loadShared();
     $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;
     if (state.person !== C.DEFAULT_PERSON && !(await checkBackend())) {
-      state.rows = []; renderDatestrip(); $('timeline').innerHTML = ''; $('printReport').innerHTML = '';
+      state.rows = []; renderDatestrip(); $('timeline').innerHTML = '';
       $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 시트는 연결됐지만 Apps Script가 옛 버전입니다.<br><small>apps-script/Code.gs 를 붙여넣고 새 버전으로 재배포하면 열립니다.</small></div>`;
       return;
     }
     if (!personInfo().sheet) { // 시트 미연결: 다른 사람 데이터를 실수로 보여주지 않도록 요청 자체를 안 보낸다
-      state.rows = []; renderDatestrip(); $('timeline').innerHTML = ''; $('printReport').innerHTML = '';
+      state.rows = []; renderDatestrip(); $('timeline').innerHTML = '';
       $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 일일보고 시트가 아직 연결되지 않았습니다.<br><small>공유 시트 링크를 전달해 주시면 연결됩니다.</small></div>`;
       return;
     }
