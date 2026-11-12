@@ -48,7 +48,7 @@
     const m = data.metric, days = data.daily.filter(d => d.total != null), peak = days.slice().sort((a,b) => b.total-a.total)[0];
     const top5 = days.slice().sort((a,b) => b.total-a.total).slice(0,5).reduce((s,d) => s+d.total,0);
     const payment = data.payments.filter(x => x.value != null).sort((a,b) => b.value-a.value)[0];
-    return `<div class="rv-insight"><span>이번 달 확인할 숫자</span><p>${peak ? `<b>${peak.label.replace('-', '/')}</b>에 가장 많은 매출 <b>${won(peak.total)}</b>이 기록됐어요.` : '일별 기록을 확인해 주세요.'}</p><div class="rv-insight-tags"><span>상위 5일 매출 비중 <b>${m.total ? pct(top5/m.total) : '—'}</b></span><span>최대 결제수단 <b>${esc(payment?.name || '—')}</b></span></div></div>`;
+    return `<div class="rv-insight"><span>${data.month}월 확인할 숫자</span><p>${peak ? `<b>${peak.label.replace('-', '/')}</b>에 가장 많은 매출 <b>${won(peak.total)}</b>이 기록됐어요.` : '일별 기록을 확인해 주세요.'}</p><div class="rv-insight-tags"><span>상위 5일 매출 비중 <b>${m.total ? pct(top5/m.total) : '—'}</b></span><span>최대 결제수단 <b>${esc(payment?.name || '—')}</b></span></div></div>`;
   }
   function render() {
     const m = data.metric;
@@ -87,7 +87,7 @@
     host.querySelectorAll('[data-day]').forEach(el=>el.classList.toggle('selected',+el.dataset.day===d.day));
   }
   function renderChart() {
-    const days=data.daily,W=900,H=250,L=64,R=16,B=30,T=14,step=(W-L-R)/Math.max(1,days.length);
+    const days=data.daily,compact=host.clientWidth<600,W=compact?360:900,H=compact?220:250,L=compact?48:64,R=16,B=30,T=14,step=(W-L-R)/Math.max(1,days.length);
     const value=d=>chartMode==='daily'?d.total:d.cumulative;const max=Math.max(1,...days.map(d=>value(d)||0)), y=n=>H-B-(n/max)*(H-T-B);
     let svg=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${data.month}월 ${chartMode==='daily'?'일별':'누적'} 매출 추이"><title>원본 월간요약 매출 · 단위 만원</title>`;
     for(let i=0;i<=4;i++){const n=max*i/4,gy=y(n);svg+=`<line x1="${L}" x2="${W-R}" y1="${gy}" y2="${gy}" stroke="#e5e8eb"/><text x="${L-9}" y="${gy+4}" text-anchor="end">${(n/10000).toLocaleString('ko-KR',{maximumFractionDigits:0})}</text>`;}
@@ -97,11 +97,13 @@
     }
     days.forEach((d,i)=>{const n=value(d),x=L+(i+.5)*step;
       svg+=`<g data-day="${d.day}" tabindex="0" role="button" aria-label="${data.month}월 ${d.day}일 ${won(n)}">${chartMode==='daily'?`<rect class="rv-chart-bar" x="${x-step*.32}" y="${y(Math.max(0,n||0))}" width="${step*.64}" height="${n==null?2:Math.max(0,H-B-y(Math.max(0,n||0)))}" rx="4" fill="${n==null?'#e5e8eb':'#80b6ff'}"/>`:`<circle cx="${x}" cy="${y(n||0)}" r="4" fill="#3182f6"/>`}<rect x="${x-step/2}" y="${T}" width="${step}" height="${H-T-B}" fill="transparent"/><title>${d.label}: ${won(n)}</title></g>`;
-      if(i%5===0||i===days.length-1)svg+=`<text x="${x}" y="${H-8}" text-anchor="middle">${d.day}일</text>`;
+      if(i%(compact?7:5)===0||i===days.length-1)svg+=`<text x="${x}" y="${H-8}" text-anchor="middle">${d.day}일</text>`;
     });
     $('rvChart').innerHTML=svg+'</svg><p class="rv-chart-caption">단위: 만원 · 막대나 날짜 선택으로 상세 금액을 확인하세요</p>';
     host.querySelectorAll('[data-day]').forEach(el=>{el.onclick=()=>{selectedDay=+el.dataset.day;renderDay();};el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el.onclick();}};});renderDay();
   }
+  let resizeFrame;
+  addEventListener('resize', () => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(() => { if (data && host && !host.closest('.hidden') && $('rvChart')) renderChart(); }); });
   function animateTotal(){
     const target=$('rvTotal'),total=data.metric.total;if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
     const started=performance.now();function step(now){if(!target.isConnected)return;const t=Math.min(1,(now-started)/550);target.textContent=fmt(total*(1-Math.pow(1-t,3)));if(t<1)requestAnimationFrame(step);}requestAnimationFrame(step);
