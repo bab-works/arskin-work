@@ -193,7 +193,13 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
   html,body{background:#fff;font-size:10.5px}
   .sidebar,.topbar,.timeline,.seg,.people,.sharedcal,#sharedtasks,.bottomnav,.popover,.toast,#viewCalendar,#viewLegacy,.report{display:none!important}
   .app{display:block}.main{padding:0}.daily{display:block}
-  .print-report{display:block}
+  .print-report{display:block;width:100%;max-width:190mm}
+  #viewRevenue{display:none!important}
+  #viewDaily{display:block!important}
+  .daily .report-col,.daily .report-col.hidden-m{display:block!important;width:100%;min-width:0}
+  .app,.main,.daily{min-height:0;height:auto;max-width:100%;overflow:visible}
+  .print-report .titlebar{margin:0 0 6px;padding:5px 7px;font-size:12px}
+  table.pt td{white-space:pre-wrap;overflow-wrap:anywhere}
   .print-report h3{margin:8px 0 3px;font-size:11px;color:var(--blue);background:var(--blue-weak);display:block;width:max-content;padding:2px 8px;border-radius:4px;break-after:avoid}
   .pmemo{white-space:pre-wrap;border:1px solid #ccc;background:#fffdf5;padding:5px 7px;margin-top:6px;border-radius:4px}
   table.pt{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:2px}
@@ -273,3 +279,33 @@ table.meet td .tx{display:block;width:100%;min-height:64px;border:none;border-ra
 @media(max-width:1200px){.rv-payment-layout{grid-template-columns:1fr}.rv-ring{margin:10px auto 20px}.rv-hero{grid-template-columns:1fr;gap:24px}.rv-category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){#revenueHub{padding:16px 0}.rv-heading h1{font-size:25px}.rv-heading{gap:14px}.rv-heading p{font-size:12px}.rv-actions button,.rv-actions a{font-size:11px}.rv-hero,.rv-card{padding:22px;border-radius:20px}.rv-hero h2{font-size:34px}.rv-hero p{font-size:12px}.rv-insight{padding:16px}.rv-kpis{grid-template-columns:1fr;gap:0}.rv-kpi{display:grid;grid-template-columns:1fr auto;align-items:center;padding:18px 22px;margin-bottom:10px;border-radius:18px}.rv-kpi strong{font-size:23px;margin:0}.rv-kpi small{margin-top:4px}.rv-two{grid-template-columns:1fr;gap:0}.rv-payment-layout{grid-template-columns:1fr}.rv-ring{width:155px;height:155px}.rv-category-grid,.rv-check-list{grid-template-columns:1fr}.rv-meta{font-size:10px}.rv-check{margin-left:0}.rv-day-detail b,.rv-day-detail span{font-size:14px}.rv-unlock{margin:30px auto;padding:26px}.rv-unlock input{font-size:16px}.rv-card h2{font-size:17px}.rv-bar-item b{font-size:12px}}
 @media(prefers-reduced-motion:reduce){#revenueHub,.rv-bar-track>i{animation:none}}
+
+/* 공통 업무: 사용 가능한 너비에 따라 1~3열로 배치 */
+#sharedtasks{container-type:inline-size}
+.shared-task-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px 12px;align-items:start}
+.shared-task-grid>.row{min-width:0;margin:0;padding:8px;background:var(--grey50);border:1px solid var(--line);border-radius:var(--r-sm);align-items:flex-start}
+.shared-task-grid .tx{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
+@container (min-width:480px){.shared-task-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (min-width:840px){.shared-task-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.nav>button[data-view=calendar].active+.content-subnav{display:flex}
+.content-subnav button:disabled{opacity:.4;cursor:default}
+.content-mobile-nav{gap:6px;padding:16px 0 0}
+.content-mobile-nav button{flex:1;background:var(--card);font-size:13px}
+.content-mobile-nav button.active{background:var(--blue-weak);color:var(--blue)}
+.content-mobile-nav button:disabled{opacity:.4;cursor:default}
+@media print{.content-mobile-nav{display:none!important}}
+
+.rv-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;text-align:center}
+.rv-weekdays article{min-width:0}.rv-weekdays span{font-size:12px;color:var(--sub)}
+.rv-weekday-track{height:120px;background:var(--grey50);border-radius:10px;display:flex;align-items:flex-end;margin:14px auto 10px;max-width:52px;overflow:hidden}
+.rv-weekday-track i{display:block;width:100%;background:linear-gradient(#74adff,#3182f6);border-radius:10px;animation:rv-grow-y .55s ease-out;transform-origin:bottom}
+.rv-weekdays b,.rv-weekdays small{display:block;font-variant-numeric:tabular-nums}.rv-weekdays b{font-size:14px}.rv-weekdays small{font-size:10px;color:var(--muted);margin-top:4px}
+.rv-import{border-top:1px solid var(--line);margin-top:20px;padding-top:20px;text-align:left;font-size:13px}.rv-import summary{cursor:pointer;color:var(--blue);font-weight:600}.rv-import input{font-size:12px}.rv-import label{display:block;margin:12px 0 6px}
+.rv-card,.rv-kpi,.rv-hero{animation:rv-enter .35s ease-out;transition:box-shadow .2s}
+.rv-card:hover{box-shadow:0 8px 28px #142e4c08}
+@keyframes rv-grow-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@media(max-width:600px){.rv-weekdays{gap:5px}.rv-weekdays b{font-size:11px}.rv-weekdays small{font-size:8px}.rv-weekday-track{height:90px;max-width:32px}}
+@media(prefers-reduced-motion:reduce){.rv-card,.rv-kpi,.rv-hero,.rv-weekday-track i{animation:none;transition:none}}
+
+.brand img.brand-logo{width:180px;height:58px;max-width:100%;object-fit:cover;object-position:center}

@@ -1,6 +1,6 @@
 (() => {
   let controller, opening;
-  window.ContentHub = { open() { if (controller) { controller.refresh(false, true); return; } if (opening) return opening; opening = mount().catch(() => { opening = null; const h = window.document.getElementById('contentHub'); h.textContent = '콘텐츠 화면을 불러오지 못했습니다. 페이지를 새로고침해 주세요.'; }); return opening; }, refresh() { return controller && controller.refresh(true); } };
+  window.ContentHub = { open() { if (controller) { controller.refresh(false, true); return; } if (opening) return opening; opening = mount().catch(() => { opening = null; const h = window.document.getElementById('contentHub'); h.textContent = '콘텐츠 화면을 불러오지 못했습니다. 페이지를 새로고침해 주세요.'; }); return opening; }, refresh() { return controller && controller.refresh(true); }, async select(view) { await this.open(); if (controller) controller.select(view); } };
   async function mount() {
     const host = window.document.getElementById('contentHub');
     const response = await fetch('content-hub.html'); if (!response.ok) throw new Error('화면을 불러오지 못했습니다');
@@ -231,7 +231,7 @@ $('planBody').addEventListener('click', function(e){
 });
 $('planAdd').onclick = function(){ if (root.querySelector('tr.dirty')) return toast('수정 중인 행을 먼저 저장해 주세요.', true); adding = true; planFilter = 'all'; renderPlan(); var f = $('planBody').querySelector('.idea'); if (f) f.focus(); };
 
-function setView(v){ if (view === 'plan' && (adding || root.querySelector('tr.dirty'))) { toast('수정 중인 영상 기획을 먼저 저장해 주세요.', true); return; } view = v; ['cal','ana','plan'].forEach(function(k){ $('v-'+k).setAttribute('aria-pressed', v===k); $(k+'View').hidden = v!==k; }); $('calTools').hidden = v==='plan'; render(); }
+function setView(v){ if (!['cal','ana','plan'].includes(v) || $('v-'+v).disabled) return; if (view === 'plan' && (adding || root.querySelector('tr.dirty'))) { toast('수정 중인 영상 기획을 먼저 저장해 주세요.', true); return; } view = v; ['cal','ana','plan'].forEach(function(k){ $('v-'+k).setAttribute('aria-pressed', v===k); $(k+'View').hidden = v!==k; }); $('calTools').hidden = v==='plan'; render(); syncNavigation(); }
 function render(){ if (view==='plan') return renderPlan(); $('month').textContent = cur.y+'.'+String(cur.m+1).padStart(2,'0'); renderChips(); if (view==='cal') renderCal(); else renderAna(); }
 
 root.addEventListener('click', function(e){
@@ -264,7 +264,7 @@ async function refresh(force = false, background = false) {
     const changed = JSON.stringify({ ...data, updated: '' }) !== signature;
     signature = JSON.stringify({ ...data, updated: '' });
     cache = { time: Date.now() }; live = true;
-    $('v-ana').disabled = false; $('v-plan').disabled = false;
+    $('v-ana').disabled = false; $('v-plan').disabled = false; syncNavigation();
     if (changed || !posts.length) init(data);
     const sync = data.instagram;
     $('syncState').textContent = sync && !sync.configured ? 'Instagram 연결 설정 필요 · 시트 기록 표시 중' : sync && (sync.accounts || []).some(a => !a.ok) ? '일부 Instagram 계정 동기화 실패 · 시트 기록 표시 중' : '방금 동기화 · 60초마다 자동 확인';
@@ -274,7 +274,7 @@ async function refresh(force = false, background = false) {
         const data = await request({ action: 'calendar' });
         if (!Array.isArray(data.grid)) throw new Error('캘린더 데이터를 불러오지 못했습니다.');
         calendarFallback(data.grid); live = false;
-        $('v-ana').disabled = true; $('v-plan').disabled = true;
+        $('v-ana').disabled = true; $('v-plan').disabled = true; if (view !== 'cal') setView('cal'); syncNavigation();
         $('updated').textContent = '· 콘텐츠 캘린더 연결됨';
         $('syncState').textContent = '계정 데이터 연결 오류 · 캘린더만 표시 중';
         render();
@@ -306,7 +306,9 @@ window.addEventListener('focus', () => { if (!host.closest('.hidden')) refresh(f
 window.document.addEventListener('visibilitychange', () => { if (!window.document.hidden && !host.closest('.hidden')) refresh(false, true); });
 setInterval(() => { if (!window.document.hidden && !host.closest('.hidden')) refresh(true, true); }, 60000);
 refresh(true);
-return { refresh };
+function syncNavigation() { window.dispatchEvent(new CustomEvent('content-navigation', { detail: { view, available: ! $('v-ana').disabled } })); }
+syncNavigation();
+return { refresh, select: setView };
 
     }
   }

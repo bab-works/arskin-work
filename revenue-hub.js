@@ -8,10 +8,19 @@
   let generation = 0;
   let host, data, key = '', busy = false, chartMode = 'daily', selectedDay;
   const $ = id => document.getElementById(id);
-  const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? '<button id="rvRefresh">↻ 새로고침</button><button id="rvLock">잠그기</button>' : ''}</div></div>`;
+  const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? (key ? '<button id="rvRefresh">↻ 새로고침</button>' : '') + '<button id="rvLock">잠그기</button>' : ''}</div></div>`;
   window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) renderLocked(); }, refresh() { if (key) load(); } };
   function renderLocked(message = '') {
-    data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약을 확인하세요</h2><p>매출표 조회키로 연결된 월간 요약을 불러옵니다.<br>환자별 상세 정보는 표시하지 않습니다.</p><form id="rvUnlock"><label for="rvKey">매출표 조회키</label><input id="rvKey" type="password" autocomplete="off" placeholder="조회키 입력" required><button class="primary" type="submit">매출표 보기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p></section>`;
+    data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약을 확인하세요</h2><p>매출표 조회키로 연결된 월간 요약을 불러옵니다.<br>환자별 상세 정보는 표시하지 않습니다.</p><form id="rvUnlock"><label for="rvKey">매출표 조회키</label><input id="rvKey" type="password" autocomplete="off" placeholder="조회키 입력" required><button class="primary" type="submit">매출표 보기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 시트의 월간요약 탭에서 파일 → 다운로드 → CSV를 선택하세요. 이 기기에서만 분석하며 새로고침하면 지워집니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".csv,text/csv"></details></section>`;
+    $('rvFile').onchange = async e => {
+      const file = e.target.files[0]; if (!file) return;
+      try {
+        if (file.size > 2 * 1024 * 1024) throw new Error('월간요약 탭의 CSV 파일만 선택해 주세요.');
+        const rows = window.RevenueModel.csv(await file.text());
+        const parsed = window.RevenueModel.parse(rows, rows);
+        generation++; key = ''; data = parsed; data.updated = 'CSV 파일'; selectedDay = null; render();
+      } catch (err) { $('rvMessage').textContent = err.message; e.target.value = ''; }
+    };
     $('rvUnlock').onsubmit = e => { e.preventDefault(); key = $('rvKey').value; load(); };
   }
   async function load() {
@@ -44,19 +53,26 @@
   function render() {
     const m = data.metric;
     const failures = Object.values(data.checks).some(x => x !== 0) || m.checkDifference !== 0;
-    host.innerHTML = header() + `<div class="rv-meta"><span class="rv-period">${data.year}년 ${data.month}월</span><span id="rvStatus" role="status">${esc(data.updated || '')} 확인 · 원본 월간요약 기준</span><span class="rv-check ${failures ? 'review' : ''}">${failures ? '집계 확인 필요' : '합계 검증 일치'}</span></div>
-      <section class="rv-hero"><div><span>이번 달 총금액</span><h2 aria-label="${won(m.total)}"><span id="rvTotal">${fmt(m.total)}</span><small>원</small></h2><p>월간 보고 <b>${fmt(m.count)}건</b> · 보고가 기록된 <b>${m.recordedDays}일</b></p></div>${insights()}</section>
+    host.innerHTML = header() + `<div class="rv-meta"><span class="rv-period">${data.year}년 ${data.month}월</span><span id="rvStatus" role="status">${esc(data.updated || '')} 확인 · ${key ? '실시간 조회' : '파일 기준'} · 원본 월간요약 기준</span><span class="rv-check ${failures ? 'review' : ''}">${failures ? '집계 확인 필요' : '합계 검증 일치'}</span></div>
+      <section class="rv-hero"><div><span>${data.month}월 총금액</span><h2 aria-label="${won(m.total)}"><span id="rvTotal">${fmt(m.total)}</span><small>원</small></h2><p>월간 보고 <b>${fmt(m.count)}건</b> · 보고가 기록된 <b>${m.recordedDays}일</b></p></div>${insights()}</section>
       <section class="rv-kpis">${card('보고 1건당 평균',won(m.averageRecord),'총금액 ÷ 보고 건수')}${card('보고 기록일 평균',won(m.averageRecordedDay),'총금액 ÷ 보고가 있는 날짜 수')}${card('해외 매출 비중',pct(m.overseasShare),'국내 외 국가 총금액 ÷ 총금액')}</section>
       <section class="rv-card"><div class="rv-card-head"><div><h2>하루하루 쌓인 매출</h2><p>전체 날짜를 포함한 일별 기록</p></div><div class="rv-segment" role="group" aria-label="매출 추이 보기"><button data-chart="daily" aria-pressed="${chartMode==='daily'}">일별</button><button data-chart="cumulative" aria-pressed="${chartMode==='cumulative'}">누적</button></div></div><div id="rvChart"></div><div id="rvDayDetail" class="rv-day-detail" aria-live="polite"></div><label class="rv-slider-label" for="rvDaySlider">날짜 선택<input id="rvDaySlider" type="range" min="1" max="${Math.max(1,data.daily.length)}" value="${selectedDay || 1}"></label></section>
+      ${weekdayAnalysis()}
       <section class="rv-two"><article class="rv-card"><h2>결제수단별 매출</h2><p class="rv-sub">총금액에 포함된 결제 구성</p><div class="rv-payment-layout">${paymentRing()}<div>${barList(data.payments,m.total)}</div></div></article><article class="rv-card"><h2>국가별 매출</h2><p class="rv-sub">국내와 해외의 매출 구성</p>${barList(data.countries,m.total)}</article></section>
       <section class="rv-two"><article class="rv-card"><h2>담당자별 집계</h2><p class="rv-sub">보고 건수와 금액 · 고객 구성에 따라 달라질 수 있어요</p><div class="rv-table"><table><thead><tr><th>담당자</th><th>보고</th><th>총금액</th><th>건당 평균</th></tr></thead><tbody>${data.staff.map(s=>`<tr><th>${esc(s.name)}</th><td>${fmt(s.count)}건</td><td>${won(s.total)}</td><td>${won(s.count && s.total != null ? s.total/s.count : null)}</td></tr>`).join('')}</tbody></table></div></article><article class="rv-card"><h2>주차별 흐름</h2><p class="rv-sub">월요일 시작 · 첫 주와 마지막 주는 날짜 수가 달라요</p>${data.weeks.map(w=>`<div class="rv-week"><span>${esc(w.name)}<small>${w.days}일 · 보고 ${fmt(w.count)}건</small></span><b>${w.valid ? won(w.total) : '계산 확인 필요'}</b></div>`).join('')}</article></section>
       <section class="rv-card"><h2>많이 포함된 시술</h2><p class="rv-sub">한 보고에 여러 시술이 포함될 수 있어 비중 합계가 100%를 넘을 수 있어요. 매출 비중이 아닌 포함 건수입니다.</p><div class="rv-category-grid">${barList(data.categories.map(c=>({name:c.name,value:c.count})).sort((a,b)=>(b.value || 0)-(a.value || 0)),m.count,false)}</div></section>
-      <details class="rv-card rv-detail"><summary>집계 기준과 검증 결과 보기</summary><div class="rv-check-list">${[['일별 금액 합계',data.checks.dailyDifference],['보고 건수 합계',data.checks.countDifference],['결제수단 합계',data.checks.paymentDifference],['국가별 금액 합계',data.checks.countryDifference],['원본 검증차액',m.checkDifference]].map(([n,v])=>`<div><span>${n}</span><b>${v == null ? '확인 불가' : v===0 ? '일치' : '차이 '+fmt(v)}</b></div>`).join('')}</div><p>보고 건수는 고유 고객 수가 아닙니다. 보고 기록일은 보고 건수가 1건 이상인 날짜로 계산하며, 영업일 여부를 판정하지 않습니다. 전월·목표 데이터가 없어 전월 대비와 목표 달성률은 표시하지 않습니다.</p><p>업셀 집계 ${won(m.upsellBasis)}는 원본의 특정 앱결제 제외 기준 집계이며, 추가 발생 매출을 뜻하지 않습니다. 베가스 금액 ${won(m.vegas)}는 별도 원본 항목으로 총금액에 더하지 않습니다.</p><p>원본의 계산 오류나 빈 값은 0으로 바꾸지 않고 확인 필요로 표시합니다.</p></details>`;
-    $('rvRefresh').onclick = load;
+      <details class="rv-card rv-detail"><summary>집계 기준과 검증 결과 보기</summary><div class="rv-check-list">${[['일별 금액 합계',data.checks.dailyDifference],['보고 건수 합계',data.checks.countDifference],['결제수단 합계',data.checks.paymentDifference],['국가별 금액 합계',data.checks.countryDifference],['담당자 금액 합계',data.checks.staffDifference],['최종 누적 금액',data.checks.cumulativeDifference],['원본 검증차액',m.checkDifference]].map(([n,v])=>`<div><span>${n}</span><b>${v == null ? '확인 불가' : v===0 ? '일치' : '차이 '+fmt(v)}</b></div>`).join('')}</div><p>보고 건수는 고유 고객 수가 아닙니다. 보고 기록일은 보고 건수가 1건 이상인 날짜로 계산하며, 영업일 여부를 판정하지 않습니다. 전월·목표 데이터가 없어 전월 대비와 목표 달성률은 표시하지 않습니다.</p><p>업셀 집계 ${won(m.upsellBasis)}는 원본의 특정 앱결제 제외 기준 집계이며, 추가 발생 매출을 뜻하지 않습니다. 베가스 금액 ${won(m.vegas)}는 별도 원본 항목으로 총금액에 더하지 않습니다.</p><p>원본의 계산 오류나 빈 값은 0으로 바꾸지 않고 확인 필요로 표시합니다.</p></details>`;
+    if ($('rvRefresh')) $('rvRefresh').onclick = load;
     $('rvLock').onclick = () => { generation++; key = ''; renderLocked(); };
     host.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => { chartMode = button.dataset.chart; host.querySelectorAll('[data-chart]').forEach(b => b.setAttribute('aria-pressed',b===button)); renderChart(); });
     $('rvDaySlider').oninput = e => { selectedDay = data.daily[+e.target.value-1]?.day; renderDay(); };
     renderChart(); animateTotal();
+  }
+  function weekdayAnalysis() {
+    const groups = Array.from({length:7}, (_,i) => ({name:'월화수목금토일'[i]+'요일', days:0, total:0, count:0}));
+    data.daily.forEach(d => { if (!(d.count > 0) || d.total == null) return; const g=groups[(d.weekday+6)%7]; g.days++; g.total+=d.total; g.count+=d.count; });
+    const maximum = Math.max(1,...groups.map(g=>g.days ? g.total/g.days : 0));
+    return `<section class="rv-card"><div class="rv-card-head"><div><h2>어떤 요일에 매출이 집중될까요?</h2><p>보고가 있는 날짜만 비교한 일평균 · 요일별 기록 횟수를 함께 확인하세요</p></div></div><div class="rv-weekdays">${groups.map(g=>`<article><span>${g.name}</span><div class="rv-weekday-track"><i style="height:${g.days ? Math.max(2,g.total/g.days/maximum*100):0}%"></i></div><b>${g.days ? fmt(g.total/g.days/10000)+'만' : '—'}</b><small>${g.days}일 · ${fmt(g.count)}건</small></article>`).join('')}</div><p class="rv-chart-caption">단위: 만원 · 기록 0일은 비교에서 제외 · 매출 차이는 고객·시술 구성의 영향을 받습니다.</p></section>`;
   }
   function paymentRing() {
     const entries = data.payments.filter(p=>p.value != null && p.value>0); const sum=entries.reduce((s,p)=>s+p.value,0);

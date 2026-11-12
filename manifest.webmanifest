@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "아르스킨 대시보드",
+  "short_name": "아르스킨",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f4f6",
+  "theme_color": "#f2f4f6",
+  "icons": [
+    {
+      "src": "assets/arskin-icon.png?v=2",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

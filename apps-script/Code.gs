@@ -357,7 +357,7 @@ function revenueParse_(values, display) {
     countries.push({ name: display[countryHeader][c], value: valid ? sum : null });
   }
   var active = daily.filter(function(d) { return d.count > 0; });
-  var validDaily = daily.every(function(d) { return d.total != null && d.count != null; });
+  var validDaily = daily.length === new Date(Date.UTC(year, month, 0)).getUTCDate() && daily.every(function(d) { return d.total != null && d.count != null; });
   var sumDaily = validDaily ? daily.reduce(function(sum,d) { return sum+d.total; },0) : null;
   var sumCount = validDaily ? daily.reduce(function(sum,d) { return sum+d.count; },0) : null;
   var sumPayments = payments.every(function(x) { return x.value != null; }) ? payments.reduce(function(sum,x) { return sum+x.value; },0) : null;
@@ -370,5 +370,5 @@ function revenueParse_(values, display) {
   var firstOffset = (new Date(Date.UTC(year,month-1,1)).getUTCDay()+6)%7;
   daily.forEach(function(d) { var i = Math.floor((d.day-1+firstOffset)/7); if (!weeks[i]) weeks[i]={ name: (i+1)+'주차', total: 0, count: 0, days: 0, valid: true }; weeks[i].days++; if(d.total==null||d.count==null) weeks[i].valid=false; else { weeks[i].total+=d.total; weeks[i].count+=d.count; } });
   return { schema: 1, title: title, year: year, month: month, metric: metric, daily: daily, staff: staff, payments: payments, countries: countries, categories: categories, weeks: weeks.filter(Boolean),
-    checks: { dailyDifference: sumDaily == null ? null : total-sumDaily, countDifference: sumCount == null ? null : count-sumCount, paymentDifference: sumPayments == null ? null : total-sumPayments, countryDifference: sumCountries == null ? null : total-sumCountries } };
+    checks: { staffDifference: staff.length && staff.every(function(s) { return s.total != null; }) ? total-staff.reduce(function(sum,s) { return sum+s.total; },0) : null, cumulativeDifference: daily.length && daily[daily.length-1].cumulative != null ? total-daily[daily.length-1].cumulative : null, dailyDifference: sumDaily == null ? null : total-sumDaily, countDifference: sumCount == null ? null : count-sumCount, paymentDifference: sumPayments == null ? null : total-sumPayments, countryDifference: sumCountries == null ? null : total-sumCountries } };
 }

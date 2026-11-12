@@ -386,11 +386,21 @@
     $('report').parentElement.classList.toggle('hidden-m', b.dataset.pane !== 'report');
     $('timeline').classList.toggle('hidden-m', b.dataset.pane !== 'timeline');
   });
+  document.querySelectorAll('[data-content-view]').forEach(button => button.onclick = () => {
+    setView('calendar'); window.ContentHub.select(button.dataset.contentView);
+  });
+  addEventListener('content-navigation', ({ detail }) => {
+    document.querySelectorAll('[data-content-view]').forEach(button => {
+      const selected = button.dataset.contentView === detail.view;
+      button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected);
+      button.disabled = button.dataset.contentView !== 'cal' && !detail.available;
+    });
+  });
   $('btnCarry').onclick = carryForward;
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
-  $('btnPrint').onclick = () => print();
+  $('btnPrint').onclick = () => { setView('daily'); renderPrint(); print(); };
   $('btnReload').onclick = () => load();
-  addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); });
+  addEventListener('beforeprint', () => { if (state.view !== 'daily') setView('daily'); renderPrint(); });
 
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
@@ -455,8 +465,14 @@
     tasks.innerHTML = '<h3>공통 업무</h3>';
     // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
     const latest = new Map();
-    state.shared.filter(r => r.section === '공통업무' && r.date <= state.sel).sort((a, b) => a.date.localeCompare(b.date)).forEach(r => latest.set(r.text.replace(/\s+/g, ''), r));
-    [...latest.values()].forEach(r => tasks.append(itemRow(r)));
+    // 장식용 앞 기호와 공백만 무시한다. 내용이 다른 업무는 각각 유지한다.
+    const taskKey = text => text.normalize('NFKC').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s+/g, '').toLocaleLowerCase('ko');
+    state.shared.filter(r => r.section === '공통업무' && r.date <= state.sel && taskKey(r.text))
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.updated || '').localeCompare(b.updated || '') || a.id.localeCompare(b.id))
+      .forEach(r => latest.set(taskKey(r.text), r));
+    const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
+    [...latest.values()].forEach(r => list.append(itemRow(r)));
+    tasks.append(list);
     tasks.append(addInput(text => addRow({ date: today, section: '공통업무', col: state.person, text, status: '🔷', _who: SHARED })));
   }
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
