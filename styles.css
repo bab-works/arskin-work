@@ -1116,3 +1116,4 @@ details.fold[open]>summary{margin-bottom:8px}
 #sec-팔로업 h3{display:flex;align-items:center;gap:6px}
 .fu-memo-dlg{width:min(560px,92vw)}.fu-memo-dlg textarea{width:100%;border:none;background:var(--grey50);border-radius:12px;padding:12px;font:inherit;font-size:15px;line-height:1.6;resize:vertical}
 .fu-memo-dlg .tr-acts{display:flex;justify-content:space-between;align-items:center;margin-top:12px}.fu-memo-dlg .primary{min-height:44px;padding:0 20px}
+.pc-line .del{position:relative;min-width:44px}.pc-line .del::after{content:"";position:absolute;inset:-6px 0}
