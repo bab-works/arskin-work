@@ -124,9 +124,21 @@
   function autosize(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
 
   const CAT_RE = /^[^\p{L}(]*?(\p{L}[^\s()]{0,11})\)\s*/u; // '(화)' 같은 날짜 괄호는 태그로 보지 않음 // 앞 장식 기호 + 12자 이내 분류 + ')'
+  // 원장님 숙제 한 줄: 상태 · 제목(레퍼런스 링크) · 오른쪽 연회색 'MM/DD 완료'
+  function hwRow(r) {
+    const plan = String(r.end).startsWith('plan:') ? String(r.end).slice(5) : '', p = state.reelPlan.find(x => String(x.row) === plan);
+    const row = el(`<div class="row hw-row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
+    row.append(dragHandle(r), statusButton(r, code => { const was = isDone(r); setStatus(r, code); if (plan && was !== (code === 'done')) homeworkShot({ row: plan, title: r.text, ref: p?.ref || '' }, code === 'done'); }));
+    if (plan) { const a = el('<a class="tx hw-link" target="_blank" rel="noopener" title="레퍼런스 열기"></a>'); a.textContent = r.text; a.href = planLink(plan, p?.ref); row.append(a); }
+    else { const tx = el('<div class="tx" contenteditable="plaintext-only"></div>'); tx.textContent = r.text; tx.onblur = () => { const v = tx.textContent.trim(); if (v && v !== r.text) updateRow(r, { text: v }); }; row.append(tx); }
+    if (isDone(r)) row.append(el(`<small class="hw-done">${(r.completed || r.date).slice(5).replace('-', '/')} 완료</small>`));
+    const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del);
+    return row;
+  }
   function itemRow(r, opts = {}) {
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
+    if (r.section === '원장님숙제') return hwRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
     if (TASK_KEYS.has(r.section) || r.section === '원장님리스트' || r.section === '원장님숙제') row.append(dragHandle(r));
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
@@ -451,8 +463,15 @@
     return g;
   }
   const DIR_COLS = [['원개블', '원개블'], ['그외', '추가 업무'], ['릴스촬영', '릴스 촬영 리스트']]; // 시트 열 값(원개블/그외/릴스촬영)은 그대로
+  const planLink = (row, ref) => /^https?:/.test(ref || '') ? ref : `https://docs.google.com/spreadsheets/d/1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo/edit#gid=1655414943&range=L${row}`;
+  // 숙제 배치: 그날 원장님 시트에 행으로 기록(원장님숙제, '종료' 칸에 plan:행번호 연결)
+  function assignHomework(p, col) {
+    if (state.rows.some(r => r.date === state.sel && r.section === '원장님숙제' && r.end === 'plan:' + p.row)) return toast('이미 배치된 숙제입니다');
+    addRow({ date: state.sel, section: '원장님숙제', col, text: p.title, status: 'todo', start: '', end: 'plan:' + p.row }); render();
+    toast(`"${p.title}" 숙제로 배치했습니다`);
+  }
   async function homeworkShot(p, on) {
-    p.shot = on; renderReport();
+    if ('shot' in p) p.shot = on; else { const x = state.reelPlan.find(y => String(y.row) === String(p.row)); if (x) x.shot = on; }
     try {
       await api.post({ action: 'reelsShot', row: p.row, undo: !on });
       const owner = C.REELS_OWNER, d = todayKst(); if (!owner) return;
@@ -471,18 +490,28 @@
     const g = el('<div class="dir-lists dir-stack"></div>');
     DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
     box.append(sec('원장님 업무리스트업', g));
-    // 영상 기획의 방식 '숙제' 항목 = 원장님 숙제. 체크하면 기획 시트 촬영 ⭕ + 릴스 담당자 릴스 행에 '촬영' 반영 (반대로 릴스에서 촬영해도 여기 체크됨)
+    // 원장님 숙제: 위 = 그날 배치된 숙제(시트 행, 미완료는 다음 날로 이월) / 아래 = 영상 기획 '숙제' 전체 목록(끌어 올리거나 '배치')
+    const HW_COLS = [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], colOf = p => p.kind === '영어' ? '영어' : '영상';
     const hw = el('<div class="dir-lists dir-stack dir-hw"></div>');
-    [['영어', '영상숙제(영어)', p => p.kind === '영어'], ['영상', '영상숙제', p => p.kind !== '영어']].forEach(([col, label, pick]) => {
-      const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`), plan = state.reelPlan.filter(p => p.type === '숙제' && pick(p));
-      plan.forEach(p => {
-        const row = el(`<label class="row hw-plan${p.shot ? ' done' : ''}"><input type="checkbox"${p.shot ? ' checked' : ''}><span class="tx">${esc(p.title)}</span><small class="hw-src">영상 기획</small></label>`);
-        row.querySelector('input').onchange = e => homeworkShot(p, e.target.checked);
-        c.append(row);
-      });
+    HW_COLS.forEach(([col, label]) => {
+      const c = el(`<div class="cell hw-drop" data-col="${col}"><h4>${esc(label)}</h4></div>`);
       c.append(itemList(d, '원장님숙제', col, { doneLast: true, defaultStatus: 'todo' }));
+      c.ondragover = e => { if (e.dataTransfer.types.includes('text/hw')) { e.preventDefault(); c.classList.add('drop-on'); } };
+      c.ondragleave = () => c.classList.remove('drop-on');
+      c.ondrop = e => { e.preventDefault(); c.classList.remove('drop-on'); const p = state.reelPlan.find(x => String(x.row) === e.dataTransfer.getData('text/hw')); if (p) assignHomework(p, col); };
       hw.append(c);
     });
+    const assigned = new Set(state.rows.filter(r => r.date === d && r.section === '원장님숙제').map(r => r.end)), pool = state.reelPlan.filter(p => p.type === '숙제' && !p.shot && !assigned.has('plan:' + p.row));
+    const back = el(`<div class="cell hw-pool"><h4>숙제 리스트 · 영상 기획 <small>${pool.length}개 · 위로 끌어 올리거나 '배치'를 누르세요</small></h4></div>`);
+    pool.forEach(p => {
+      const it = el(`<div class="hw-item" draggable="true"><span class="drag" aria-hidden="true">${icon('drag', 16)}</span><a class="tx" target="_blank" rel="noopener"></a><small class="hw-kind">${esc(p.kind || '국내')}</small><button type="button" class="hw-assign">배치</button></div>`);
+      const a = it.querySelector('a'); a.textContent = p.title; a.href = planLink(p.row, p.ref);
+      it.ondragstart = e => { e.dataTransfer.setData('text/hw', String(p.row)); e.dataTransfer.effectAllowed = 'copy'; };
+      it.querySelector('.hw-assign').onclick = () => assignHomework(p, colOf(p));
+      back.append(it);
+    });
+    if (!pool.length) back.append(el('<p class="muted">배치할 숙제가 없습니다.</p>'));
+    hw.append(back);
     box.append(sec('원장님 숙제', hw));
     const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
     box.querySelectorAll('textarea').forEach(autosize);
