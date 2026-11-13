@@ -928,6 +928,13 @@
   document.querySelectorAll('[data-icon]').forEach(n => { n.outerHTML = icon(n.dataset.icon, 18); });
   $('btnCarry').onclick = carryForward;
   $('btnKeys').onclick = () => openShortcuts();
+  // 오른쪽 위 도구: 햄버거(☰)를 누르면 메뉴로 펼친다. 바깥 클릭·Esc·항목 선택으로 닫힘(정렬·접기 토글은 열린 채 유지)
+  const tm = $('toolMenu'), tt = $('toolToggle');
+  const toolClose = () => { tm.hidden = true; tt.setAttribute('aria-expanded', 'false'); };
+  tt.onclick = e => { e.stopPropagation(); tm.hidden = !tm.hidden; tt.setAttribute('aria-expanded', String(!tm.hidden)); if (!tm.hidden) tm.querySelector('button')?.focus(); };
+  tm.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !['btnDoneSort', 'btnCollapse'].includes(b.id)) toolClose(); });
+  addEventListener('pointerdown', e => { if (!tm.hidden && !tm.contains(e.target) && e.target !== tt) toolClose(); });
+  tm.addEventListener('keydown', e => { if (e.key === 'Escape') { toolClose(); tt.focus(); } });
   $('cardEdit').onclick = () => { state.cardEdit = !state.cardEdit; $('cardEdit').textContent = state.cardEdit ? '편집 완료' : '카드 배치 편집'; $('cardEdit').setAttribute('aria-pressed', state.cardEdit); renderReport(); if (state.cardEdit) $('report').scrollIntoView({ block: 'start' }); };
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };

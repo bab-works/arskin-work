@@ -772,3 +772,16 @@ html.printing .card-cols .task-list{grid-template-columns:repeat(3,minmax(0,1fr)
 .report-col{container-type:inline-size}
 @container (max-width:760px){.card-cols{grid-template-columns:minmax(0,1fr)}}
 @media(min-width:901px){.daily{grid-template-columns:minmax(0,1fr) clamp(380px,32vw,520px)}}
+/* 오른쪽 위 도구: 햄버거 메뉴 */
+.actions{position:relative}
+#toolToggle{font-size:18px}
+.tool-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:70;min-width:260px;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.18);padding:6px;display:flex;flex-direction:column}
+.tool-menu[hidden]{display:none}
+.tool-menu button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;background:none;text-align:left;font-size:14px;font-weight:500;color:var(--text-1);border-radius:var(--r-sm)}
+.tool-menu button:hover,.tool-menu button:focus-visible{background:var(--grey50)}
+.tool-menu button[aria-pressed=true]{color:var(--blue-text)}.tool-menu button[aria-pressed=true]::after{content:"✓";margin-left:auto;font-weight:800}
+.tool-menu .kq{width:18px;text-align:center}
+@media(max-width:600px){.tool-menu{position:fixed;left:12px;right:12px;top:auto;bottom:84px;min-width:0}}
+.actions .tool-menu button{justify-content:flex-start;background:none;width:100%}
+.actions .tool-menu button:hover{background:var(--grey50)}
+.tool-menu{min-width:290px}
