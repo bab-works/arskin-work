@@ -900,3 +900,88 @@ html.printing .tl-now{display:none}
 .task-list .row .tx{line-height:22px}
 @media(hover:hover){.task-list .row .project-start{position:absolute;right:36px;top:50%;transform:translateY(-50%);box-shadow:-8px 0 8px var(--card)}
 .task-list .row:not(:hover):not(:focus-within) .project-start{pointer-events:none}}
+/* 사이드바 아이콘 · 하단 정리 */
+.nav>button{display:flex;align-items:center;gap:10px;letter-spacing:-.15px}
+.nav-ic{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
+.nav>button.active .nav-ic{opacity:1;color:var(--blue)}
+.sidefoot{display:flex;flex-direction:column;gap:2px;padding:0 4px}
+.sidefoot a,.sidefoot .nav-edit{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 10px;border-radius:6px;background:none!important;color:var(--text-2)!important;font-size:13px;font-weight:600;text-decoration:none;margin:0}
+.sidefoot a:hover,.sidefoot .nav-edit:hover{background:var(--grey50)!important;color:var(--text-1)!important}
+.jandi-dot{width:8px;height:8px;border-radius:50%;background:#0a8f55}
+.sidefoot-row{display:flex;align-items:center;gap:4px}.sidefoot-row .nav-edit{flex:1}
+.gear{width:44px;height:44px;flex:none;padding:0;border-radius:12px;background:none;color:var(--text-2);display:grid;place-items:center}
+.gear[hidden]{display:none}.gear svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.gear:hover,.gear.active{background:var(--grey100);color:var(--text-1)}
+html.printing .print-shared{margin-top:4px}html.printing .print-shared .task-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 8px}
+/* 현재 시각 구슬: 계속 반짝 */
+.tl-now i::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:#f04452;opacity:.5;animation:nowPing 1.6s ease-out infinite}
+@keyframes nowPing{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.2);opacity:0}}
+@media(prefers-reduced-motion:reduce){.tl-now i::after{animation:none;opacity:0}}
+/* ===== 디자인 피드백 정리 ===== */
+/* 모서리 3종(6/12/999) · 글자 자간 통일 */
+:root{--r-lg:12px;--r-md:12px;--r-sm:6px}
+button,input,select,textarea{letter-spacing:inherit}
+/* 상태 아이콘 색: 어디서나 같게 */
+.sti-todo{color:var(--st-todo)}.sti-doing{color:var(--st-doing)}.sti-done{color:var(--st-done)}.sti-check{color:var(--st-check)}
+/* 큰 화면: 본문을 사이드바 쪽으로 붙여 빈 띠 제거 */
+@media(min-width:901px){.daily{justify-content:start}}
+/* 제목만 있던 '업무보고 및 회의록' 카드 → 카드 없이 제목 줄 */
+.titlebar{background:none;padding:6px 4px 2px}
+.titlebar>span:first-child{font-size:22px;font-weight:700}
+/* 태그 칩: 회색 칩도 글자를 또렷하게 */
+.cat{color:var(--text-1);background:var(--grey100)}
+/* 타임라인 블록: 이름 먼저, 시간은 아래 작게 */
+.tl-block small{display:block;margin:0;font-weight:500;opacity:.85}
+/* 휴가 등록 접기 */
+.sc-leave-toggle{min-height:36px;padding:0 12px;border-radius:999px;background:#fff4e6;color:#b35000;font-size:13px;font-weight:700}
+.sc-leave-toggle[aria-expanded=true]{background:#ffe8cc}
+.sc-leave-btns[hidden]{display:none!important}
+/* 모바일: 위쪽 도구 압축, 빈 날 접기, 하단 메뉴 아이콘 */
+@media(max-width:600px){
+  .topbar{display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
+  .topbar .datestrip{flex:1;min-width:0;overflow-x:auto}
+  #btnCarry{font-size:0;width:44px;padding:0;justify-content:center}#btnCarry i{margin:0}
+  .sc-day:not(:has(.sc-ev-wrap)):not(.holiday){min-height:0;padding-block:8px}
+  .sc-who{display:none}
+  .bottomnav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;font-size:12px;position:relative}
+  .bottomnav .nav-ic{width:22px;height:22px;opacity:1}
+  .bottomnav .nav-badge{position:absolute;top:2px;left:calc(50% + 6px);margin:0}
+  .titlebar>span:first-child{font-size:17px}
+}
+/* 움직임: 화면 전환 · 편집 창 · 대화상자 · 알림 */
+.view:not(.hidden){animation:viewIn var(--dur) var(--ease)}
+@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+#blockEditor:not(.hidden),.popover:not(.hidden){animation:popIn 160ms var(--ease);transform-origin:top center}
+@keyframes popIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+dialog[open]{animation:popIn 180ms var(--ease)}
+.toast:not(.hidden){animation:toastIn var(--dur) var(--ease)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1}}
+.sc-body{transition:height var(--dur) var(--ease)}
+@media(prefers-reduced-motion:reduce){.view,#blockEditor,.popover,dialog,.toast{animation:none!important}}
+@media(max-width:600px){
+  .topbar .datestrip{flex:1 1 auto;width:auto}.topbar .actions{flex:none;width:auto;margin:0}
+  .sc-day:not(:has(.sc-ev-wrap)):not(.holiday){flex-direction:row;align-items:center;padding:4px 8px}
+  .sc-day:not(:has(.sc-ev-wrap)):not(.holiday) .sc-date{flex-direction:row;align-items:baseline;gap:6px}
+  .sc-day:not(:has(.sc-ev-wrap)):not(.holiday) .sc-add{margin-left:auto}
+}
+.sc-leave-toggle{flex:none!important;width:auto!important;margin-left:auto}
+.sidefoot .nav-edit{min-height:44px}.pub-text{min-height:44px;display:inline-flex;align-items:center}
+@media(max-width:600px){.sc-week:not(.sc-month){grid-auto-rows:auto;align-items:start}}
+/* 홈 시계: 얇은 아날로그(부드럽게 흐르는 초침) + 디지털 */
+.aclock{width:184px;height:184px;margin-bottom:10px;filter:drop-shadow(0 10px 24px rgba(0,27,55,.10))}
+.ac-face{fill:#fff;stroke:var(--grey200);stroke-width:1.5}
+.aclock .tk-major{stroke:var(--text-1);stroke-width:3;stroke-linecap:round}
+.aclock .tk{stroke:var(--text-2);stroke-width:1.6;stroke-linecap:round}
+.aclock .tk-min{stroke:var(--grey200);stroke-width:1.2}
+.ac-h line{stroke:var(--text-1);stroke-width:6;stroke-linecap:round}
+.ac-m line{stroke:var(--text-1);stroke-width:3.5;stroke-linecap:round}
+.ac-s line{stroke:var(--blue);stroke-width:1.6;stroke-linecap:round}.ac-s circle{fill:var(--blue)}
+.ac-pin{fill:#fff}
+.ac-h,.ac-m,.ac-s{transform-origin:100px 100px;animation:acSpin linear infinite}
+.ac-s{animation-duration:60s}.ac-m{animation-duration:3600s}.ac-h{animation-duration:43200s}
+@keyframes acSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ac-s{animation-duration:60s;animation-timing-function:steps(60)}}
+.clock-time{font-size:56px}
+@media(max-width:600px){.aclock{width:148px;height:148px}.clock-time{font-size:40px}}
+/* 홈 카드: 위아래로 */
+.home-cards{grid-template-columns:minmax(0,1fr)!important;max-width:560px}

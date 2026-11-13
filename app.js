@@ -744,11 +744,11 @@
       }
     }
     (isDirector() ? state.teamTL : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
-      const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정"><small>공통 · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+      const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정 ${esc(r.start)}~${esc(r.end)}">${esc(r.text)}<small>공통 · ${esc(r.start)}~${esc(r.end)}</small></div>`);
       place(b, r.start, r.end); b.onclick = () => isDirector() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
-      const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}"><small>${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+      const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}">${esc(r.text)}<small>${esc(r.start)}~${esc(r.end)}</small></div>`);
       if (c) Object.assign(b.style, { background: c[0], color: c[1], borderLeft: `3px solid ${c[1]}` });
       place(b, r.start, r.end); b._r = r;
       b.onpointerdown = e => startMove(e, r, b, grid);
@@ -955,6 +955,7 @@
       b.title = d; b.onclick = () => { state.sel = d; state.sharedAnchor = d; render(); loadShared(); };
       s.append(b);
     });
+    requestAnimationFrame(() => { s.scrollLeft = s.scrollWidth; }); // 좁은 화면: 오늘이 보이게
   }
   const personInfo = () => C.PEOPLE.find(p => p.name === state.person);
   function renderPeople() {
@@ -1052,11 +1053,14 @@
   addEventListener('beforeprint', () => {
     if (state.view !== 'daily') setView('daily');
     document.documentElement.classList.add('printing');
+    // 마케팅 공통 업무도 같은 A4에: 진행 중 + 이날 완료한 것만 보고서 끝에 붙였다가 인쇄 후 제거
+    const list = state.shared.filter(r => r.section === '공통업무' && (!isDone(r) || String(r.completed || r.date).slice(0, 10) === state.sel));
+    if (list.length && !isDirector()) $('report').append(el(`<section class="sec print-shared"><h3>마케팅 공통 업무 <small class="sec-count">${list.filter(isDone).length}/${list.length}</small></h3><div class="task-list">${list.map(r => `<div class="row${isDone(r) ? ' done' : ''}"><span class="pst">${statusIcon(statusCode(r.status))}</span><div class="tx">${esc(r.text)}</div></div>`).join('')}</div></section>`));
     const mm = 96 / 25.4, h = $('report').scrollHeight;
     document.documentElement.style.setProperty('--print-zoom', Math.min(1, (279 * mm) / h).toFixed(3));
     document.documentElement.style.setProperty('--print-zoom2', Math.min(1, (279 * mm) / $('donePage').scrollHeight).toFixed(3));
   });
-  addEventListener('afterprint', () => document.documentElement.classList.remove('printing'));
+  addEventListener('afterprint', () => { document.documentElement.classList.remove('printing'); document.querySelectorAll('.print-shared').forEach(n => n.remove()); });
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
   const weekStart = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
@@ -1148,11 +1152,12 @@
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
     // ‹ [2026년 11월] › 오늘 — 가운데 버튼을 누르면 달 고르기
-    const nav = el(`<div class="sc-navigation"><span class="sc-nav-mid"><button type="button" class="sc-prev" aria-label="이전 ${monthly ? '달' : '주'}">‹</button><button type="button" class="sc-month-btn" aria-haspopup="dialog" aria-label="달 고르기">${+anchor.slice(0, 4)}년 ${+anchor.slice(5, 7)}월${monthly ? '' : ` <small>${ws.slice(5).replace('-', '.')}~${shiftDate(ws, N - 1).slice(5).replace('-', '.')}</small>`} ▾</button><button type="button" class="sc-next" aria-label="다음 ${monthly ? '달' : '주'}">›</button><button type="button" class="sc-today">오늘</button></span>${dir ? '' : `<span class="sc-leave-btns" role="group" aria-label="연차 등록">${LEAVE_KINDS.map(k => `<button type="button" data-leave="${k}" aria-pressed="${state.leaveMode === k}">${k}</button>`).join('')}</span>`}</div>`);
+    const nav = el(`<div class="sc-navigation"><span class="sc-nav-mid"><button type="button" class="sc-prev" aria-label="이전 ${monthly ? '달' : '주'}">‹</button><button type="button" class="sc-month-btn" aria-haspopup="dialog" aria-label="달 고르기">${+anchor.slice(0, 4)}년 ${+anchor.slice(5, 7)}월${monthly ? '' : ` <small>${ws.slice(5).replace('-', '.')}~${shiftDate(ws, N - 1).slice(5).replace('-', '.')}</small>`} ▾</button><button type="button" class="sc-next" aria-label="다음 ${monthly ? '달' : '주'}">›</button><button type="button" class="sc-today">오늘</button></span>${dir ? '' : `<button type="button" class="sc-leave-toggle" aria-expanded="${!!state.leaveOpen || !!state.leaveMode}">휴가 등록</button><span class="sc-leave-btns" role="group" aria-label="연차 등록"${state.leaveOpen || state.leaveMode ? '' : ' hidden'}>${LEAVE_KINDS.map(k => `<button type="button" data-leave="${k}" aria-pressed="${state.leaveMode === k}">${k}</button>`).join('')}</span>`}</div>`);
     const go = a => { state.sharedAnchor = a; renderShared(); loadShared(); };
     nav.querySelector('.sc-prev').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 2, 1)) : shiftDate(ws, -7));
     nav.querySelector('.sc-next').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 1)) : shiftDate(ws, 7));
     nav.querySelector('.sc-today').onclick = () => go(today);
+    nav.querySelector('.sc-leave-toggle')?.addEventListener('click', () => { state.leaveOpen = !state.leaveOpen; if (!state.leaveOpen) state.leaveMode = null; renderShared(); });
     nav.querySelector('.sc-month-btn').onclick = e => openMonthPicker(e.currentTarget, anchor, go);
     nav.querySelectorAll('[data-leave]').forEach(b => b.onclick = () => { state.leaveMode = state.leaveMode === b.dataset.leave ? '' : b.dataset.leave; renderShared(); if (state.leaveMode) toast(`${state.leaveMode}: 캘린더에서 날짜를 누르세요 (다시 누르면 취소)`); });
     body.append(nav);
@@ -1246,7 +1251,7 @@
     if (!shown.length) list.append(el(`<p class="muted shared-empty">${DONE_TAB ? '완료한 공통 업무가 없습니다.' : '진행할 업무가 없습니다.'}</p>`));
     tasks.append(list);
     // 등록할 때 카테고리를 고르거나 새로 입력 → '분류) 내용' 형식으로 저장
-    const form = el(`<form class="cat-add"><input class="cat-in" list="catList" placeholder="분류" aria-label="카테고리" value="${esc(state.sharedCat)}" maxlength="12"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist><input class="txt-in" placeholder="+ 공통 업무 추가 (Enter)" aria-label="공통 업무 내용"><button type="submit" hidden>추가</button></form>`);
+    const form = el(`<form class="cat-add"><input class="cat-in" list="catList" placeholder="분류(선택)" aria-label="카테고리 (선택)" value="${esc(state.sharedCat)}" maxlength="12"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist><input class="txt-in" placeholder="+ 공통 업무 추가 (Enter)" aria-label="공통 업무 내용"><button type="submit" hidden>추가</button></form>`);
     form.onsubmit = e => {
       e.preventDefault(); const [ci, ti] = form.querySelectorAll('input'); const t = ti.value.trim(); if (!t) return;
       const c = ci.value.trim().replace(/[)\s]/g, '');
@@ -1292,7 +1297,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin;
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
@@ -1506,6 +1511,13 @@
     // 가운데: 파란 자명종 + 초 단위로 흐르는 시계 (마케터는 그 아래 큰 재촉 버튼)
     box.innerHTML = `<h1 class="sr-only">아르스킨 대시보드</h1>
       <section class="clock-hero" aria-label="현재 시각">
+        <svg class="aclock" viewBox="0 0 200 200" aria-hidden="true">
+          <circle cx="100" cy="100" r="94" class="ac-face"/><line x1="100" y1="14" x2="100" y2="30" transform="rotate(0 100 100)" class="tk-major"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(30 100 100)" class="tk"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(60 100 100)" class="tk"/><line x1="100" y1="14" x2="100" y2="30" transform="rotate(90 100 100)" class="tk-major"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(120 100 100)" class="tk"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(150 100 100)" class="tk"/><line x1="100" y1="14" x2="100" y2="30" transform="rotate(180 100 100)" class="tk-major"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(210 100 100)" class="tk"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(240 100 100)" class="tk"/><line x1="100" y1="14" x2="100" y2="30" transform="rotate(270 100 100)" class="tk-major"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(300 100 100)" class="tk"/><line x1="100" y1="17" x2="100" y2="24" transform="rotate(330 100 100)" class="tk"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(6 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(12 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(18 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(24 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(36 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(42 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(48 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(54 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(66 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(72 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(78 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(84 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(96 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(102 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(108 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(114 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(126 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(132 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(138 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(144 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(156 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(162 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(168 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(174 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(186 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(192 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(198 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(204 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(216 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(222 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(228 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(234 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(246 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(252 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(258 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(264 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(276 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(282 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(288 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(294 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(306 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(312 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(318 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(324 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(336 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(342 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(348 100 100)" class="tk-min"/><line x1="100" y1="14" x2="100" y2="17" transform="rotate(354 100 100)" class="tk-min"/>
+          <g class="ac-h"><line x1="100" y1="108" x2="100" y2="56"/></g>
+          <g class="ac-m"><line x1="100" y1="112" x2="100" y2="34"/></g>
+          <g class="ac-s"><line x1="100" y1="122" x2="100" y2="26"/><circle cx="100" cy="100" r="4.5"/></g>
+          <circle cx="100" cy="100" r="2" class="ac-pin"/>
+        </svg>
         <p class="clock-date"></p>
         <p class="clock-time" aria-live="off"></p>
         ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
@@ -1517,6 +1529,8 @@
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
     box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
+    { const k = new Date(Date.now() + 9 * 36e5), sec = k.getUTCSeconds() + k.getUTCMilliseconds() / 1000, min = k.getUTCMinutes() * 60 + sec, hr = (k.getUTCHours() % 12) * 3600 + min;
+      [['.ac-s', sec], ['.ac-m', min], ['.ac-h', hr]].forEach(([c, t]) => box.querySelector(c).style.animationDelay = `-${t}s`); }
     loadExtMeets().then(() => paintExt(box));
     const tick = () => {
       if (!box.isConnected || state.view !== 'home') return clearInterval(renderHome.t);
@@ -1672,7 +1686,7 @@
     navGroups().forEach(b => {
       b.querySelector('.nav-grip')?.remove();
       if (!on) return;
-      const g = el(`<span class="nav-grip" role="button" tabindex="0" aria-label="${b.firstChild.textContent.trim()} 순서 이동 (끌거나 ↑↓)">${icon('drag', 16)}</span>`);
+      const g = el(`<span class="nav-grip" role="button" tabindex="0" aria-label="${b.textContent.trim()} 순서 이동 (끌거나 ↑↓)">${icon('drag', 16)}</span>`);
       g.onpointerdown = e => {
         e.preventDefault(); e.stopPropagation();
         const move = ev => {
