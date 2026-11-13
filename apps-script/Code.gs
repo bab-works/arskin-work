@@ -40,7 +40,7 @@ function doGet(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code); return json({ me: me, admin: me === ADMIN, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ me: me, admin: adm, deny: adm ? [] : permsAll_()[me] || [], perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -72,6 +72,7 @@ function doPost(e) {
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'permsSave') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('권한은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ perms: permsSave_(body.perms) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('휴일은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
   if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
@@ -902,4 +903,20 @@ function tagTrash_(action, tag, me) {
       trash.deleteRow(j);
     }
   } finally { lock.releaseLock(); }
+}
+
+
+// 메뉴 권한: 관리자가 사람별로 숨길 메뉴를 고른다. 스크립트 속성 PERMS = {"이름":["revenue","team:check",...]}
+// shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
+var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'revenue'];
+function permsAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PERMS') || '{}'); } catch (e) { return {}; } }
+function memberNames_() {
+  var map = {}; try { map = JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESS_CODES') || '{}'); } catch (e) {}
+  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n]) return false; seen[n] = 1; return true; }); // 코드는 내보내지 않고 이름만
+}
+function permsSave_(perms) {
+  var names = memberNames_(), out = {};
+  Object.keys(perms || {}).forEach(function (n) { if (names.indexOf(n) < 0) return; var d = (perms[n] || []).filter(function (k) { return PERM_KEYS.indexOf(k) >= 0; }); if (d.length) out[n] = d; });
+  PropertiesService.getScriptProperties().setProperty('PERMS', JSON.stringify(out));
+  return out;
 }

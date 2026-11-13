@@ -990,7 +990,7 @@
     $('viewSettings').classList.toggle('hidden', v !== 'settings');
     if (v === 'settings') renderSettings();
     if (v === 'home') renderHome();
-    if (v === 'team') { state.teamPage = state.teamPage || (isBoss() ? 'tags' : 'check'); renderTeam(); if (!isBoss()) loadTeam(todayKst()).then(renderTeam); }
+    if (v === 'team') { state.teamPage = state.teamPage || (isBoss() ? 'tags' : 'check'); renderTeam(); if (!isBoss() && can('team:check')) loadTeam(todayKst()).then(renderTeam); }
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('active', v === 'team' && b.dataset.team === state.teamPage));
     if (v === 'director') { renderDirector(); loadDirector(); }
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
@@ -1267,6 +1267,15 @@
 
   const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
   // 설정: 휴일 관리(관리자=미스타전 코드만 추가·삭제, 나머지는 보기)
+  // 메뉴 권한 (관리자가 설정에서 사람별로 끔). 관리자는 항상 전부.
+  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['team:tags', '└ 태그 관리'], ['team:leaves', '└ 연월차'], ['revenue', '월간 매출표']];
+  const can = k => !(state.deny || []).includes(k);
+  function applyPerms() {
+    ['calendar', 'daily', 'director', 'team', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
+    document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('perm-off', !can('team:' + b.dataset.team)));
+    const goKey = { sheet: 'director' }; document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('perm-off', !can(goKey[b.dataset.go] || b.dataset.go)));
+    if (state.view && state.view !== 'home' && state.view !== 'settings' && !can(state.view === 'daily' && isDirector() ? 'director' : state.view)) setView('home');
+  }
   function renderSettings() {
     const box = $('settingsHub'), adm = state.admin, y = todayKst().slice(0, 4);
     const list = Object.values(state.holidays).filter(h => h.date >= y).sort((a, b) => a.date < b.date ? -1 : 1);
@@ -1274,7 +1283,15 @@
       <section class="sec"><h3>휴일 관리 <small class="sec-count">${list.length}일</small></h3><p class="muted">공휴일은 Google 캘린더에서 자동으로 가져옵니다(노동절 제외). 회사 휴무일만 직접 추가하세요.</p>
       ${adm ? '<form class="hol-add"><input type="date" required aria-label="날짜"><input placeholder="이름 (예: 창립기념일)" aria-label="휴일 이름" maxlength="40"><button class="primary">추가</button></form>' : ''}
       <ul class="hol-list">${list.map(h => `<li><span>${h.date.slice(2).replace(/-/g, '.')} (${WD[new Date(h.date + 'T00:00:00').getDay()]})</span><b>${esc(h.name)}</b>${h.source === 'manual' && adm ? `<button type="button" data-date="${h.date}" aria-label="${esc(h.name)} 삭제">${icon('x', 14)}</button>` : `<small>${h.source === 'manual' ? '회사 휴무' : '공휴일'}</small>`}</li>`).join('')}</ul></section>
+      ${adm ? `<section class="sec perm-sec"><h3>메뉴 권한</h3><p class="muted">사람(접속 코드)마다 볼 수 있는 메뉴를 고릅니다. 끄면 그 사람 사이드바·하단 메뉴·홈 바로가기에서 사라집니다. 관리자는 항상 전부 보입니다.</p>
+        <div class="perm-wrap"><table class="perm-table"><thead><tr><th scope="col">메뉴</th>${state.members.map(n => `<th scope="col">${esc(n === DIRECTOR_WHO ? '원장님' : disp(n))}</th>`).join('')}</tr></thead><tbody>${PERMS.map(([k, label]) => `<tr${k.includes(':') ? ' class="perm-sub"' : ''}><th scope="row">${label}</th>${state.members.map(n => `<td><label class="perm-cell"><input type="checkbox" data-who="${esc(n)}" data-k="${k}"${(state.perms[n] || []).includes(k) ? '' : ' checked'} aria-label="${esc(disp(n))} ${label.replace('└ ', '')} 보기"></label></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <div class="perm-actions"><button type="button" class="primary" id="permSave">권한 저장</button></div></section>` : ''}
       <section class="sec"><h3>메뉴</h3><p class="muted">사이드바 아래 '메뉴 순서 편집'으로 대메뉴 순서를 바꿀 수 있습니다(브라우저마다 저장).</p></section>`;
+    const ps = box.querySelector('#permSave');
+    if (ps) ps.onclick = async () => {
+      const perms = {}; box.querySelectorAll('.perm-table input:not(:checked)').forEach(i => (perms[i.dataset.who] ||= []).push(i.dataset.k));
+      ps.disabled = true; try { state.perms = (await api.post({ action: 'permsSave', perms })).perms || {}; toast('권한을 저장했습니다. 각자 새로고침하면 적용됩니다'); } catch (e) { toast(e.message); } ps.disabled = false;
+    };
     const edit = async body => { try { setHolidays((await api.post(body)).holidays); state.dates = workDates(C.DAYS); renderSettings(); render(); } catch (e) { toast(e.message); } };
     const f = box.querySelector('.hol-add'); if (f) f.onsubmit = e => { e.preventDefault(); const [d, n] = f.querySelectorAll('input'); edit({ action: 'holidayAdd', date: d.value, name: n.value }); };
     box.querySelector('.hol-list').onclick = e => { const b = e.target.closest('[data-date]'); if (b) edit({ action: 'holidayDelete', date: b.dataset.date }); };
@@ -1298,7 +1315,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members || []; applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
@@ -1548,8 +1565,9 @@
   /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
   function renderTeam() {
     if (isBoss() && (state.teamPage || 'check') === 'check') state.teamPage = 'tags'; // 원장님은 팀 업무 체크 접근 불가
+    { const ok = ['check', 'tags', 'leaves'].filter(k => can('team:' + k) && !(k === 'check' && isBoss())); if (!ok.includes(state.teamPage || 'check')) state.teamPage = ok[0]; if (!ok.length) { $('teamHub').innerHTML = '<div class="empty-note">마케팅 공용에서 볼 수 있는 메뉴가 없습니다. 관리자에게 권한을 요청하세요.</div>'; return; } }
     const box = $('teamHub'), page = state.teamPage || 'check';
-    box.innerHTML = `<div class="seg team-seg">${isBoss() ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button><button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button></div>`;
+    box.innerHTML = `<div class="seg team-seg">${isBoss() || !can('team:check') ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}${can('team:tags') ? `<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button>` : ''}${can('team:leaves') ? `<button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button>` : ''}</div>`;
     box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
     if (page === 'tags') return renderTagAdmin(box);
     if (page === 'leaves') return renderLeaves(box);
