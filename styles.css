@@ -1047,3 +1047,8 @@ dialog[open]{animation:popIn 180ms var(--ease)}
 .lv-item .del:hover{color:#c92a2a}
 .lv-empty{font-size:14px;color:var(--text-2);padding:8px 0}
 @media(max-width:700px){.lv-lists{grid-template-columns:minmax(0,1fr)}.lv-item{grid-template-columns:70px 1fr auto 44px}.lv-memo{display:none}}
+/* 인쇄: 가상 릴스 행 들여쓰기 원인(빈 손잡이 자리) 제거, 공통 업무 아이콘 크기 통일 */
+html.printing .drag-spacer{display:none}
+html.printing .print-shared .pst svg{width:12px;height:12px}html.printing .print-shared .row{min-height:0;padding:0 2px;gap:4px}
+html.printing .week-pub li{font-size:11px;padding:1px 0}
+html.printing .pub-text{min-height:0;display:inline}

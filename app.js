@@ -514,6 +514,7 @@
         });
         items[0].n.before(g); items.forEach(i => i.n.remove());
       });
+      node.querySelector('.sec-count').textContent = `${list.querySelectorAll(':scope > .row.done').length}/${list.querySelectorAll(':scope > .row').length}`; // 화면에 보이는 줄 기준(기획 미저장 항목 포함, 단계 묶음은 1줄)
       const rest = [...list.querySelectorAll(':scope > [data-id]:not(.reel), :scope > .reel-group')];
       if (planRows.length && rest.length) { const h = el(`<h4 class="reel-head">직접 추가 · ${rest.length}</h4>`); add.before(h); rest.forEach(n => add.before(n)); }
     }
