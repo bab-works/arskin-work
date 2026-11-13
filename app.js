@@ -1130,7 +1130,10 @@
     bar.onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; state.sharedCat = b.dataset.cat; renderShared(); };
     if (cats.length) tasks.append(bar);
     const shown = latestRows.filter(r => !state.sharedCat || catOf(r) === state.sharedCat).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
-    (state.doneLast ? rankSort(shown) : shown).forEach(r => list.append(itemRow(r)));
+    // '완료 업무 접기'도 공통 업무에 적용: 완료한 줄은 숨기고 '완료 N건 보기'
+    const fold = state.collapse && !state.expanded.has('shared:' + SEC); let hiddenN = 0;
+    (state.doneLast ? rankSort(shown) : shown).forEach(r => { const n = itemRow(r); if (fold && isDone(r) && !sortHold.has(r.id)) { n.classList.add('collapsed'); hiddenN++; } list.append(n); });
+    if (hiddenN) { const m = el(`<button class="more shared-more">… 완료 ${hiddenN}건 보기</button>`); m.onclick = () => { state.expanded.add('shared:' + SEC); renderShared(); }; list.append(m); }
     tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     tasks.append(list);
     // 등록할 때 카테고리를 고르거나 새로 입력 → '분류) 내용' 형식으로 저장
