@@ -790,3 +790,9 @@ html.printing .card-cols .task-list{grid-template-columns:repeat(3,minmax(0,1fr)
 .shared-task-grid>.shared-more{grid-column:1/-1;justify-self:start}
 .shared-tabs{max-width:420px}
 .shared-task-grid>.shared-empty{grid-column:1/-1;margin:4px 0}
+/* 이번 주 발행: 날짜 · 내용 */
+.week-pub{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.week-pub li{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--grey100);font-size:14px}
+.week-pub li:last-child{border-bottom:none}
+.pub-date{flex:none;width:72px;color:var(--text-2);font-size:13px;font-variant-numeric:tabular-nums}
+.pub-text{flex:1;min-width:0;overflow-wrap:anywhere}

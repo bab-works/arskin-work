@@ -289,6 +289,7 @@
     let hidden = 0;
     rows.forEach(r => { const n = itemRow(r, opts); if (hide && isDone(r)) { n.classList.add('collapsed'); hidden++; } box.append(n); });
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
+    else if (state.collapse && TASK_KEYS.has(section) && state.expanded.has(key) && rows.some(isDone)) { const m = el('<button class="more">▲ 완료 접기</button>'); m.onclick = () => { state.expanded.delete(key); render(); }; box.append(m); }
     box.append(addInput(text => opts.onAdd ? opts.onAdd(text) : addRow({ date, section, col: col ?? '', text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
     return box;
   }
@@ -581,7 +582,7 @@
     const cards = {};
     mySections().forEach(s => { cards[s.key] = taskSection(d, s); });
     const pub = publishingFor(d);
-    if (pub) { cards.pub = sec('오늘 발행 (콘텐츠 캘린더)', pub); cards.pub.id = 'sec-pub'; }
+    if (pub) { cards.pub = sec('이번 주 발행', pub); cards.pub.id = 'sec-pub'; }
     const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); memo.id = 'sec-memo'; cards.memo = memo;
     box.append(cardColumns(cards));
     box.querySelectorAll('textarea').forEach(autosize);
@@ -838,14 +839,17 @@
     return { month, days };
   }
   const chip = s => `<span class="chip ${/💚|💜/.test(s) ? 'blog' : s.includes('@') ? 'ig' : ''}" title="${esc(s)}">${esc(s)}</span>`;
+  // 이번 주(월~일) 발행 예정: 날짜와 내용만 한 줄씩 (콘텐츠 캘린더 시트에서)
   function publishingFor(d) {
     const c = state.calendar; if (!c) return null;
-    const [y, m, day] = d.split('-').map(Number);
-    if (m !== c.month) return null;
-    const items = c.days[day] || [];
-    const w = el(`<div class="today-pub">${items.length ? items.map(chip).join('') : '<span class="note-empty">발행 예정 없음</span>'}</div>`);
-    return w;
+    const ws = weekStart(d), lines = [];
+    for (let i = 0; i < 7; i++) {
+      const day = shiftDate(ws, i), [, m, dd] = day.split('-').map(Number); if (m !== c.month) continue;
+      (c.days[dd] || []).forEach(t => lines.push(`<li><span class="pub-date">${m}/${dd} (${WD[new Date(day + 'T00:00:00').getDay()]})</span><span class="pub-text">${esc(t.replace(/^[^\p{L}\p{N}@]+/u, ''))}</span></li>`));
+    }
+    return el(`<ul class="week-pub">${lines.join('') || '<li class="note-empty">이번 주 발행 예정이 없습니다</li>'}</ul>`);
   }
+
   /* ---------- print-only layout: 시트처럼 좌/우 항목을 한 줄씩 짝지은 표 (행 단위로만 페이지 분할) ---------- */
 
 
@@ -1134,6 +1138,7 @@
     const fold = state.collapse && !state.expanded.has('shared:' + SEC); let hiddenN = 0;
     (state.doneLast ? rankSort(shown) : shown).forEach(r => { const n = itemRow(r); if (fold && isDone(r) && !sortHold.has(r.id)) { n.classList.add('collapsed'); hiddenN++; } list.append(n); });
     if (hiddenN) { const m = el(`<button class="more shared-more">… 완료 ${hiddenN}건 보기</button>`); m.onclick = () => { state.expanded.add('shared:' + SEC); renderShared(); }; list.append(m); }
+    else if (state.collapse && state.expanded.has('shared:' + SEC) && shown.some(isDone)) { const m = el('<button class="more shared-more">▲ 완료 접기</button>'); m.onclick = () => { state.expanded.delete('shared:' + SEC); renderShared(); }; list.append(m); }
     tasks.querySelector('.sec-count').textContent = DONE_TAB ? `${shown.length}건 완료` : `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     if (!shown.length) list.append(el(`<p class="muted shared-empty">${DONE_TAB ? '완료한 공통 업무가 없습니다.' : '진행할 업무가 없습니다.'}</p>`));
     tasks.append(list);
@@ -1283,7 +1288,7 @@
     if (document.querySelector('.keys-dlg')) return;
     const dlg = el(`<dialog class="code-dlg keys-dlg" aria-labelledby="keysTitle"><h2 id="keysTitle">단축키</h2><dl>
       <dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
-      <dt><kbd>Esc</kbd></dt><dd>수정 취소, 창·메뉴 닫기</dd><dt><kbd>Space</kbd></dt><dd>상태 버튼에서 다음 상태로</dd><dt><kbd>Shift</kbd>+<kbd>F10</kbd></dt><dd>상태 선택 메뉴</dd><dt><kbd>?</kbd></dt><dd>이 도움말</dd></dl>
+      <dt><kbd>C</kbd></dt><dd>완료 업무 접기 / 펼치기</dd><dt><kbd>Esc</kbd></dt><dd>수정 취소, 창·메뉴 닫기</dd><dt><kbd>Space</kbd></dt><dd>상태 버튼에서 다음 상태로</dd><dt><kbd>Shift</kbd>+<kbd>F10</kbd></dt><dd>상태 선택 메뉴</dd><dt><kbd>?</kbd></dt><dd>이 도움말</dd></dl>
       <button type="button" class="primary">닫기</button></dialog>`);
     dlg.querySelector('button').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove();
     document.body.append(dlg); dlg.showModal();
@@ -1291,6 +1296,7 @@
   document.addEventListener('keydown', e => {
     if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || document.querySelector('dialog[open]')) return;
     if (e.key === '?') { e.preventDefault(); openShortcuts(); }
+    if ((e.key === 'c' || e.key === 'C' || e.key === 'ㅊ') && !e.shiftKey) { e.preventDefault(); $('btnCollapse').click(); toast(state.collapse ? '완료 업무를 접었습니다 (C)' : '완료 업무를 펼쳤습니다 (C)'); }
     if ((e.key === 'n' || e.key === 'N' || e.key === 'ㅜ') && state.view === 'daily') {
       const i = document.querySelector('#sec-변동업무 .add input') || document.querySelector('#report .add input');
       if (i) { e.preventDefault(); i.scrollIntoView({ block: 'center' }); i.focus(); }
