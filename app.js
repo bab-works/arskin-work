@@ -1575,16 +1575,26 @@
     });
     box.append(grid);
   }
+  // 연월차: 사람별 요약 카드 · 월별 사용 표 · 예정/지난 내역
   function renderLeaves(box) {
-    const y = todayKst().slice(0, 4), days = l => l.kind === '연차' ? 1 : 0.5;
-    const list = state.leaves.filter(l => l.date.startsWith(y)).sort((a, b) => b.date.localeCompare(a.date));
-    box.append(el(`<div class="dir-head"><h1>연월차</h1><p>${y}년 사용 내역입니다. 등록은 마케팅 공용 캘린더의 <b>연차 · 오전 반차 · 오후 반차</b> 버튼으로 합니다. 연차 1일, 반차 0.5일로 셉니다.</p></div>`));
-    box.append(el(`<div class="home-cards">${marketers().map(p => { const mine = list.filter(l => l.who === p.name); return `<section class="home-card"><h2>${esc(disp(p.name))}</h2><div class="home-nums"><div><b>${mine.reduce((a, l) => a + days(l), 0)}</b><span>사용 일수</span></div><div><b>${mine.filter(l => l.kind === '연차').length}</b><span>연차</span></div><div><b>${mine.filter(l => l.kind !== '연차').length}</b><span>반차</span></div></div></section>`; }).join('')}</div>`));
-    const sec2 = el('<section class="sec leave-list"><h3>내역</h3></section>');
-    if (!list.length) sec2.append(el('<p class="muted">아직 등록된 연월차가 없습니다.</p>'));
-    list.forEach(l => { const r = el(`<div class="row"><span class="sc-leave k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><div class="tx">${fmtDate(l.date)} · <b>${esc(disp(l.who))}</b>${l.memo ? ' · ' + esc(l.memo) : ''}</div><button type="button" class="del" aria-label="삭제">${icon('x', 14)}</button></div>`);
-      r.querySelector('.del').onclick = () => { if (confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); }; sec2.append(r); });
-    box.append(sec2);
+    const y = todayKst().slice(0, 4), today = todayKst(), days = l => l.kind === '연차' ? 1 : 0.5, ppl = marketers();
+    const list = state.leaves.filter(l => l.date.startsWith(y)).sort((a, b) => a.date.localeCompare(b.date));
+    const col = n => C.PEOPLE.find(p => p.name === n)?.color || '#3182f6', sum = a => a.reduce((t, l) => t + days(l), 0);
+    const fmtD = d => `${+d.slice(5, 7)}/${+d.slice(8)} (${WD[new Date(d + 'T00:00:00').getDay()]})`;
+    box.append(el(`<header class="lv-head"><div><h1>연월차</h1><p>${y}년 · 등록은 마케팅 공용 캘린더의 <b>휴가 등록</b>에서 해요. 연차 1일, 반차 0.5일.</p></div></header>`));
+    box.append(el(`<div class="lv-people">${ppl.map(p => { const mine = list.filter(l => l.who === p.name), next = mine.find(l => l.date >= today);
+      return `<section class="lv-card" style="--pc:${col(p.name)}"><div class="lv-who"><span class="lv-av">${esc(disp(p.name).slice(0, 1))}</span><b>${esc(disp(p.name))}</b></div>
+        <div class="lv-big"><strong>${sum(mine)}</strong><span>일 사용</span></div>
+        <div class="lv-split"><span>연차 <b>${mine.filter(l => l.kind === '연차').length}</b></span><span>반차 <b>${mine.filter(l => l.kind !== '연차').length}</b></span></div>
+        <p class="lv-next">${next ? `다음 휴가 <b>${fmtD(next.date)}</b> ${esc(next.kind)}` : '예정된 휴가 없음'}</p></section>`; }).join('')}</div>`));
+    const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), curM = today.slice(5, 7);
+    box.append(el(`<section class="lv-panel"><h2>월별 사용</h2><div class="lv-table-wrap"><table class="lv-table"><thead><tr><th scope="col">이름</th>${months.map(m => `<th scope="col"${m === curM ? ' class="cur"' : ''}>${+m}월</th>`).join('')}<th scope="col">합계</th></tr></thead><tbody>${ppl.map(p => { const mine = list.filter(l => l.who === p.name);
+      return `<tr style="--pc:${col(p.name)}"><th scope="row"><i class="lv-dot"></i>${esc(disp(p.name))}</th>${months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<td class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}">${v ? `<span style="--a:${Math.min(1, .25 + v * .25)}">${v}</span>` : ''}</td>`; }).join('')}<td class="lv-total">${sum(mine)}</td></tr>`; }).join('')}</tbody></table></div></section>`));
+    const item = l => `<li class="lv-item" style="--pc:${col(l.who)}"><span class="lv-date">${fmtD(l.date)}</span><span class="lv-person"><i class="lv-dot"></i>${esc(disp(l.who))}</span><span class="lv-kind k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><span class="lv-memo">${esc(l.memo || '')}</span><button type="button" class="del" data-id="${esc(l.id)}" aria-label="${esc(disp(l.who))} ${l.date} ${esc(l.kind)} 삭제">${icon('x', 14)}</button></li>`;
+    const up = list.filter(l => l.date >= today), past = list.filter(l => l.date < today).reverse();
+    const panel = el(`<div class="lv-lists"><section class="lv-panel"><h2>예정 <small>${up.length}</small></h2><ul class="lv-ul">${up.map(item).join('') || '<li class="lv-empty">예정된 휴가가 없어요</li>'}</ul></section><section class="lv-panel"><h2>지난 내역 <small>${past.length}</small></h2><ul class="lv-ul">${past.map(item).join('') || '<li class="lv-empty">아직 사용한 휴가가 없어요</li>'}</ul></section></div>`);
+    panel.onclick = e => { const b = e.target.closest('.del'); if (!b) return; const l = list.find(x => x.id === b.dataset.id); if (l && confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
+    box.append(panel);
   }
   // 태그 관리: 카드로 4~5개씩. 지운 태그는 '태그 휴지통'(영구 보관)으로 가고 칩 표시를 멈춘다. 복원 가능.
   function renderTagAdmin(box) {
