@@ -361,6 +361,7 @@
     if (!virtual) row.append(dragHandle(r));
     row.append(el(`<span class="pst">${statusIcon(statusCode(r.status))}</span>`));
     const a = el(`<a class="tx reel-title" target="_blank" rel="noopener" title="영상 기획 열기"></a>`); a.href = reelLink(r); a.textContent = r.text; row.append(a);
+    row.append(el(`<small class="reel-print">${steps.size ? REEL_STEPS.filter(x => steps.has(x)).join('·') + ' 완료' : ''}</small>`)); // 인쇄용 짧은 표시
     const box = el('<div class="reel-steps" role="group" aria-label="진행 단계"></div>');
     REEL_STEPS.forEach(st => {
       const b = el(`<button type="button" aria-pressed="${steps.has(st)}">${st}</button>`);

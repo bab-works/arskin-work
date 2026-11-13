@@ -616,3 +616,10 @@ html.printing .report-pair{display:block}
 /* 인쇄 제목줄: 사람별 색(써니 차콜, 미스타전 블루, 쩡이 그린, 원장님 퍼플) + 흰 글자 */
 html.printing .titlebar{background:var(--tb-bg,#191f28)!important;border-color:var(--tb-bg,#191f28)!important;color:#fff}
 html.printing .titlebar .meta,html.printing .titlebar span{color:#fff!important}
+/* 인쇄: 릴스 단계 버튼 대신 진행한 단계만 짧게 */
+.reel-print{display:none}
+html.printing .reel-steps{display:none!important}
+html.printing .reel-print{display:inline;margin-left:6px;font-size:10px;color:#0a7a4a;font-weight:600;white-space:nowrap}
+html.printing .row.reel{flex-wrap:nowrap}
+html.printing .reel-title{min-height:0;margin:0;text-decoration:none}
+html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;height:12px}
