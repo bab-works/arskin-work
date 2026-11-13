@@ -1163,20 +1163,28 @@
   /* ---------- 원장님 알림: 원장님 접속 코드로 연 창에서만. 재촉(마케터 버튼)과 미달성 경고 ---------- */
   const NAG = '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥';
   const isBoss = () => state.dir.me === DIRECTOR_WHO;
-  function nag(reason) {
+  function nag(reason, ackAt) { // ackAt: 재촉으로 뜬 경고면 닫을 때 '확인'을 서버에 기록
     try { if ('Notification' in window && Notification.permission === 'granted') new Notification('아르스킨 대시보드', { body: NAG, icon: 'assets/arskin-icon.png', tag: 'arskin-nag' }); } catch {}
     if (document.querySelector('.nag-dlg')) return;
     const dlg = el(`<dialog class="code-dlg nag-dlg" role="alertdialog" aria-labelledby="nagT"><h2 id="nagT">${esc(NAG)}</h2><p>${esc(reason)}</p><div class="tr-acts"><button type="button" class="nag-later">나중에</button><button type="button" class="primary nag-go">워크시트 열기</button></div></dialog>`);
     dlg.querySelector('.nag-later').onclick = () => dlg.close(); dlg.querySelector('.nag-go').onclick = () => { dlg.close(); openDirSheet(); };
-    dlg.onclose = () => dlg.remove(); document.body.append(dlg); dlg.showModal();
+    dlg.onclose = () => { dlg.remove(); if (ackAt) api.post({ action: 'nudgeAck', at: ackAt }).catch(() => {}); }; document.body.append(dlg); dlg.showModal();
   }
   const once = key => { try { if (localStorage[key] === todayKst()) return false; localStorage[key] = todayKst(); } catch {} return true; };
   async function bossCheck() {
-    if (!isBoss()) return;
+    if (!isBoss()) { // 마케터: 내가 보낸 재촉을 원장님이 확인했는지
+      if (!state.dir.me) return;
+      try {
+        const since = localStorage.ackSeen || new Date().toISOString(); if (!localStorage.ackSeen) localStorage.ackSeen = since;
+        const j = await api.get({ action: 'nudgeAcks', since });
+        if (j.acks?.length) { localStorage.ackSeen = j.acks.map(a => a.ack).sort().pop(); bigNotice('원장님이 확인했어요 👀'); }
+      } catch {}
+      return;
+    }
     try { // 1) 재촉 받은 것
       const since = localStorage.nudgeSeen || new Date(Date.now() - 864e5).toISOString();
       const j = await api.get({ action: 'nudges', since });
-      if (j.nudges?.length) { localStorage.nudgeSeen = j.nudges[j.nudges.length - 1].at; nag(`${[...new Set(j.nudges.map(n => disp(n.from)))].join(', ')}님이 재촉했습니다.`); return; }
+      if (j.nudges?.length) { const lastAt = j.nudges[j.nudges.length - 1].at; localStorage.nudgeSeen = lastAt; nag(`${[...new Set(j.nudges.map(n => disp(n.from)))].join(', ')}님이 재촉했습니다.`, lastAt); return; }
     } catch {}
     try { // 2) 배치한 날 끝내지 못한 업무 (전날에서 넘어온 미완료) / 오후 6시 이후 오늘 미완료
       const d = todayKst(), rows = (await api.get({ who: DIRECTOR_WHO, from: d, to: d })).rows.filter(r => r.section === '원장님리스트' && !isDone(r));
@@ -1186,8 +1194,15 @@
     } catch {}
   }
   setInterval(bossCheck, 60e3); // 창이 열려 있는 동안 1분마다
+  // 화면 가운데 큰 확인 메시지(누르거나 3초 뒤 사라짐)
+  function bigNotice(text) {
+    document.querySelector('.big-notice')?.remove();
+    const n = el(`<div class="big-notice" role="status" aria-live="assertive"><div>${esc(text)}</div></div>`);
+    const off = () => { n.classList.add('out'); setTimeout(() => n.remove(), 250); };
+    n.onclick = off; document.body.append(n); setTimeout(off, 3000);
+  }
   async function nudgeBoss() {
-    try { await api.post({ action: 'nudge' }); toast('원장님을 재촉 했습니다! ✅'); } catch (e) { toast(e.message); }
+    try { await api.post({ action: 'nudge' }); bigNotice('원장님을 재촉 했습니다! ✅'); } catch (e) { toast(e.message); }
   }
   /* ---------- 사이드바 대메뉴 순서 편집: 편집 버튼을 켜고 손잡이를 끌어 위아래로 ---------- */
   const navGroups = () => [...document.querySelectorAll('.nav > button[data-view]')];

@@ -623,3 +623,9 @@ html.printing .reel-print{display:inline;margin-left:6px;font-size:10px;color:#0
 html.printing .row.reel{flex-wrap:nowrap}
 html.printing .reel-title{min-height:0;margin:0;text-decoration:none}
 html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;height:12px}
+/* 재촉 완료: 화면 가운데 큰 메시지 */
+.big-notice{position:fixed;inset:0;z-index:120;display:grid;place-items:center;background:rgba(25,31,40,.35);cursor:pointer;animation:bn-in .22s var(--ease)}
+.big-notice>div{max-width:min(92vw,1100px);padding:48px 56px;border-radius:32px;background:#fff;color:var(--text-1);font-size:clamp(36px,7vw,96px);font-weight:800;line-height:1.25;text-align:center;letter-spacing:-.03em;box-shadow:0 30px 80px rgba(0,27,55,.3);animation:bn-pop .32s var(--ease)}
+.big-notice.out{opacity:0;transition:opacity .25s}
+@keyframes bn-in{from{opacity:0}}@keyframes bn-pop{from{transform:scale(.85)}}
+@media(prefers-reduced-motion:reduce){.big-notice,.big-notice>div{animation:none}}
