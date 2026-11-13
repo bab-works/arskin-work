@@ -89,7 +89,7 @@
   // 화면에서 바로 빼고 5초 뒤 시트에서 지운다(서버가 휴지통에 14일 보관). 되돌리기를 누르면 시트는 건드리지 않는다.
   // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽)
   function deleteRows(list) {
-    const related = state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && list.some(r => SUBTASKABLE.has(r.section) && x.col === r.id));
+    const related = state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && list.some(r => NESTABLE.has(r.section) && x.col === r.id));
     if (related.some(x => x.section === '하위업무') && !confirm('하위 업무도 함께 삭제할까요?')) return;
     const gone = [...list, ...related], snap = { rows: [...state.rows], shared: [...state.shared] };
     state.rows = state.rows.filter(x => !gone.includes(x)); state.shared = state.shared.filter(x => !gone.includes(x));
@@ -137,7 +137,7 @@
     return row;
   }
   function itemRow(r, opts = {}) {
-    if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
+    if (NESTABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
     if (r.section === '원장님숙제') return hwRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
@@ -157,7 +157,7 @@
     const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
     del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); }, r.section === '공통업무' ? [{ label: '↻ 반복 업무로 옮기기', run: () => { updateRow(r, { section: '공통반복' }); toast('반복 업무로 옮겼습니다'); render(); } }] : r.section === '공통반복' ? [{ label: '→ 변동 업무로 옮기기', run: () => { updateRow(r, { section: '공통업무' }); toast('변동 업무로 옮겼습니다'); render(); } }] : []);
     row.append(chip, tx);
-    if (SUBTASKABLE.has(r.section)) { // 하위 업무 입력칸만 열고, 실제로 하나 입력해야 프로젝트가 된다 (Esc·빈칸으로 벗어나면 취소)
+    if (NESTABLE.has(r.section)) { // 하위 업무 입력칸만 열고, 실제로 하나 입력해야 프로젝트가 된다 (Esc·빈칸으로 벗어나면 취소)
       const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>');
       project.onclick = () => {
         if (row.nextElementSibling?.classList.contains('sub-add')) return row.nextElementSibling.querySelector('input').focus();
@@ -206,6 +206,7 @@
   }
   const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
+  const NESTABLE = new Set([...SUBTASKABLE, '주간고정']); // 하위 업무를 가질 수 있는 칸 (주간고정은 제자리에 남음)
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
   const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
   // 완료 축하: 작은 색종이가 잠깐 터지고 사라짐 (동작 줄이기 설정이면 생략)
@@ -347,7 +348,7 @@
     ghost.classList.add('drag-ghost'); Object.assign(ghost.style, { width: box.width + 'px', left: box.left + 'px', top: box.top + 'px' });
     ph.style.height = box.height + 'px'; node.after(ph); node.classList.add('dragging'); document.body.append(ghost);
     const dy = e.clientY - box.top, dx = e.clientX - box.left;
-    let tlAt = null; const tlGhost = el('<div class="tl-block ghost tl-drop"><small></small></div>');
+    let tlAt = null, nestTo = null, hold = null; const tlGhost = el('<div class="tl-block ghost tl-drop"><small></small></div>');
     const move = ev => {
       ghost.style.top = ev.clientY - dy + 'px'; ghost.style.left = ev.clientX - dx + 'px';
       ghost.hidden = true; const under = document.elementFromPoint(ev.clientX, ev.clientY); ghost.hidden = false;
@@ -361,13 +362,29 @@
       tlAt = null; tlGhost.remove();
       const target = under?.closest('.task-list .row[data-id], .task-list .project-card[data-id]');
       const list = under?.closest('.task-list');
-      if (target && target !== node) { const t = target.getBoundingClientRect(); target[ev.clientY < t.top + t.height / 2 ? 'before' : 'after'](ph); }
+      // 다른 업무 가운데에 0.7초 머무르면 그 업무의 하위 업무로 넣을 준비 (테두리 표시). 가장자리로 가면 순서 이동.
+      const t = target && target !== node && target.getBoundingClientRect(), mid = t && ev.clientY > t.top + t.height * .25 && ev.clientY < t.bottom - t.height * .25;
+      const parent = mid && canNest && state.rows.find(x => x.id === target.dataset.id);
+      if (parent && NESTABLE.has(parent.section)) {
+        if (hold?.el !== target) { clearNest(); hold = { el: target, timer: setTimeout(() => { nestTo = parent; target.classList.add('nest-target'); ph.hidden = true; }, 700) }; }
+        return;
+      }
+      clearNest();
+      if (target && target !== node) { target[ev.clientY < t.top + t.height / 2 ? 'before' : 'after'](ph); }
       else if (list && !target) list.querySelector('.add')?.before(ph);
       if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12);
     };
+    const canNest = r.section !== '하위업무' && !isProject(r) && TASK_KEYS.has(r.section) && !String(r.col).startsWith('plan:');
+    const clearNest = () => { if (hold) { clearTimeout(hold.timer); hold.el.classList.remove('nest-target'); } hold = null; nestTo = null; ph.hidden = false; };
     const up = () => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
       ghost.remove(); node.classList.remove('dragging');
+      if (nestTo) { // 하위 업무로 들어감: 부모의 진행률에 포함
+        const parent = nestTo; clearNest(); ph.remove();
+        changeSubtask(parent, r, { section: '하위업무', col: parent.id, date: parent.date, order: '' });
+        state.expanded.add('p:' + parent.id); toast(`"${parent.text.replace(CAT_RE, '') || parent.text}" 하위 업무로 넣었습니다`); return render();
+      }
+      clearNest();
       if (tlAt != null) { // 타임라인에 놓음: 업무 이름으로 1시간 블록 추가, 목록은 그대로
         tlGhost.remove(); ph.remove();
         addRow({ date: state.sel, section: '타임라인', start: toTime(tlAt), end: toTime(tlAt + 60), text: r.text.replace(CAT_RE, '') || r.text });

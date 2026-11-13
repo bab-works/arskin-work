@@ -822,3 +822,6 @@ a.pub-text{color:var(--text-1);text-decoration:underline;text-decoration-color:v
   .side-col{position:sticky;top:92px;align-self:start;max-height:calc(100vh - 104px);overflow-y:auto;overscroll-behavior:auto;scrollbar-width:thin;border-radius:var(--r-lg)}
   #sharedcal,#sharedtasks,.daily .timeline{padding:16px}
 }
+.nest-target{outline:2px solid var(--blue);outline-offset:2px;background:var(--blue-weak)!important;border-radius:var(--r-sm)}
+.nest-target::after{content:"하위 업무로 넣기";position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:var(--blue-dark);background:#fff;padding:2px 8px;border-radius:999px}
+.task-list .row,.task-list .project-card{position:relative}

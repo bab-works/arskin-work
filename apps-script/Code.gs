@@ -587,7 +587,9 @@ function generateDay_(who, d, force) {
       copies.push(c);
     });
     srcRows.forEach(function (r) {
-      if ((r.section === '프로젝트' || r.section === '하위업무') && ids[r.col]) copies.push(copyOf_(r, newId_(d, n++), d, r.status, ids[r.col]));
+      if (!((r.section === '프로젝트' || r.section === '하위업무') && ids[r.col])) return;
+      var weeklyReset = newWeek && srcRows.some(function (p) { return p.id === r.col && p.section === '주간고정'; }); // 주간고정의 하위 업무는 새 주에 다시 시작 전
+      copies.push(copyOf_(r, newId_(d, n++), d, weeklyReset ? 'todo' : r.status, ids[r.col]));
     });
     if (copies.length) {
       var sh = monthSheet(who, d, true), now = new Date().toISOString();
