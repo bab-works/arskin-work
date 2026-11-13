@@ -818,10 +818,21 @@ a.pub-text{color:var(--text-1);text-decoration:underline;text-decoration-color:v
 [data-team][hidden]{display:none!important}
 /* 오른쪽 열 플로팅: 화면에 붙어 따라오고, 그 안에서 휠을 굴리면 완료 업무까지 내려간다 */
 @media(min-width:901px){
-  .daily{grid-template-columns:minmax(0,800px) clamp(340px,24vw,420px);justify-content:center;gap:16px}
+  .daily{grid-template-columns:minmax(0,var(--main-w,800px)) clamp(340px,24vw,420px);justify-content:center;gap:16px}
   .side-col{position:sticky;top:92px;align-self:start;max-height:calc(100vh - 104px);overflow-y:auto;overscroll-behavior:auto;scrollbar-width:thin;border-radius:var(--r-lg)}
   #sharedcal,#sharedtasks,.daily .timeline{padding:16px}
 }
 .nest-target{outline:2px solid var(--blue);outline-offset:2px;background:var(--blue-weak)!important;border-radius:var(--r-sm)}
 .nest-target::after{content:"하위 업무로 넣기";position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:var(--blue-dark);background:#fff;padding:2px 8px;border-radius:999px}
 .task-list .row,.task-list .project-card{position:relative}
+
+/* 본문 폭 조절 */
+.card-edit-bar{gap:8px;flex-wrap:wrap;align-items:center}
+.card-edit-bar #widthEdit[aria-pressed=true]{background:var(--blue-dark);color:#fff}
+.width-box{display:flex;align-items:center;gap:10px;flex-basis:100%;justify-content:center;font-size:14px;color:var(--text-2)}
+.width-box[hidden]{display:none}.width-box input{width:min(320px,60vw);min-height:44px;accent-color:var(--blue)}
+.width-box button{min-height:44px;padding:0 14px}
+@media(max-width:900px){#widthEdit{display:none}}
+/* 태그 칩 폭을 맞춰 내용 시작점을 왼쪽 정렬 */
+.task-list .row>.cat{min-width:5.2em;text-align:center}
+html.printing .task-list .row>.cat{min-width:0}

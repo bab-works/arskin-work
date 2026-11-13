@@ -998,6 +998,12 @@
   addEventListener('pointerdown', e => { if (!tm.hidden && !tm.contains(e.target) && e.target !== tt) toolClose(); });
   tm.addEventListener('keydown', e => { if (e.key === 'Escape') { toolClose(); tt.focus(); } });
   $('cardEdit').onclick = () => { state.cardEdit = !state.cardEdit; $('cardEdit').textContent = state.cardEdit ? '편집 완료' : '카드 배치 편집'; $('cardEdit').setAttribute('aria-pressed', state.cardEdit); renderReport(); if (state.cardEdit) $('report').scrollIntoView({ block: 'start' }); };
+  // 본문 폭: 모니터마다 다르니 이 기기에만 저장 (기본 800px)
+  const setMainW = w => { document.documentElement.style.setProperty('--main-w', w + 'px'); $('mainW').value = w; $('mainWv').textContent = w + 'px'; try { localStorage.mainW = w; } catch {} };
+  setMainW(+(() => { try { return localStorage.mainW; } catch { return 0; } })() || 800);
+  $('widthEdit').onclick = () => { const box = $('widthBox'); box.hidden = !box.hidden; $('widthEdit').setAttribute('aria-pressed', !box.hidden); if (!box.hidden) $('mainW').focus(); };
+  $('mainW').oninput = e => setMainW(+e.target.value);
+  $('mainWreset').onclick = () => setMainW(800);
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); print(); };
