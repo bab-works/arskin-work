@@ -735,23 +735,16 @@
     for (let h = H0; h < H1; h++) grid.append(el(`<div class="tl-hour"><span>${pad(h)}:00</span></div>`));
     if (state.sel === todayKst()) { const n = el('<div class="tl-now" aria-hidden="true"><i></i><b></b></div>'); grid.append(n); moveNow(n); }
     // 공용 캘린더의 회의(시간 있는 일정)는 모두의 타임라인에 같은 색으로 표시, 수정은 공용 일정 편집기로
-    if (isDirector()) {
-      const sel = state.sel, team = C.PEOPLE.filter(p => !p.director && p.sheet);
+    if (isDirector()) { // 원장님 워크시트: 마케터 개인 타임라인은 숨기고 마케팅 공용 회의(시간 있는 일정)만
+      const sel = state.sel;
       if (state.teamTLDate !== sel) {
         state.teamTLDate = sel; state.teamTL = [];
-        Promise.all(team.map(p => api.get({ who: p.name, from: sel, to: sel }).then(j => j.rows.filter(r => r.section === '타임라인').map(r => ({ ...r, _name: p.name }))).catch(() => [])))
-          .then(l => { if (state.teamTLDate === sel && isDirector()) { state.teamTL = l.flat(); renderTimeline(); } });
+        api.get({ who: SHARED, from: sel, to: sel }).then(j => { if (state.teamTLDate === sel && isDirector()) { state.teamTL = j.rows; renderTimeline(); } }).catch(() => {});
       }
-      state.teamTL.forEach(r => { // 읽기 전용: 마케팅 공용 색, 사람마다 한 줄
-        const lane = team.findIndex(p => p.name === r._name);
-        const b = el(`<div class="tl-block tl-shared tl-team" title="${esc(disp(r._name))} 타임라인"><small>${esc(disp(r._name))} · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
-        place(b, r.start, r.end); Object.assign(b.style, { left: `calc(44px + ${lane} * (100% - 46px) / ${team.length})`, width: `calc((100% - 46px) / ${team.length} - 2px)`, right: 'auto' });
-        b.onclick = () => bigPeek(`${disp(r._name)} · ${r.start}~${r.end}`, r.text); grid.append(b);
-      });
     }
-    (isDirector() ? [] : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
+    (isDirector() ? state.teamTL : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
       const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정"><small>공통 · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
-      place(b, r.start, r.end); b.onclick = () => openEditor(r, b); grid.append(b);
+      place(b, r.start, r.end); b.onclick = () => isDirector() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
       const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}"><small>${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
@@ -1510,26 +1503,16 @@
   function renderHome() {
     const box = $('homeHub'), dir = state.dir.tasks, cnt = k => dir.filter(x => x.status === k).length;
     // 가운데: 파란 자명종 + 초 단위로 흐르는 시계 (마케터는 그 아래 큰 재촉 버튼)
-    box.innerHTML = `<div class="home-logo" aria-hidden="true"><span class="deboss"></span></div><h1 class="sr-only">아르스킨 대시보드</h1>
+    box.innerHTML = `<h1 class="sr-only">아르스킨 대시보드</h1>
       <section class="clock-hero" aria-label="현재 시각">
-        <svg class="alarm" viewBox="0 0 120 120" aria-hidden="true">
-          <g class="bells"><path d="M22 34a18 18 0 0 1 24-24z" fill="#3182f6"/><path d="M98 34a18 18 0 0 0-24-24z" fill="#3182f6"/></g>
-          <path d="M34 104l-8 10M86 104l8 10" stroke="#1b64da" stroke-width="7" stroke-linecap="round"/>
-          <circle cx="60" cy="64" r="44" fill="#3182f6"/><circle cx="60" cy="64" r="36" fill="#fff"/>
-          <g stroke="#cfe2ff" stroke-width="3" stroke-linecap="round">${Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6; return `<line x1="${60 + 31 * Math.sin(a)}" y1="${64 - 31 * Math.cos(a)}" x2="${60 + 34 * Math.sin(a)}" y2="${64 - 34 * Math.cos(a)}"/>`; }).join('')}</g>
-          <line class="h-h" x1="60" y1="64" x2="60" y2="44" stroke="#191f28" stroke-width="5" stroke-linecap="round"/>
-          <line class="h-m" x1="60" y1="64" x2="60" y2="36" stroke="#191f28" stroke-width="3.5" stroke-linecap="round"/>
-          <line class="h-s" x1="60" y1="70" x2="60" y2="32" stroke="#f04452" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="60" cy="64" r="4" fill="#191f28"/>
-        </svg>
         <p class="clock-date"></p>
         <p class="clock-time" aria-live="off"></p>
         ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
       </section>
       <section class="ext-meet" aria-live="polite"></section>
-      <div class="home-cards">
-        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="sheet">원장님 워크시트 →</button></section>
-        <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="team">마케팅 공용</button></div></section>
+      <div class="home-cards"><div class="home-logo" aria-hidden="true"><span class="deboss"></span></div>
+        <section class="home-card"><h2>원장님 숙제</h2><dl class="home-nums"><div><dt>대기</dt><dd>${cnt('pending')}</dd></div><div><dt>승인</dt><dd>${cnt('approved')}</dd></div><div><dt>완료</dt><dd>${cnt('done')}</dd></div></dl><button type="button" class="home-go" data-go="sheet">원장님 워크시트 열기</button></section>
+        <section class="home-card"><h2>바로가기</h2><nav class="home-links" aria-label="바로가기"><button type="button" data-go="daily"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h8"/></svg><span>일간보고서</span><i aria-hidden="true">›</i></button><button type="button" data-go="calendar"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4"/></svg><span>콘텐츠 스튜디오</span><i aria-hidden="true">›</i></button><button type="button" data-go="sheet"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="15" rx="2"/><path d="M7 8h6M7 11h6M7 14h3"/></svg><span>원장님 워크시트</span><i aria-hidden="true">›</i></button><button type="button" data-go="team"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="8" r="3"/><circle cx="14" cy="9" r="2.5"/><path d="M2 17c0-3 2.5-5 5-5s5 2 5 5M12 16c.3-2 1.6-3.5 3.5-3.5S18 14 18 16"/></svg><span>마케팅 공용</span><i aria-hidden="true">›</i></button></nav></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
     box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
@@ -1539,9 +1522,8 @@
       const k = new Date(Date.now() + 9 * 36e5), h = k.getUTCHours(), m = k.getUTCMinutes(), sec = k.getUTCSeconds(), p2 = n => String(n).padStart(2, '0');
       box.querySelector('.clock-date').textContent = fmtDate(k.toISOString().slice(0, 10));
       if (sec % 30 === 0) { paintExt(box); if (Date.now() - (state.ext?.at || 0) > 3e5) loadExtMeets().then(() => paintExt(box)); }
-      box.querySelector('.clock-time').innerHTML = `${p2(h)}<i>:</i>${p2(m)}<i>:</i><b>${p2(sec)}</b>`;
-      const rot = (cls, deg) => box.querySelector(cls).setAttribute('transform', `rotate(${deg} 60 64)`);
-      rot('.h-h', (h % 12) * 30 + m / 2); rot('.h-m', m * 6 + sec / 10); rot('.h-s', sec * 6);
+      box.querySelector('.clock-time').innerHTML = `${p2(h)}:${p2(m)}<b>:${p2(sec)}</b>`;
+
     };
     clearInterval(renderHome.t); tick(); renderHome.t = setInterval(tick, 1000);
   }

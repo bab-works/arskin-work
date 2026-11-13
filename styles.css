@@ -872,3 +872,31 @@ html.printing .tl-now{display:none}
 .ext-more{margin:12px 0 0;padding:0;list-style:none;font-size:13px;color:var(--text-2);display:grid;gap:4px}
 .ext-none{margin:0;text-align:center;font-size:14px;color:var(--text-2)}
 .ext-meet:has(.ext-none){background:none;box-shadow:none;padding:4px}
+/* 홈 재디자인: 타이포 시계 · 카드 뒤 로고 · 숙제/바로가기 카드 */
+.clock-hero{gap:4px;margin:56px 0 28px}
+.clock-date{margin:0;font-size:15px;font-weight:600;color:var(--text-2)}
+.clock-time{margin:0;font-size:72px;font-weight:700;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--text-1)}
+.clock-time b{font-weight:500;color:var(--text-2)}
+.nudge-hero{box-shadow:0 8px 24px rgba(240,68,82,.28);animation:none;font-size:22px;min-height:64px}
+.home-cards{position:relative;isolation:isolate;max-width:760px;align-items:stretch}
+.home-cards .home-logo{position:absolute;z-index:-1;left:50%;top:50%;transform:translate(-50%,-50%);width:110%;margin:0;pointer-events:none;display:block}
+.home-cards .deboss{width:100%;background:var(--text-1);opacity:.04;filter:none}
+.home-card{border-radius:12px;background:rgba(255,255,255,.88);gap:14px}
+.home-card h2{font-size:15px;font-weight:700;color:var(--text-2)}
+.home-nums{display:grid;grid-template-columns:repeat(3,1fr);margin:0;gap:0}
+.home-nums div{background:none;border-radius:0;padding:4px 0;text-align:left;display:flex;flex-direction:column-reverse;gap:2px}
+.home-nums div+div{border-left:1px solid var(--line);padding-left:16px}
+.home-nums dd{margin:0;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-1)}
+.home-nums dt{font-size:13px;color:var(--text-2)}
+.home-go{margin-top:auto;min-height:44px;border-radius:12px;font-weight:600}
+.home-links{display:flex;flex-direction:column;gap:0;margin:-6px -8px}
+.home-links button{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 8px;background:none;border-radius:6px;font-size:15px;font-weight:500;color:var(--text-1);text-align:left}
+.home-links button:hover{background:var(--grey50)}
+.home-links svg{width:20px;height:20px;flex:none;fill:none;stroke:var(--text-2);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.home-links span{flex:1}.home-links i{font-style:normal;color:var(--text-2);font-size:17px}
+@media(max-width:600px){.clock-time{font-size:48px}.clock-hero{margin:32px 0 20px}.nudge-hero{font-size:17px;min-height:56px;padding:0 28px}}
+/* 업무 행: 숨은 '+ 하위 업무'가 폭을 먹지 않게, 행간 1.5 */
+.task-list .row{position:relative}
+.task-list .row .tx{line-height:22px}
+@media(hover:hover){.task-list .row .project-start{position:absolute;right:36px;top:50%;transform:translateY(-50%);box-shadow:-8px 0 8px var(--card)}
+.task-list .row:not(:hover):not(:focus-within) .project-start{pointer-events:none}}
