@@ -44,7 +44,7 @@ function doGet(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -916,6 +916,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
+var SERVER_VERSION = '2026-11-13.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'leaves', 'hospital', 'revenue'];
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }

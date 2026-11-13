@@ -1169,3 +1169,4 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .memo-bubble::before{content:"";position:absolute;top:-7px;left:calc(var(--tail,140px) - 7px);width:14px;height:14px;background:#fff;transform:rotate(45deg);border-radius:2px;box-shadow:-2px -2px 4px rgba(0,27,55,.06)}
 .memo-bubble textarea{width:100%;border:none;background:var(--grey50);border-radius:6px;padding:8px;font:inherit;font-size:14px;line-height:1.5;resize:vertical;position:relative}
 .memo-bubble small{display:block;margin-top:4px;font-size:12px;color:var(--text-2)}
+.ver-line{font-size:12px;color:var(--text-2);margin:16px 4px 0}.ver-line b{color:var(--text-1);font-variant-numeric:tabular-nums}
