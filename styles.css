@@ -1062,3 +1062,7 @@ html.printing .pub-text{min-height:0;display:inline}
 .perm-table .perm-sub th{font-weight:500;color:var(--text-2);padding-left:20px}
 .perm-cell{display:grid;place-items:center;width:44px;height:44px;margin:auto;cursor:pointer}.perm-cell input{width:20px;height:20px;accent-color:var(--blue)}
 .perm-actions{display:flex;justify-content:flex-end;margin-top:12px}.perm-actions button{min-height:44px;padding:0 20px}
+html.printing .print-pair{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;align-items:start;margin-bottom:3px}
+html.printing .print-pair>.sec{margin:0!important;height:100%}
+html.printing .print-pair .task-list{grid-template-columns:minmax(0,1fr)!important}
+html.printing .week-pub .pub-date,html.printing .week-pub .pub-text{font-size:11px}html.printing .week-pub li{gap:6px}

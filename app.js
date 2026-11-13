@@ -1054,6 +1054,7 @@
   addEventListener('beforeprint', () => {
     if (state.view !== 'daily') setView('daily');
     document.documentElement.classList.add('printing');
+    { const r = document.getElementById('sec-릴스업무'), pb = $('sec-pub'); if (r && pb) { const w = el('<div class="print-pair"></div>'); r.before(w); w.append(r, pb); } } // 인쇄: 릴스·이번 주 발행을 좌우 2열로
     // 마케팅 공통 업무도 같은 A4에: 진행 중 + 이날 완료한 것만 보고서 끝에 붙였다가 인쇄 후 제거
     const list = state.shared.filter(r => r.section === '공통업무' && (!isDone(r) || String(r.completed || r.date).slice(0, 10) === state.sel));
     if (list.length && !isDirector()) $('report').append(el(`<section class="sec print-shared"><h3>마케팅 공통 업무 <small class="sec-count">${list.filter(isDone).length}/${list.length}</small></h3><div class="task-list">${list.map(r => `<div class="row${isDone(r) ? ' done' : ''}"><span class="pst">${statusIcon(statusCode(r.status))}</span><div class="tx">${esc(r.text)}</div></div>`).join('')}</div></section>`));
@@ -1061,7 +1062,7 @@
     document.documentElement.style.setProperty('--print-zoom', Math.min(1, (279 * mm) / h).toFixed(3));
     document.documentElement.style.setProperty('--print-zoom2', Math.min(1, (279 * mm) / $('donePage').scrollHeight).toFixed(3));
   });
-  addEventListener('afterprint', () => { document.documentElement.classList.remove('printing'); document.querySelectorAll('.print-shared').forEach(n => n.remove()); });
+  addEventListener('afterprint', () => { document.documentElement.classList.remove('printing'); document.querySelectorAll('.print-shared').forEach(n => n.remove()); if (document.querySelector('.print-pair')) renderReport(); });
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
   const weekStart = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
