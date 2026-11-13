@@ -940,7 +940,7 @@ button,input,select,textarea{letter-spacing:inherit}
 @media(max-width:600px){
   .topbar{display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
   .topbar .datestrip{flex:1;min-width:0;overflow-x:auto}
-  #btnCarry{font-size:0;width:44px;padding:0;justify-content:center}#btnCarry i{margin:0}
+  #btnPrint{font-size:0;width:44px;padding:0;justify-content:center}#btnPrint i{margin:0}
   .sc-day:not(:has(.sc-ev-wrap)):not(.holiday){min-height:0;padding-block:8px}
   .sc-who{display:none}
   .bottomnav button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;font-size:12px;position:relative}
@@ -1117,3 +1117,6 @@ details.fold[open]>summary{margin-bottom:8px}
 .fu-memo-dlg{width:min(560px,92vw)}.fu-memo-dlg textarea{width:100%;border:none;background:var(--grey50);border-radius:12px;padding:12px;font:inherit;font-size:15px;line-height:1.6;resize:vertical}
 .fu-memo-dlg .tr-acts{display:flex;justify-content:space-between;align-items:center;margin-top:12px}.fu-memo-dlg .primary{min-height:44px;padding:0 20px}
 .pc-line .del{position:relative;min-width:44px}.pc-line .del::after{content:"";position:absolute;inset:-6px 0}
+/* 넓은 화면 정렬: 위쪽 날짜·도구 줄을 본문 폭에 맞추고, 매출표도 가운데 */
+@media(min-width:901px){.topbar{width:100%;max-width:calc(var(--main-w,800px) + clamp(340px,24vw,420px) + 16px);margin-inline:auto;box-sizing:border-box}}
+#revenueHub{margin-inline:auto}

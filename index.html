@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/arskin-icon.png?v=2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="styles.css?v=202611131709">
+<link rel="stylesheet" href="styles.css?v=202611131712">
 </head>
 <body>
 <div class="app">
@@ -39,12 +39,12 @@
     <header class="topbar">
       <div class="datestrip" id="datestrip"></div>
       <div class="actions">
-        <button id="btnCarry" aria-label="전일 가져오기" title="직전 근무일의 이어갈 항목을 이 날짜로 복사"><i data-icon="carry"></i>전일 가져오기</button>
+        <button id="btnPrint" title="인쇄 (Ctrl+P)" aria-label="인쇄"><i data-icon="print"></i>인쇄</button>
         <button id="toolToggle" class="icon-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="toolMenu" title="도구">☰</button>
         <div class="tool-menu" id="toolMenu" role="menu" hidden>
           <button id="btnDoneSort" role="menuitemcheckbox" aria-pressed="true"><i data-icon="sinkdone"></i><span>진행 중 위 · 완료 아래로 정렬</span></button>
           <button id="btnCollapse" role="menuitemcheckbox" aria-pressed="false"><i data-icon="hide"></i><span>완료 업무 접기</span></button>
-          <button id="btnPrint" role="menuitem"><i data-icon="print"></i><span>인쇄 (Ctrl+P)</span></button>
+          <button id="btnCarry" role="menuitem" title="직전 근무일의 이어갈 항목을 이 날짜로 복사"><i data-icon="carry"></i><span>전일 가져오기</span></button>
           <button id="btnReload" role="menuitem"><i data-icon="reload"></i><span>새로고침</span></button>
           <button id="btnTrash" role="menuitem"><i data-icon="trash"></i><span>휴지통 (14일 보관)</span></button>
           <a id="sheetLink" class="tool-quiet" role="menuitem" target="_blank" rel="noopener"><span>원본 Google 시트 열기 ↗</span></a>
@@ -103,10 +103,10 @@
 </div>
 <div id="appToast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<script src="config.js?v=202611131709"></script>
-<script src="content-hub.js?v=202611131709"></script>
-<script src="revenue-model.js?v=202611131709"></script>
-<script src="revenue-hub.js?v=202611131709"></script>
-<script src="app.js?v=202611131709"></script>
+<script src="config.js?v=202611131712"></script>
+<script src="content-hub.js?v=202611131712"></script>
+<script src="revenue-model.js?v=202611131712"></script>
+<script src="revenue-hub.js?v=202611131712"></script>
+<script src="app.js?v=202611131712"></script>
 </body>
 </html>
