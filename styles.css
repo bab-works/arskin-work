@@ -785,3 +785,5 @@ html.printing .card-cols .task-list{grid-template-columns:repeat(3,minmax(0,1fr)
 .actions .tool-menu button{justify-content:flex-start;background:none;width:100%}
 .actions .tool-menu button:hover{background:var(--grey50)}
 .tool-menu{min-width:290px}
+.row.reel .reel-steps{display:grid;grid-template-columns:repeat(3,52px) 52px;gap:4px}
+.row.reel .reel-steps button{min-width:0;width:100%;padding:0}

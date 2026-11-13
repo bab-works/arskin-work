@@ -19,6 +19,7 @@
     { key: '릴스업무', L: '릴스 업무' },
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
+  const mySections = () => TASK_SECTIONS.filter(s => s.key !== '릴스업무' || state.person === (C.REELS_OWNER || state.person)); // 릴스 칸은 릴스 담당자(미스타전)만
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
   const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', sharedTab: (() => { try { return localStorage.sharedTab || '변동'; } catch { return '변동'; } })(), reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
@@ -405,7 +406,7 @@
     };
     box.append(rej);
     row.append(box);
-    if (!virtual) { const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del); }
+    // 릴스 줄은 × 대신 '기각'으로 뺀다(모든 줄 폭을 같게). 지우기는 줄 선택 후 Delete 키로도 가능
     return row;
   }
   // 보고서 카드 배치(사람별 브라우저 저장): 왼쪽·오른쪽 두 칸, 순서, 카드별 테두리·채우기 색
@@ -477,7 +478,7 @@
   }
   function sectionChips(d) { // 섹션 바로가기 칩: 남은 개수 표시
     const nav = el('<nav class="sec-chips" aria-label="섹션 바로가기"></nav>');
-    TASK_SECTIONS.forEach(s => {
+    mySections().forEach(s => {
       const left = rowsFor(d, s.key).filter(r => !isDone(r)).length;
       const b = el(`<button type="button">${esc(s.L)}<b>${left}</b></button>`);
       b.setAttribute('aria-label', `${s.L} 남은 업무 ${left}건으로 이동`);
@@ -578,7 +579,7 @@
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const cards = {};
-    TASK_SECTIONS.forEach(s => { cards[s.key] = taskSection(d, s); });
+    mySections().forEach(s => { cards[s.key] = taskSection(d, s); });
     const pub = publishingFor(d);
     if (pub) { cards.pub = sec('오늘 발행 (콘텐츠 캘린더)', pub); cards.pub.id = 'sec-pub'; }
     const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); memo.id = 'sec-memo'; cards.memo = memo;
