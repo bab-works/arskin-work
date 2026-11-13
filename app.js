@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -29,6 +29,7 @@
   const fmtDate = s => { const d = new Date(s + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WD[d.getDay()]})`; };
   const todayKst = () => new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10); // 기기 시간대와 무관하게 한국 날짜
   const DIRECTOR_WHO = '원장님';
+  const disp = n => C.PEOPLE.find(p => p.name === n)?.label || n; // 화면 표시 이름
   const isDirector = () => !!C.PEOPLE.find(p => p.name === state.person)?.director;
   const isWorkday = d => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return wd !== 0 && (wd !== 6 || isDirector()) && !state.holidays[d]; }; // 마케터 월~금, 원장님 월~토
   function workDates(n) { // 당일 + 이전 근무일(월~금, 공휴일 제외)
@@ -122,7 +123,7 @@
   }
   function autosize(t) { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }
 
-  const CAT_RE = /^\P{L}*?([\p{L}\p{N}][^\s)]{0,11})\)\s*/u; // 앞 장식 기호 + 12자 이내 분류 + ')'
+  const CAT_RE = /^[^\p{L}(]*?(\p{L}[^\s()]{0,11})\)\s*/u; // '(화)' 같은 날짜 괄호는 태그로 보지 않음 // 앞 장식 기호 + 12자 이내 분류 + ')'
   function itemRow(r, opts = {}) {
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
@@ -131,7 +132,7 @@
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
-    const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? m[1] : ''; tx.textContent = rest || r.text; };
+    const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
     paint();
     tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
@@ -420,7 +421,7 @@
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
     }
-    box.append(el(`<div class="titlebar"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
+    box.append(el(`<div class="titlebar"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
@@ -463,7 +464,7 @@
       }
       state.teamTL.forEach(r => { // 읽기 전용: 마케팅 공용 색, 사람마다 한 줄
         const lane = team.findIndex(p => p.name === r._name);
-        const b = el(`<div class="tl-block tl-shared tl-team" title="${esc(r._name)} 타임라인"><small>${esc(r._name)} · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+        const b = el(`<div class="tl-block tl-shared tl-team" title="${esc(disp(r._name))} 타임라인"><small>${esc(disp(r._name))} · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
         place(b, r.start, r.end); Object.assign(b.style, { left: `calc(44px + ${lane} * (100% - 46px) / ${team.length})`, width: `calc((100% - 46px) / ${team.length} - 2px)`, right: 'auto' });
         grid.append(b);
       });
@@ -601,6 +602,11 @@
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
     $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
     $('viewDirector').classList.toggle('hidden', v !== 'director');
+    $('viewHome').classList.toggle('hidden', v !== 'home');
+    $('viewTeam').classList.toggle('hidden', v !== 'team');
+    if (v === 'home') renderHome();
+    if (v === 'team') { state.teamPage = state.teamPage || 'check'; renderTeam(); loadTeam(todayKst()).then(renderTeam); }
+    document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('active', v === 'team' && b.dataset.team === state.teamPage));
     if (v === 'director') { renderDirector(); loadDirector(); }
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
     if (v === 'calendar') window.ContentHub.open();
@@ -608,7 +614,14 @@
   }
   function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
-  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); } setView(b.dataset.view); });
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+    if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
+    if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); }
+    setView(b.dataset.view);
+  });
+  $('brandHome').onclick = () => setView('home');
+  $('brandHome').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('home'); } };
+  document.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.team; setView('team'); });
   document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => b.dataset.dir === 'sheet' ? openDirSheet() : setView('director'));
   document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => {
     document.querySelectorAll('[data-pane]').forEach(x => x.classList.toggle('active', x === b));
@@ -679,7 +692,7 @@
     cal.classList.toggle('sc-month-view', monthly);
     cal.innerHTML = `<div class="sc-header"><div><b>${dir ? '원장님 캘린더' : '마케팅 공용 캘린더'}</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, N - 1).slice(5).replace('-', '.')} · ${dir ? '월~일' : '월~금'}</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div><button type="button" class="more sc-holbtn">휴일 관리</button></div>`;
     cal.querySelector('.sc-holbtn').onclick = openHolidays;
-    const who = el(`<div class="sc-who" role="group" aria-label="담당자 필터">${['', ...C.PEOPLE.map(p => p.name)].map(n => `<button type="button" data-who="${esc(n)}" aria-pressed="${state.calWho === n}">${n ? esc(n) : '전체'}</button>`).join('')}</div>`);
+    const who = el(`<div class="sc-who" role="group" aria-label="담당자 필터">${['', ...C.PEOPLE.filter(p => !p.director).map(p => p.name)].map(n => `<button type="button" data-who="${esc(n)}" aria-pressed="${state.calWho === n}">${n ? esc(disp(n)) : '전체'}</button>`).join('')}</div>`);
     who.onclick = e => { const b = e.target.closest('[data-who]'); if (!b) return; state.calWho = b.dataset.who; try { localStorage.calWho = state.calWho; } catch {} renderShared(); };
     if (!dir) cal.querySelector('.sc-header').after(who);
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
@@ -706,7 +719,7 @@
         state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
           const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev');
-          ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + r.col : ''}`;
+          ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => openEditor(r, ev);
           wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); renderShared(); renderTimeline(); };
           col.append(wrap);
@@ -791,12 +804,12 @@
     $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;
     if (state.person !== C.DEFAULT_PERSON && !(await checkBackend())) {
       state.rows = []; renderDatestrip(); $('timeline').innerHTML = '';
-      $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 시트는 연결됐지만 Apps Script가 옛 버전입니다.<br><small>apps-script/Code.gs 를 붙여넣고 새 버전으로 재배포하면 열립니다.</small></div>`;
+      $('report').innerHTML = `<div class="empty-note"><b>${esc(disp(state.person))}</b>님 시트는 연결됐지만 Apps Script가 옛 버전입니다.<br><small>apps-script/Code.gs 를 붙여넣고 새 버전으로 재배포하면 열립니다.</small></div>`;
       return;
     }
     if (!personInfo().sheet) { // 시트 미연결: 다른 사람 데이터를 실수로 보여주지 않도록 요청 자체를 안 보낸다
       state.rows = []; renderDatestrip(); $('timeline').innerHTML = '';
-      $('report').innerHTML = `<div class="empty-note"><b>${esc(state.person)}</b>님 일일보고 시트가 아직 연결되지 않았습니다.<br><small>공유 시트 링크를 전달해 주시면 연결됩니다.</small></div>`;
+      $('report').innerHTML = `<div class="empty-note"><b>${esc(disp(state.person))}</b>님 일일보고 시트가 아직 연결되지 않았습니다.<br><small>공유 시트 링크를 전달해 주시면 연결됩니다.</small></div>`;
       return;
     }
     const asked = state.person;
@@ -841,7 +854,7 @@
       const g = el(`<section class="sec dir-group"><h3>${label} <small>${list.length}</small></h3></section>`);
       list.forEach(t => {
         const fresh = t.author === me && (k === 'approved' || k === 'rejected') && t.updated > seen;
-        const meta = [`작성 ${esc(t.author)}`, t.created.slice(5).replace('-', '.'), t.due && `마감 ${t.due.slice(5).replace('-', '.')}`, t.decided && k !== 'pending' && `결정 ${t.decided.slice(5).replace('-', '.')}`].filter(Boolean).join(' · ');
+        const meta = [`작성 ${esc(disp(t.author))}`, t.created.slice(5).replace('-', '.'), t.due && `마감 ${t.due.slice(5).replace('-', '.')}`, t.decided && k !== 'pending' && `결정 ${t.decided.slice(5).replace('-', '.')}`].filter(Boolean).join(' · ');
         const acts = [isDir && k === 'pending' && ['approved', '승인'], isDir && k === 'pending' && ['rejected', '거절'], k === 'approved' && ['done', '완료'], isDir && k !== 'pending' && ['pending', '대기로']].filter(Boolean);
         const it = el(`<div class="dir-item d-${k}${fresh ? ' fresh' : ''}"><span class="dir-pill d-${k}">${DIR_ST[k]}</span>
           <div class="dir-body"><div class="dir-text" contenteditable="plaintext-only" role="textbox" aria-label="숙제 내용"></div><small>${meta}${fresh ? ' · <b>새 결과</b>' : ''}</small></div>
@@ -921,7 +934,7 @@
     document.body.append(dlg); dlg.showModal();
     let rows = [];
     try { rows = (await api.get({ action: 'trash' })).rows.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)); } catch (e) { list.textContent = '불러오지 못했습니다: ' + e.message; return; }
-    list.innerHTML = rows.length ? rows.map((r, i) => `<label class="tr-item"><input type="checkbox" data-i="${i}"><span><b>${esc(r.text) || '(내용 없음)'}</b><small>${esc(r.who)} · ${esc(r.section)} · ${r.date.slice(5).replace('-', '.')} 업무 · ${new Date(r.deletedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 삭제</small></span></label>`).join('') : '<p class="tr-empty">휴지통이 비어 있습니다.</p>';
+    list.innerHTML = rows.length ? rows.map((r, i) => `<label class="tr-item"><input type="checkbox" data-i="${i}"><span><b>${esc(r.text) || '(내용 없음)'}</b><small>${esc(disp(r.who))} · ${esc(r.section)} · ${r.date.slice(5).replace('-', '.')} 업무 · ${new Date(r.deletedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 삭제</small></span></label>`).join('') : '<p class="tr-empty">휴지통이 비어 있습니다.</p>';
     list.onchange = () => { btn.disabled = !list.querySelector(':checked'); };
     btn.onclick = async () => {
       const keys = [...list.querySelectorAll(':checked')].map(c => rows[c.dataset.i].deletedAt + '|' + rows[c.dataset.i].id);
@@ -931,7 +944,132 @@
   }
   $('btnTrash').onclick = openTrash;
 
+
+  /* ---------- 태그: 'Figo)' 처럼 직접 쓰는 방식은 그대로, 색·표시 이름·설명만 공통 시트(tags 탭)에 저장 ---------- */
+  const TAG_COLORS = { grey: ['#f2f4f6', '#4e5968'], blue: ['#e8f3ff', '#1b64da'], green: ['#e6f6ee', '#0a7a4a'], red: ['#fff0f0', '#c92a2a'], orange: ['#fff3e6', '#b35300'], purple: ['#f0ebff', '#5b3cc4'], pink: ['#ffeef6', '#b0236a'], teal: ['#e5f7f6', '#0b7470'] };
+  const tagStyle = t => { const c = TAG_COLORS[state.tags[t]?.color]; return c ? `background:${c[0]};color:${c[1]}` : ''; };
+  const tagLabel = t => state.tags[t]?.label || t;
+  async function loadTags() { try { const j = await api.get({ action: 'tags' }); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); render(); } catch {} }
+
+  /* ---------- 팀 데이터(3명의 하루치): 홈 요약과 업무 체크 페이지가 같이 씀 ---------- */
+  const marketers = () => C.PEOPLE.filter(p => !p.director && p.sheet);
+  async function loadTeam(d) {
+    const got = await Promise.all(marketers().map(p => api.get({ who: p.name, from: d, to: d }).then(j => [p.name, j.rows]).catch(() => [p.name, null])));
+    state.team = { date: d, ...Object.fromEntries(got) }; return state.team;
+  }
+  const FIXED = ['데일리고정', '주간고정'], FLEX = ['배치예정', '변동업무', '팔로업'];
+
+  /* ---------- 홈: 음각 로고 + 오늘 요약 ---------- */
+  function renderHome() {
+    const box = $('homeHub'), d = todayKst(), t = state.team.date === d ? state.team : null;
+    const prog = rows => { const l = (rows || []).filter(r => TASK_KEYS.has(r.section) && !String(r.col).startsWith('plan:')); const n = l.filter(isDone).length; return { n, t: l.length, p: l.length ? Math.round(n / l.length * 100) : 0 }; };
+    const dir = state.dir.tasks, cnt = k => dir.filter(x => x.status === k).length;
+    box.innerHTML = `<div class="home-logo" aria-hidden="true"><span class="deboss"></span></div><h1 class="sr-only">아르스킨 대시보드</h1>
+      <p class="home-date">${fmtDate(d)}</p>
+      <div class="home-cards">
+        <section class="home-card"><h2>오늘 팀 진행률</h2>${t ? marketers().map(p => { const g = prog(t[p.name]); return `<div class="dir-prog"><div class="project-progress-label"><span>${esc(disp(p.name))} · ${g.n}/${g.t}</span><b>${g.p}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(disp(p.name))} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.p}"><span style="width:${g.p}%"></span></div></div>`; }).join('') : '<p class="muted">불러오는 중…</p>'}<button type="button" class="more" data-go="team">업무 체크로 →</button></section>
+        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="director">숙제 보기 →</button></section>
+        <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="revenue">월간 매출표</button></div></section>
+      </div>`;
+    box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
+    if (!t) loadTeam(d).then(() => { if (state.view === 'home') renderHome(); });
+  }
+
+  /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
+  function renderTeam() {
+    const box = $('teamHub'), page = state.teamPage || 'check';
+    box.innerHTML = `<div class="seg team-seg"><button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button><button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button></div>`;
+    box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
+    if (page === 'tags') return renderTagAdmin(box);
+    const d = todayKst();
+    box.append(el(`<div class="dir-head"><h1>팀 업무 체크</h1><p>${fmtDate(d)} · 각자의 고정 업무와 변동 업무를 한 화면에서 확인하고 상태를 바꿀 수 있습니다.</p></div>`));
+    if (state.team.date !== d) return box.append(el('<div class="empty-note">불러오는 중…</div>'));
+    const grid = el('<div class="team-grid"></div>');
+    marketers().forEach(p => {
+      const rows = state.team[p.name];
+      const col = el(`<section class="sec team-col"><h3>${esc(disp(p.name))}</h3></section>`);
+      if (!rows) { col.append(el('<p class="muted">불러오지 못했습니다</p>')); grid.append(col); return; }
+      [['고정 업무', FIXED], ['변동 업무', FLEX]].forEach(([label, secs]) => {
+        const list = rows.filter(r => secs.includes(r.section)).sort((a, b) => isDone(a) - isDone(b));
+        col.append(el(`<h4>${label} <small class="sec-count">${list.filter(isDone).length}/${list.length}</small></h4>`));
+        list.forEach(r => {
+          const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
+          row.append(statusButton(r, code => { r.status = code; save([r], p.name); renderTeam(); }));
+          const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
+          row.append(el(`<div class="tx">${rest ? `<span class="cat" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div>`));
+          col.append(row);
+        });
+      });
+      grid.append(col);
+    });
+    box.append(grid);
+  }
+  function renderTagAdmin(box) {
+    const found = new Map();
+    const scan = rows => (rows || []).forEach(r => { const m = String(r.text).match(CAT_RE); if (m && r.text.slice(m[0].length)) found.set(m[1], (found.get(m[1]) || 0) + 1); });
+    marketers().forEach(p => scan(state.team[p.name])); scan(state.rows); scan(state.shared);
+    Object.keys(state.tags).forEach(t => found.has(t) || found.set(t, 0));
+    const tags = [...found.keys()].sort((a, b) => a.localeCompare(b, 'ko'));
+    box.append(el(`<div class="dir-head"><h1>태그 관리</h1><p>업무 앞에 <b>Figo)</b> <b>촬영)</b> 처럼 직접 쓰는 방식은 그대로입니다. 여기서는 색·표시 이름·설명만 정합니다.</p></div>`));
+    const list = el('<div class="sec tag-list"></div>');
+    tags.forEach(t => {
+      const cur = state.tags[t] || {};
+      const row = el(`<form class="tag-row"><span class="cat" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code>
+        <input name="label" placeholder="표시 이름" aria-label="${esc(t)} 표시 이름" value="${esc(cur.label || '')}" maxlength="20">
+        <div class="swatches" role="radiogroup" aria-label="${esc(t)} 색">${Object.entries(TAG_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="color" value="${k}"${cur.color === k ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join('')}</div>
+        <input name="desc" placeholder="설명 (예: 피고 외주 관련)" aria-label="${esc(t)} 설명" value="${esc(cur.desc || '')}" maxlength="60">
+        <button class="primary">저장</button></form>`);
+      row.onsubmit = async e => {
+        e.preventDefault(); const f = e.target, body = { action: 'tagSave', tag: t, label: f.label.value.trim(), color: f.color.value || '', desc: f.desc.value.trim() };
+        try { const j = await api.post(body); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); toast(`${t} 태그를 저장했습니다`); renderTeam(); render(); } catch (err) { toast(err.message); }
+      };
+      list.append(row);
+    });
+    if (!tags.length) list.append(el('<p class="muted">아직 태그가 없습니다. 업무 앞에 "분류)" 를 붙여 쓰면 여기에 나타납니다.</p>'));
+    box.append(list);
+  }
+  /* ---------- 사이드바 대메뉴 순서 편집: 편집 버튼을 켜고 손잡이를 끌어 위아래로 ---------- */
+  const navGroups = () => [...document.querySelectorAll('.nav > button[data-view]')];
+  function applyNavOrder() {
+    let order = []; try { order = JSON.parse(localStorage.navOrder || '[]'); } catch {}
+    const nav = document.querySelector('.nav');
+    order.forEach(v => { const b = nav.querySelector(`:scope > button[data-view="${v}"]`); if (!b) return; const sub = b.nextElementSibling?.classList.contains('subnav') ? b.nextElementSibling : null; nav.append(b); if (sub) nav.append(sub); });
+  }
+  function saveNavOrder() { try { localStorage.navOrder = JSON.stringify(navGroups().map(b => b.dataset.view)); } catch {} }
+  $('navEdit').onclick = () => {
+    const on = document.querySelector('.nav').classList.toggle('editing');
+    $('navEdit').setAttribute('aria-pressed', on); $('navEdit').textContent = on ? '편집 완료' : '메뉴 순서 편집';
+    navGroups().forEach(b => {
+      b.querySelector('.nav-grip')?.remove();
+      if (!on) return;
+      const g = el(`<span class="nav-grip" role="button" tabindex="0" aria-label="${b.firstChild.textContent.trim()} 순서 이동 (끌거나 ↑↓)">${icon('drag', 16)}</span>`);
+      g.onpointerdown = e => {
+        e.preventDefault(); e.stopPropagation();
+        const move = ev => {
+          const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.nav > button[data-view]');
+          if (!over || over === b) return;
+          const nav = b.parentNode, sub = b.nextElementSibling?.classList.contains('subnav') ? b.nextElementSibling : null, r = over.getBoundingClientRect();
+          const before = ev.clientY < r.top + r.height / 2, anchor = before ? over : (over.nextElementSibling?.classList.contains('subnav') ? over.nextElementSibling : over).nextSibling;
+          nav.insertBefore(b, anchor); if (sub) nav.insertBefore(sub, b.nextSibling);
+        };
+        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); saveNavOrder(); };
+        addEventListener('pointermove', move); addEventListener('pointerup', up);
+      };
+      g.onclick = e => e.stopPropagation();
+      g.onkeydown = e => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault(); const list = navGroups(), i = list.indexOf(b), t = list[i + (e.key === 'ArrowUp' ? -1 : 1)]; if (!t) return;
+        const nav = b.parentNode, sub = b.nextElementSibling?.classList.contains('subnav') ? b.nextElementSibling : null;
+        if (e.key === 'ArrowUp') nav.insertBefore(b, t); else nav.insertBefore(b, (t.nextElementSibling?.classList.contains('subnav') ? t.nextElementSibling : t).nextSibling);
+        if (sub) nav.insertBefore(sub, b.nextSibling); saveNavOrder(); g.focus();
+      };
+      b.prepend(g);
+    });
+  };
+  applyNavOrder();
+
   load();
   loadDirector();
-  setView('calendar');
+  loadTags();
+  setView('home');
 })();

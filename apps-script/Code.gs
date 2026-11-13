@@ -31,12 +31,13 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 15, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 16, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -53,6 +54,7 @@ function doPost(e) {
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -631,4 +633,29 @@ function reelsShot_(row) {
     cell.setValue('⭕'); SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
     return true;
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 태그 설정: 공통 시트 tags 탭 (태그 | 표시명 | 색 | 설명). 업무 글의 "태그)" 는 그대로 둔다 ---------- */
+var TAG_COLORS_ = ['grey', 'blue', 'green', 'red', 'orange', 'purple', 'pink', 'teal'];
+function tagSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('tags');
+  if (!sh) { sh = ss.insertSheet('tags'); sh.getRange('A:D').setNumberFormat('@'); sh.appendRow(['태그', '표시명', '색', '설명']); sh.setFrozenRows(1); }
+  return sh;
+}
+function tagList_() {
+  var sh = tagSheet_(); if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 4).getDisplayValues().filter(function (r) { return r[0]; })
+    .map(function (r) { return { tag: r[0], label: r[1], color: r[2], desc: r[3] }; });
+}
+function tagSave_(b) {
+  var tag = String(b.tag || '').trim().slice(0, 20);
+  if (!tag) throw new Error('태그 이름이 비어 있습니다');
+  var row = [tag, String(b.label || '').slice(0, 20), TAG_COLORS_.indexOf(b.color) >= 0 ? b.color : '', String(b.desc || '').slice(0, 60)];
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = tagSheet_(), last = sh.getLastRow(), keys = last > 1 ? sh.getRange(2, 1, last - 1, 1).getDisplayValues() : [], idx = -1;
+    for (var i = 0; i < keys.length; i++) if (keys[i][0] === tag) { idx = i + 2; break; }
+    if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row);
+  } finally { lock.releaseLock(); }
+  return tagList_();
 }
