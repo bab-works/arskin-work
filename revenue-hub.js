@@ -19,10 +19,18 @@
   const loadMonths = () => archive('list').then(r => { months = r.months || []; if (data) render(); }).catch(() => {});
   // 엑셀(.xlsx)은 필요할 때만 SheetJS 를 불러 읽는다
   const loadXLSX = () => window.XLSX ? Promise.resolve(window.XLSX) : new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; sc.onload = () => ok(window.XLSX); sc.onerror = () => no(new Error('엑셀 읽기 도구를 불러오지 못했습니다')); document.head.append(sc); });
-  async function fileRows(file) {
+  // 일일마감 파일(통합데이터 탭) 우선, 없으면 월간요약
+  async function fileParse(file) {
+    if (/\.csv$/i.test(file.name)) { const rows = window.RevenueModel.csv(await file.text()); return window.RevenueModel.parse(rows, rows); }
+    if (file.size > 15 * 1024 * 1024) throw new Error('파일이 너무 큽니다 (15MB 이하).');
+    const X = await loadXLSX(), wb = X.read(await file.arrayBuffer(), { type: 'array' });
+    if (wb.Sheets['통합데이터']) return window.RevenueModel.integrated(X.utils.sheet_to_json(wb.Sheets['통합데이터'], { header: 1, raw: false, defval: '' }));
+    const rows = await fileRows(file, X, wb); return window.RevenueModel.parse(rows, rows);
+  }
+  async function fileRows(file, X0, wb0) {
     if (file.size > 15 * 1024 * 1024) throw new Error('파일이 너무 큽니다 (15MB 이하).');
     if (/\.csv$/i.test(file.name)) return window.RevenueModel.csv(await file.text());
-    const X = await loadXLSX(), wb = X.read(await file.arrayBuffer(), { type: 'array' });
+    const X = X0 || await loadXLSX(), wb = wb0 || X.read(await file.arrayBuffer(), { type: 'array' });
     const rowsOf = n => X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' });
     const name = wb.SheetNames.find(n => n === '월간요약') || wb.SheetNames.find(n => { const r = rowsOf(n); return /\d{4}년\s*\d{1,2}월/.test(r[0]?.[0] || '') && r[5]?.[0] === '날짜'; });
     if (!name) throw new Error("파일에서 '월간요약' 탭을 찾지 못했습니다.");
@@ -30,7 +38,7 @@
   }
   async function uploadMonth(file) {
     const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
-    const rows = await fileRows(file), parsed = window.RevenueModel.parse(rows, rows), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
+    const parsed = await fileParse(file), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
     parsed.updated = file.name;
     let adminKey = ''; try { adminKey = localStorage.revenueAdminKey || ''; } catch {}
     if (!adminKey) adminKey = (prompt('매출 파일 업로드 토큰을 입력해 주세요 (관리자에게 받은 값)') || '').trim();
@@ -45,8 +53,7 @@
     $('rvFile').onchange = async e => {
       const file = e.target.files[0]; if (!file) return;
       try {
-        const rows = await fileRows(file); // .xlsx/.xls/.csv 모두
-        const parsed = window.RevenueModel.parse(rows, rows);
+        const parsed = await fileParse(file); // .xlsx(일일마감·월간요약)/.csv
         generation++; sourceMode = ''; data = parsed; data.updated = 'CSV 파일'; selectedDay = null; render();
       } catch (err) { $('rvMessage').textContent = err.message; e.target.value = ''; }
     };
@@ -87,39 +94,67 @@
     return `<div class="rv-insight"><span>${data.month}월 확인할 숫자</span><p>${peak ? `<b>${peak.label.replace('-', '/')}</b>에 가장 많은 매출 <b>${won(peak.total)}</b>이 기록됐어요.` : '일별 기록을 확인해 주세요.'}</p><div class="rv-insight-tags"><span>상위 5일 매출 비중 <b>${m.total ? pct(top5/m.total) : '—'}</b></span><span>최대 결제수단 <b>${esc(payment?.name || '—')}</b></span></div></div>`;
   }
   const hist = {}; // 달별 보관 데이터 캐시 (통합 분석용)
+  const exGet = () => { try { return new Set(JSON.parse(localStorage.rvExclude || '[]')); } catch { return new Set(); } };
+  const exSet = set => { try { localStorage.rvExclude = JSON.stringify([...set]); } catch {} };
+  function procList(cats) { // 제외하지 않은 시술 TOP 10: 포함 건수 막대 + 포함된 보고의 매출
+    const ex = exGet(), list = cats.filter(c => !ex.has(c.name)).slice(0, 10), max = Math.max(1, ...list.map(c => c.count || 0));
+    return list.map((c, i) => `<div class="rv-bar-item"><div><span><i style="background:${colors[i % colors.length]}"></i>${esc(c.name)}</span><b>${fmt(c.count)}건</b></div><div class="rv-bar-track"><i style="width:${(c.count || 0) / max * 100}%;background:${colors[i % colors.length]}"></i></div>${c.revenue != null ? `<small>포함 보고 매출 ${short(c.revenue)}원 · 해외 ${fmt(c.overseas || 0)}건</small>` : ''}</div>`).join('') || '<p class="rv-sub">모든 시술을 제외했어요. 필터에서 다시 켜 주세요.</p>';
+  }
+  function openProcFilter(btn, cats) {
+    document.querySelector('.rv-filter-pop')?.remove();
+    const ex = exGet(), pop = document.createElement('div'); pop.className = 'rv-filter-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', '시술 필터');
+    pop.innerHTML = `<div class="rv-fp-head"><b>대시보드에서 뺄 시술</b><button type="button" data-fp="reset">모두 보기</button></div><div class="rv-fp-list">${cats.map(c => `<label><input type="checkbox" value="${esc(c.name)}"${ex.has(c.name) ? ' checked' : ''}><span>${esc(c.name)}</span><small>${fmt(c.count)}</small></label>`).join('')}</div><button type="button" class="primary" data-fp="close">완료</button>`;
+    btn.after(pop);
+    const apply = () => { const set = new Set([...pop.querySelectorAll('input:checked')].map(i => i.value)); exSet(set); $('rvProcs').innerHTML = procList(cats); btn.querySelector('b').textContent = set.size ? set.size + '개 제외' : '전체'; $('rvInsights').innerHTML = insightList(...insightArgs()); };
+    pop.onchange = apply;
+    pop.onclick = e => { const k = e.target.dataset.fp; if (k === 'reset') { pop.querySelectorAll('input').forEach(i => i.checked = false); apply(); } if (k === 'close') pop.remove(); };
+    setTimeout(() => addEventListener('pointerdown', function off(e) { if (!pop.contains(e.target) && e.target !== btn) { pop.remove(); removeEventListener('pointerdown', off); } }), 0);
+    pop.querySelector('input')?.focus();
+  }
+  let insightArgs = () => [];
   const spark = (vals, color = colors[0]) => { const v = vals.filter(x => x != null); if (v.length < 2) return ''; const mx = Math.max(...v), mn = Math.min(...v), W = 120, H = 28;
     const pts = vals.map((x, i) => x == null ? null : `${(i / (vals.length - 1) * W).toFixed(1)},${(H - 2 - (x - mn) / ((mx - mn) || 1) * (H - 4)).toFixed(1)}`).filter(Boolean).join(' ');
-    return `<svg class="rv-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`; };
+    return `<svg class="rv-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline class="rv-draw" pathLength="1" points="${pts}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`; };
   const delta = (cur, prev) => cur == null || !prev ? '' : `<em class="rv-delta ${cur >= prev ? 'up' : 'down'}">${cur >= prev ? '▲' : '▼'} ${Math.abs((cur / prev - 1) * 100).toFixed(1)}%</em>`;
   const prevMonth = () => { const d = new Date(Date.UTC(data.year, data.month - 2, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
   function kpi(label, value, note, sp, dl = '') { return `<article class="rv-tile"><div class="rv-tile-top"><span>${label}</span>${dl}</div><strong>${value}</strong>${sp || ''}<small>${note}</small></article>`; }
-  function render() {
-    const m = data.metric, P = hist[prevMonth()]?.metric, days = data.daily;
-    const failures = Object.values(data.checks).some(x => x !== 0) || m.checkDifference !== 0;
+  // 진행 중인 달(마지막 기록일이 말일보다 3일 이상 앞): 합계 대신 기록일 평균으로 전월과 비교
+  const partial = () => { const last = Math.max(0, ...data.daily.filter(d => d.count > 0).map(d => d.day)); return last && last < data.daily.length - 2; };
+  function tilesHTML(top, top5, abroad) {
+    const m = data.metric, P = hist[prevMonth()]?.metric, days = data.daily, part = partial();
     const cum = days.map(d => d.cumulative), dayTot = days.map(d => d.total), dayCnt = days.map(d => d.count), avgPer = days.map(d => d.count ? d.total / d.count : null);
-    const top = days.filter(d => d.total != null).sort((a, b) => b.total - a.total), top5 = top.slice(0, 5).reduce((s, d) => s + d.total, 0);
-    const cats = data.categories.slice().sort((a, b) => (b.count || 0) - (a.count || 0)), totalCases = cats.reduce((s, c) => s + (c.count || 0), 0);
-    const pay = data.payments.filter(x => x.value != null).sort((a, b) => b.value - a.value);
-    const dom = data.countries.find(c => c.name === '국내')?.value, abroad = data.countries.filter(c => c.name !== '국내' && c.value);
-    host.innerHTML = header() + `<div class="rv-meta"><span class="rv-period">${data.year}년 ${data.month}월</span><span id="rvStatus" role="status">${esc(data.updated || '')} · ${sourceMode ? '실시간 조회' : '파일 기준'}</span><span class="rv-check ${failures ? 'review' : ''}">${failures ? '집계 확인 필요' : '합계 검증 일치'}</span></div>
-      <section class="rv-tiles">
-        ${kpi('총매출', short(m.total) + '원', `보고 ${fmt(m.count)}건 · ${m.recordedDays}일 기록`, spark(cum), delta(m.total, P?.total))}
-        ${kpi('보고 건수', fmt(m.count) + '건', '월간 누적', spark(dayCnt, colors[2]), delta(m.count, P?.count))}
+    const dTot = part ? delta(m.averageRecordedDay, P?.averageRecordedDay) : delta(m.total, P?.total), dCnt = part ? delta(m.count / (m.recordedDays || 1), P && P.count / (P.recordedDays || 1)) : delta(m.count, P?.count);
+    return `<section class="rv-tiles">
+        ${kpi('총매출', short(m.total) + '원', `보고 ${fmt(m.count)}건 · ${m.recordedDays}일 기록${part ? ' · 진행 중(일평균 비교)' : ''}`, spark(cum), dTot)}
+        ${kpi('보고 건수', fmt(m.count) + '건', '월간 누적', spark(dayCnt, colors[2]), dCnt)}
         ${kpi('객단가', short(m.averageRecord) + '원', '총매출 ÷ 보고 건수', spark(avgPer, colors[5]), delta(m.averageRecord, P?.averageRecord))}
         ${kpi('기록일 평균', short(m.averageRecordedDay) + '원', '총매출 ÷ 기록일', spark(dayTot, colors[1]), delta(m.averageRecordedDay, P?.averageRecordedDay))}
         ${kpi('해외 매출 비중', pct(m.overseasShare), abroad.length ? `해외 ${abroad.length}개국` : '국가별 합계 기준', '', P?.overseasShare != null && m.overseasShare != null ? `<em class="rv-delta ${m.overseasShare >= P.overseasShare ? 'up' : 'down'}">${((m.overseasShare - P.overseasShare) * 100).toFixed(1)}%p</em>` : '')}
         ${kpi('상위 5일 집중도', pct(m.total ? top5 / m.total : null), top[0] ? `최고 ${top[0].label.replace('-', '/')} ${won(top[0].total)}` : '', '')}
-      </section>
+      </section>`;
+  }
+  function render() {
+    const m = data.metric, P = hist[prevMonth()]?.metric, days = data.daily;
+    const failures = Object.values(data.checks).some(x => x !== 0) || m.checkDifference !== 0;
+    /* 스파크라인 데이터는 tilesHTML 에서 */
+    const top = days.filter(d => d.total != null).sort((a, b) => b.total - a.total), top5 = top.slice(0, 5).reduce((s, d) => s + d.total, 0);
+    const cats = data.categories.slice().sort((a, b) => (b.count || 0) - (a.count || 0)), totalCases = cats.reduce((s, c) => s + (c.count || 0), 0), exN = exGet().size;
+    const pay = data.payments.filter(x => x.value != null).sort((a, b) => b.value - a.value);
+    const dom = data.countries.find(c => c.name === '국내')?.value, abroad = data.countries.filter(c => c.name !== '국내' && c.value);
+    host.innerHTML = header() + `<div class="rv-meta"><span class="rv-period">${data.year}년 ${data.month}월</span><span id="rvStatus" role="status">${esc(data.updated || '')} · ${sourceMode ? '실시간 조회' : '파일 기준'}</span><span class="rv-check ${failures ? 'review' : ''}">${failures ? '집계 확인 필요' : '합계 검증 일치'}</span></div>
+      ${tilesHTML(top, top5, abroad)}
       <section class="rv-grid">
         <article class="rv-card rv-span8"><div class="rv-card-head"><div><h2>일별 매출</h2><p>막대를 누르면 그날 금액</p></div><div class="rv-segment" role="group" aria-label="매출 추이 보기"><button data-chart="daily" aria-pressed="${chartMode === 'daily'}">일별</button><button data-chart="cumulative" aria-pressed="${chartMode === 'cumulative'}">누적</button></div></div><div id="rvChart"></div><div id="rvDayDetail" class="rv-day-detail" aria-live="polite"></div><label class="rv-slider-label" for="rvDaySlider">날짜 선택<input id="rvDaySlider" type="range" min="1" max="${Math.max(1, days.length)}" value="${selectedDay || 1}"></label></article>
         <article class="rv-card rv-span4"><h2>결제수단 구성</h2><div class="rv-payment-layout">${paymentRing()}<div>${barList(data.payments, m.total)}</div></div></article>
         ${weekdayAnalysis()}
         <article class="rv-card rv-span4"><h2>주차별 매출</h2><div>${barList(data.weeks.map(w => ({ name: `${w.name} (${w.days}일)`, value: w.valid ? w.total : null })), 0)}</div></article>
         <article class="rv-card rv-span4"><h2>국가별 매출</h2><div>${barList(data.countries, m.total)}</div></article>
-        <article class="rv-card rv-span6"><h2>시술 포함 건수 TOP</h2><p class="rv-sub">한 보고에 여러 시술이 들어갈 수 있어 합계는 보고 건수보다 클 수 있어요</p><div class="rv-cols2">${barList(cats.slice(0, 10).map(c => ({ name: c.name, value: c.count })), 0, false)}</div></article>
+        <article class="rv-card rv-span6"><div class="rv-card-head"><div><h2>시술 TOP 10</h2><p>포함 건수 기준 · 의미 없는 시술은 필터로 빼세요</p></div><div class="rv-filter-wrap"><button type="button" class="rv-filter-btn" id="rvProcFilter" aria-haspopup="dialog">필터 <b>${exN ? exN + '개 제외' : '전체'}</b></button></div></div><div class="rv-cols2" id="rvProcs">${procList(cats)}</div></article>
         <article class="rv-card rv-span6"><h2>담당자별</h2><div class="rv-table"><table><thead><tr><th>담당자</th><th>보고</th><th>총금액</th><th>건당</th><th>비중</th></tr></thead><tbody>${data.staff.map(s => `<tr><td>${esc(s.name)}</td><td>${fmt(s.count)}</td><td>${won(s.total)}</td><td>${won(s.count ? s.total / s.count : null)}</td><td>${pct(m.total && s.total != null ? s.total / m.total : null)}</td></tr>`).join('')}</tbody></table></div></article>
+        ${data.channels ? `<article class="rv-card rv-span6"><h2>유입 경로별 매출</h2><p class="rv-sub">경로별 매출 · 건수 · 객단가</p><div class="rv-table"><table><thead><tr><th>경로</th><th>건수</th><th>매출</th><th>객단가</th><th>비중</th></tr></thead><tbody>${data.channels.slice(0, 10).map(c => `<tr><td>${esc(c.name)}</td><td>${fmt(c.count)}</td><td>${short(c.total)}원</td><td>${short(c.count ? c.total / c.count : null)}원</td><td>${pct(m.total ? c.total / m.total : null)}</td></tr>`).join('')}</tbody></table></div></article>
+        <article class="rv-card rv-span6"><h2>초진 · 재진</h2><p class="rv-sub">신규 유입과 재방문의 매출 구조</p><div class="rv-visits">${data.visits.map((v, i) => `<div><span><i style="background:${colors[i]}"></i>${esc(v.name)}</span><strong>${pct(m.count ? v.count / m.count : null)}</strong><small>${fmt(v.count)}건 · 매출 ${short(v.total)}원 · 객단가 ${short(v.count ? v.total / v.count : null)}원</small></div>`).join('')}</div><div class="rv-stack" role="img" aria-label="초진 재진 매출 비중">${data.visits.map((v, i) => `<i style="flex:${v.total};background:${colors[i]}"></i>`).join('')}</div></article>` : ''}
         <article class="rv-card rv-span12" id="rvTrend"><h2>월별 통합 추이</h2><p class="rv-sub">보관된 달을 모아 비교합니다 · 불러오는 중…</p></article>
-        <article class="rv-card rv-span12 rv-insights"><h2>운영 · 마케팅 인사이트</h2><ul>${insightList(top, top5, cats, totalCases, pay, dom)}</ul></article>
+        <article class="rv-card rv-span12 rv-insights"><h2>운영 · 마케팅 인사이트</h2><ul id="rvInsights">${insightList(...(insightArgs = () => [top, top5, cats.filter(c => !exGet().has(c.name)), totalCases, pay, dom])())}</ul></article>
         <details class="rv-card rv-span12 rv-detail"><summary>집계 기준과 검증 결과 보기</summary><div class="rv-check-list">${[['일별 금액 합계', data.checks.dailyDifference], ['보고 건수 합계', data.checks.countDifference], ['결제수단 합계', data.checks.paymentDifference], ['국가별 금액 합계', data.checks.countryDifference], ['담당자 합계', data.checks.staffDifference], ['누적 금액', data.checks.cumulativeDifference]].map(([k, v]) => `<div><span>${k}</span><b class="${v === 0 ? 'ok' : 'review'}">${v === 0 ? '일치' : v == null ? '확인 불가' : '차이 ' + won(v)}</b></div>`).join('')}</div></details>
       </section>`;
     if ($('rvRefresh')) $('rvRefresh').onclick = load;
@@ -132,19 +167,23 @@
     $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => { $('rvStatus').textContent = '파일 분석 실패: ' + err.message; }); e.target.value = ''; };
     host.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => { chartMode = button.dataset.chart; host.querySelectorAll('[data-chart]').forEach(b => b.setAttribute('aria-pressed', b === button)); renderChart(); });
     $('rvDaySlider').oninput = e => { selectedDay = data.daily[+e.target.value - 1]?.day; renderDay(); };
+    $('rvProcFilter').onclick = e => openProcFilter(e.currentTarget, cats);
     renderChart(); loadTrend();
   }
   function insightList(top, top5, cats, totalCases, pay, dom) {
     const m = data.metric, out = [], P = hist[prevMonth()]?.metric;
     const wd = Array.from({ length: 7 }, () => ({ t: 0, n: 0 })); data.daily.forEach(d => { if (d.count > 0 && d.total != null) { wd[d.weekday].t += d.total; wd[d.weekday].n++; } });
     const avgs = wd.map((w, i) => ({ i, a: w.n ? w.t / w.n : 0 })).filter(x => x.a), best = avgs.slice().sort((a, b) => b.a - a.a)[0], worst = avgs.slice().sort((a, b) => a.a - b.a)[0];
-    if (P?.total) out.push(`전월 대비 총매출 <b>${m.total >= P.total ? '+' : ''}${((m.total / P.total - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b> — ${m.count >= P.count ? '방문(보고) 건수' : '객단가'} 쪽이 성장을 이끌었어요.`);
+    if (P?.total && partial()) out.push(`진행 중인 달이라 <b>기록일 평균</b>으로 비교하면 전월 대비 <b>${m.averageRecordedDay >= P.averageRecordedDay ? '+' : ''}${((m.averageRecordedDay / P.averageRecordedDay - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b>예요.`);
+    else if (P?.total) out.push(`전월 대비 총매출 <b>${m.total >= P.total ? '+' : ''}${((m.total / P.total - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b> — ${m.count >= P.count ? '방문(보고) 건수' : '객단가'} 쪽이 성장을 이끌었어요.`);
     if (best && worst && best.i !== worst.i) out.push(`<b>${'일월화수목금토'[best.i]}요일</b> 일평균 매출이 가장 높고(${won(best.a)}), <b>${'일월화수목금토'[worst.i]}요일</b>이 가장 낮아요(${won(worst.a)}). 약한 요일에 이벤트·리마인드 발송을 배치해 보세요.`);
     if (m.total) out.push(`상위 5일이 매출의 <b>${pct(top5 / m.total)}</b>를 차지해요. ${top5 / m.total > .4 ? '특정 날 쏠림이 커서 예약 분산이 필요해요.' : '매출이 고르게 분포돼 있어요.'}`);
     if (cats[0]) out.push(`가장 많이 포함된 시술은 <b>${esc(cats[0].name)}</b>(${fmt(cats[0].count)}건${totalCases ? `, 시술 언급의 ${pct(cats[0].count / totalCases)}` : ''})${cats[1] ? `, 다음은 <b>${esc(cats[1].name)}</b>` : ''}. 콘텐츠 주제 우선순위에 반영하세요.`);
-    const ov = data.categories.filter(c => c.overseas > 0).sort((a, b) => b.overseas - a.overseas)[0];
+    const ov = cats.filter(c => c.overseas > 0).sort((a, b) => b.overseas - a.overseas)[0];
     if (ov) out.push(`해외 고객이 가장 많이 받은 시술은 <b>${esc(ov.name)}</b>(${fmt(ov.overseas)}건) — 글로벌 계정 콘텐츠 소재로 활용할 만해요.`);
     if (pay[0] && m.total) out.push(`결제는 <b>${esc(pay[0].name)}</b> 비중이 ${pct(pay[0].value / m.total)}로 가장 커요.${data.payments.find(p => /강남언니|바비톡/.test(p.name))?.value ? ` 플랫폼(강남언니/바비톡) 경유 매출은 ${pct(data.payments.find(p => /강남언니|바비톡/.test(p.name)).value / m.total)}예요.` : ''}`);
+    if (data.channels?.length) { const ch = data.channels.filter(c => c.name !== '재진' && c.name !== '미상'), best = ch.slice().sort((a, b) => b.total / b.count - a.total / a.count)[0]; if (ch[0]) out.push(`신규 유입 경로 1위는 <b>${esc(ch[0].name)}</b>(${fmt(ch[0].count)}건, ${short(ch[0].total)}원)${best && best !== ch[0] ? `, 객단가는 <b>${esc(best.name)}</b>가 ${short(best.total / best.count)}원으로 가장 높아요. 광고비 배분 때 함께 보세요.` : '.'}`); }
+    if (data.visits?.length) { const f = data.visits.find(v => v.name === '초진'), r = data.visits.find(v => v.name === '재진'); if (f && r) out.push(`초진 객단가 <b>${short(f.total / f.count)}원</b> vs 재진 <b>${short(r.total / r.count)}원</b>. 재진 매출 비중 ${pct(r.total / m.total)} — ${r.total > f.total ? '재방문 관리(리마인드·패키지)가 매출의 중심이에요.' : '신규 유입 의존도가 높아 재방문 전환 장치가 필요해요.'}`); }
     if (m.vegas) out.push(`VEGAS 매출 <b>${won(m.vegas)}</b> (총매출의 ${pct(m.vegas / m.total)}).`);
     return out.map(t => `<li>${t}</li>`).join('') || '<li>분석할 데이터가 부족합니다.</li>';
   }
@@ -159,11 +198,11 @@
     let svg = `<svg class="rv-trend-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 총매출 추이">`;
     for (let i = 0; i <= 3; i++) { const n = max * i / 3; svg += `<line x1="${L}" x2="${W - 12}" y1="${y(n)}" y2="${y(n)}" stroke="#e5e8eb"/><text x="${L - 8}" y="${y(n) + 4}" text-anchor="end">${Math.round(n / 1e6)}백만</text>`; }
     list.forEach((x, i) => { const cx = L + (i + .5) * step, bw = Math.min(44, step * .5), v = x.m.total || 0;
-      svg += `<g><title>${x.k} 총매출 ${won(v)} · ${fmt(x.m.count)}건 · 객단가 ${won(x.m.averageRecord)}</title><rect x="${cx - bw / 2}" y="${y(v)}" width="${bw}" height="${H - B - y(v)}" rx="4" fill="${x.k === cur ? colors[0] : '#a9c8f0'}"/><text x="${cx}" y="${y(v) - 6}" text-anchor="middle" class="rv-val">${Math.round(v / 1e6)}</text><text x="${cx}" y="${H - 8}" text-anchor="middle">${+x.k.slice(5)}월</text></g>`; });
+      svg += `<g><title>${x.k} 총매출 ${won(v)} · ${fmt(x.m.count)}건 · 객단가 ${won(x.m.averageRecord)}</title><rect class="rv-grow-bar" x="${cx - bw / 2}" y="${y(v)}" width="${bw}" height="${H - B - y(v)}" rx="4" fill="${x.k === cur ? colors[0] : '#a9c8f0'}"/><text x="${cx}" y="${y(v) - 6}" text-anchor="middle" class="rv-val">${Math.round(v / 1e6)}</text><text x="${cx}" y="${H - 8}" text-anchor="middle">${+x.k.slice(5)}월</text></g>`; });
     svg += '</svg>';
     const tbl = `<div class="rv-table"><table><thead><tr><th>월</th><th>총매출</th><th>전월비</th><th>건수</th><th>객단가</th><th>해외 비중</th></tr></thead><tbody>${list.map((x, i) => `<tr${x.k === cur ? ' class="cur"' : ''}><td>${+x.k.slice(0, 4)}.${x.k.slice(5)}</td><td>${won(x.m.total)}</td><td>${i ? delta(x.m.total, list[i - 1].m.total) || '—' : '—'}</td><td>${fmt(x.m.count)}</td><td>${won(x.m.averageRecord)}</td><td>${pct(x.m.overseasShare)}</td></tr>`).join('')}</tbody></table></div>`;
     $('rvTrend').innerHTML = `<h2>월별 통합 추이</h2><p class="rv-sub">보관된 ${list.length}개월 · 막대 위 숫자는 백만원 · 진한 막대가 보고 있는 달</p><div class="rv-trend">${svg}${tbl}</div>`;
-    if (hist[prevMonth()] && loadTrend.redrawn !== cur) { loadTrend.redrawn = cur; render(); } // 전월 데이터가 늦게 오면 증감 표시를 위해 달마다 한 번만 다시 그림
+    if (hist[prevMonth()] && host.querySelector('.rv-tiles')) { const a = insightArgs(); host.querySelector('.rv-tiles').outerHTML = tilesHTML(a[0], a[1], data.countries.filter(c => c.name !== '국내' && c.value)); $('rvInsights').innerHTML = insightList(...a); } // 전월이 늦게 오면 타일·인사이트만 갱신(애니메이션 재시작 방지)
   }
   function weekdayAnalysis() {
     const groups = Array.from({length:7}, (_,i) => ({name:'월화수목금토일'[i]+'요일', days:0, total:0, count:0}));

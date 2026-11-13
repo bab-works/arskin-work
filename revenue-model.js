@@ -75,5 +75,47 @@ function parseCSV(text) {
   return rows;
 }
 
-window.RevenueModel = { parse: revenueParse_, csv: parseCSV };
+// 일일마감 파일의 '통합데이터' 탭(고객 1명 = 1행)에서 직접 집계. 고객 이름은 읽지 않는다(집계만 보관).
+function integratedParse_(rows) {
+  var head = (rows[0] || []).map(function (h) { return String(h).trim(); });
+  var title = head[0], match = String(title).match(/(\d{4})년\s*(\d{1,2})월/);
+  if (!match) throw new Error("통합데이터 1행 A열에서 'YYYY년 M월'을 찾지 못했습니다.");
+  var year = Number(match[1]), month = Number(match[2]);
+  var col = function (name) { var i = head.indexOf(name); if (i < 0) throw new Error("통합데이터에 '" + name + "' 열이 없습니다."); return i; };
+  var C = { staff: col('담당자'), visit: col('초/재진'), nation: col('국적'), route: col('경로'), total: col('총금액'), vegas: col('베가스 금액'), upsell: col('업셀 집계'), diff: col('검증차액') };
+  var payCols = [['강남언니/바비톡', '강남언니/바비톡'], ['카드', '카드'], ['현금', '현금'], ['큐릭', '큐릭'], ['기타/계좌', '기타/계좌']].map(function (x) { return { name: x[1], i: col(x[0]) }; });
+  var procCols = head.map(function (h, i) { return /^시술:/.test(h) ? { name: h.slice(3), i: i } : null; }).filter(Boolean);
+  var num = function (v) { var t = String(v == null ? '' : v).replace(/[₩원,\s]/g, ''); if (!t || t === '-') return 0; var n = Number(t); return isFinite(n) ? n : 0; };
+  var last = new Date(Date.UTC(year, month, 0)).getUTCDate(), dayMap = {}, staff = {}, pays = payCols.map(function () { return 0; }), nations = {}, routes = {}, visits = {}, procs = procCols.map(function () { return { count: 0, revenue: 0, domestic: 0, overseas: 0 }; });
+  var total = 0, count = 0, vegas = 0, upsell = 0, diff = 0;
+  for (var d = 1; d <= last; d++) dayMap[d] = { count: 0, total: 0 };
+  rows.slice(1).forEach(function (r) {
+    var dm = String(r[0] || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (!dm || Number(dm[2]) !== month) return;
+    var amt = num(r[C.total]), day = Number(dm[3]), nat = String(r[C.nation] || '').trim() || '미상', dom = nat === '한국';
+    total += amt; count++; vegas += num(r[C.vegas]); upsell += num(r[C.upsell]); diff += num(r[C.diff]);
+    dayMap[day].count++; dayMap[day].total += amt;
+    var sn = String(r[C.staff] || '').trim() || '미상'; staff[sn] = staff[sn] || { count: 0, total: 0 }; staff[sn].count++; staff[sn].total += amt;
+    payCols.forEach(function (p, k) { pays[k] += num(r[p.i]); });
+    var nk = dom ? '국내' : nat; nations[nk] = (nations[nk] || 0) + amt;
+    var rt = String(r[C.route] || '').trim() || '미상'; routes[rt] = routes[rt] || { count: 0, total: 0 }; routes[rt].count++; routes[rt].total += amt;
+    var vt = String(r[C.visit] || '').trim() === '초' ? '초진' : '재진'; visits[vt] = visits[vt] || { count: 0, total: 0 }; visits[vt].count++; visits[vt].total += amt;
+    procCols.forEach(function (p, k) { if (num(r[p.i]) > 0) { procs[k].count++; procs[k].revenue += amt; if (dom) procs[k].domestic++; else procs[k].overseas++; } });
+  });
+  var cum = 0, daily = [];
+  for (var d2 = 1; d2 <= last; d2++) { cum += dayMap[d2].total; daily.push({ day: d2, label: month + '-' + d2, weekday: new Date(Date.UTC(year, month - 1, d2)).getUTCDay(), count: dayMap[d2].count, total: dayMap[d2].total, cumulative: cum }); }
+  var active = daily.filter(function (x) { return x.count > 0; });
+  var countries = Object.keys(nations).map(function (k) { return { name: k, value: nations[k] }; }).sort(function (a, b) { return (b.name === '국내') - (a.name === '국내') || b.value - a.value; });
+  var abroad = countries.filter(function (x) { return x.name !== '국내'; }).reduce(function (s2, x) { return s2 + x.value; }, 0);
+  var weeks = [], firstOffset = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
+  daily.forEach(function (x) { var i = Math.floor((x.day - 1 + firstOffset) / 7); if (!weeks[i]) weeks[i] = { name: (i + 1) + '주차', total: 0, count: 0, days: 0, valid: true }; weeks[i].days++; weeks[i].total += x.total; weeks[i].count += x.count; });
+  var obj = function (m) { return Object.keys(m).map(function (k) { return { name: k, count: m[k].count, total: m[k].total }; }).sort(function (a, b) { return b.total - a.total; }); };
+  return { schema: 2, source: 'integrated', title: title, year: year, month: month,
+    metric: { total: total, count: count, vegas: vegas, upsellBasis: upsell, checkDifference: diff, recordedDays: active.length, averageRecord: count ? total / count : null, averageRecordedDay: active.length ? total / active.length : null, overseasShare: total ? abroad / total : null },
+    daily: daily, staff: obj(staff).map(function (x) { return { name: x.name, count: x.count, total: x.total, checkDifference: 0 }; }),
+    payments: payCols.map(function (p, k) { return { name: p.name, value: pays[k] }; }), countries: countries,
+    categories: procCols.map(function (p, k) { return { name: p.name, count: procs[k].count, ratio: count ? procs[k].count / count : null, domestic: procs[k].domestic, overseas: procs[k].overseas, revenue: procs[k].revenue }; }).filter(function (c) { return c.count > 0; }),
+    channels: obj(routes), visits: obj(visits), weeks: weeks.filter(Boolean),
+    checks: { dailyDifference: 0, countDifference: 0, paymentDifference: Math.round(total - pays.reduce(function (a, b) { return a + b; }, 0)), countryDifference: 0, staffDifference: 0, cumulativeDifference: 0 } };
+}
+window.RevenueModel = { parse: revenueParse_, csv: parseCSV, integrated: integratedParse_ };
 })();
