@@ -205,6 +205,7 @@
     (items.find(x => x.dataset.k === current) || items[0]).focus();
   }
   const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
+  let applyMainW = () => {};
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   const NESTABLE = new Set([...SUBTASKABLE, '주간고정']); // 하위 업무를 가질 수 있는 칸 (주간고정은 제자리에 남음)
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
@@ -616,6 +617,7 @@
     }
     if (readOnly()) box.append(el(`<div class="ro-banner">${esc(disp(state.person))}님 보고서 · 보기 전용 (각자 자기 보고서만 고칠 수 있어요)</div>`));
     box.append(el(`<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
+    applyMainW();
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const cards = {};
@@ -962,7 +964,7 @@
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
-    if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); }
+    if (b.dataset.view === 'daily' && isDirector()) { leaveDirSheet(); return setView('daily'); } // 사람을 먼저 바꿔야 메뉴 표시가 맞는다
     const mineD = C.PEOPLE.find(p => p.name === state.dir.me && !p.director);
     if (b.dataset.view === 'daily' && mineD && state.person !== mineD.name) { state.person = mineD.name; state.rows = []; state.sel = null; setView('daily'); return load(); } // 일간보고서 = 내 보고서부터
     if (b.dataset.view === 'director') return openDirSheet(); // 숙제 목록 페이지는 숨김(코드는 보관)
@@ -999,8 +1001,11 @@
   tm.addEventListener('keydown', e => { if (e.key === 'Escape') { toolClose(); tt.focus(); } });
   $('cardEdit').onclick = () => { state.cardEdit = !state.cardEdit; $('cardEdit').textContent = state.cardEdit ? '편집 완료' : '카드 배치 편집'; $('cardEdit').setAttribute('aria-pressed', state.cardEdit); renderReport(); if (state.cardEdit) $('report').scrollIntoView({ block: 'start' }); };
   // 본문 폭: 모니터마다 다르니 이 기기에만 저장 (기본 800px)
-  const setMainW = w => { document.documentElement.style.setProperty('--main-w', w + 'px'); $('mainW').value = w; $('mainWv').textContent = w + 'px'; try { localStorage.mainW = w; } catch {} };
-  setMainW(+(() => { try { return localStorage.mainW; } catch { return 0; } })() || 800);
+  // 일간보고서와 원장님 워크시트는 폭을 따로 기억한다
+  const wKey = () => isDirector() ? 'mainWdir' : 'mainW';
+  const setMainW = w => { document.documentElement.style.setProperty('--main-w', w + 'px'); $('mainW').value = w; $('mainWv').textContent = w + 'px'; try { localStorage[wKey()] = w; } catch {} };
+  applyMainW = () => setMainW(+(() => { try { return localStorage[wKey()]; } catch { return 0; } })() || 800);
+  applyMainW();
   $('widthEdit').onclick = () => { const box = $('widthBox'); box.hidden = !box.hidden; $('widthEdit').setAttribute('aria-pressed', !box.hidden); if (!box.hidden) $('mainW').focus(); };
   $('mainW').oninput = e => setMainW(+e.target.value);
   $('mainWreset').onclick = () => setMainW(800);
