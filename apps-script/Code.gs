@@ -31,13 +31,14 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 25, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 26, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
@@ -613,15 +614,20 @@ function scheduledNag() {
   var h = Utilities.formatDate(new Date(), 'Asia/Seoul', 'H');
   jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', '정기 재촉 · ' + h + '시' + (left ? ' · 남은 업무 ' + left + '개' : ''));
 }
-// 잔디 수신 웹훅(스크립트 속성 JANDI_WEBHOOK)이 있으면 메시지를 보낸다. 없으면 조용히 건너뜀.
+// 잔디 수신 웹훅(스크립트 속성 JANDI_WEBHOOK)이 있으면 메시지를 보낸다. 결과(성공 여부·응답)를 돌려준다.
 function jandiSend_(title, body) {
-  var url = PropertiesService.getScriptProperties().getProperty('JANDI_WEBHOOK'); if (!url) return false;
+  var url = String(PropertiesService.getScriptProperties().getProperty('JANDI_WEBHOOK') || '').trim();
+  if (!url) return { ok: false, reason: '스크립트 속성 JANDI_WEBHOOK 이 비어 있습니다' };
+  if (!/^https:\/\/wh\.jandi\.com\/connect-api\/webhook\//.test(url)) return { ok: false, reason: '잔디 웹훅 주소 형식이 아닙니다 (https://wh.jandi.com/connect-api/webhook/... 이어야 함)' };
   try {
-    UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { Accept: 'application/vnd.tosslab.jandi-v2+json' }, muteHttpExceptions: true,
-      payload: JSON.stringify({ body: title, connectColor: '#F04452', connectInfo: [{ title: body || '', description: '아르스킨 대시보드에서 원장님 워크시트를 확인해 주세요.' }] }) });
-    return true;
-  } catch (e) { console.error(e); return false; }
+    var res = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { Accept: 'application/vnd.tosslab.jandi-v2+json' }, muteHttpExceptions: true,
+      payload: JSON.stringify({ body: title, connectColor: '#F04452', connectInfo: [{ title: body || '아르스킨 대시보드', description: '아르스킨 대시보드에서 원장님 워크시트를 확인해 주세요.' }] }) });
+    var code = res.getResponseCode();
+    return { ok: code >= 200 && code < 300, code: code, reason: code >= 300 ? String(res.getContentText()).slice(0, 300) : '' };
+  } catch (e) { return { ok: false, reason: String(e.message || e) }; } // 권한 미승인이면 여기서 'UrlFetchApp 권한' 오류
 }
+// 편집기에서 실행: 잔디로 시험 메시지를 보내고 결과를 실행 로그에 남긴다(처음 실행 때 외부 요청 권한 승인 창이 뜸)
+function testJandi() { var r = jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', '이 메시지가 보이면 연결 성공입니다.'); Logger.log(JSON.stringify(r)); return r; }
 
 /* ---------- 원장님 숙제: 마케터가 원장님께 드리는 숙제. 마케터 모두 읽기·쓰기, 승인·거절은 원장님만 ---------- */
 var DIRECTOR = '원장님';
