@@ -208,7 +208,19 @@
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
   const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
+  // 완료 축하: 작은 색종이가 잠깐 터지고 사라짐 (동작 줄이기 설정이면 생략)
+  function confetti(at) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const b = at?.getBoundingClientRect?.() || { left: innerWidth / 2, top: innerHeight / 2, width: 0, height: 0 }, x = b.left + Math.min(b.width, 40) / 2, y = b.top + b.height / 2;
+    const colors = ['#3182f6', '#0a8f55', '#f04452', '#ffb31a', '#7a5af8', '#00b8d9'];
+    for (let i = 0; i < 16; i++) {
+      const p = document.createElement('i'); p.className = 'confetti'; p.style.cssText = `left:${x}px;top:${y}px;background:${colors[i % colors.length]}`;
+      document.body.append(p);
+      const ang = Math.random() * Math.PI * 2, dist = 30 + Math.random() * 45, dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist - 20;
+      p.animate([{ transform: 'translate(-50%,-50%) scale(1) rotate(0)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy + 30}px)) scale(.6) rotate(${Math.random() * 540}deg)`, opacity: 0 }], { duration: 750 + Math.random() * 250, easing: 'cubic-bezier(.2,.7,.3,1)' }).onfinish = () => p.remove();
+    }
+  }
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') { const b = document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`); b?.classList.add('just-done'); confetti(b); } };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -218,26 +230,26 @@
     const p = progressOf(r);
     return `<div class="project-progress"><div class="project-progress-label"><span>${p.total ? `${p.done}/${p.total} 완료` : '하위 업무를 추가하세요'}</span><b>${p.percent}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><span style="width:${p.percent}%"></span></div></div>`;
   }
-  async function changeSubtask(parent, child, patch, deleting = false) {
-    if (changeSubtask.busy) return;
-    changeSubtask.busy = true;
-    const who = state.person;
-    const children = childrenOf(parent).filter(x => !deleting || x.id !== child.id).map(x => x.id === child.id ? { ...x, ...patch } : x);
-    if (!deleting && !children.some(x => x.id === child.id)) children.push({ ...child, ...patch });
-    const status = children.length && children.every(isDone) ? 'done' : children.some(isDone) ? 'doing' : 'todo';
-    try {
+  // 하위 업무: 화면을 먼저 바꾸고(바로 반영) 저장은 뒤에서 순서대로 보낸다. 실패하면 알리고 다시 불러온다.
+  function changeSubtask(parent, child, patch, deleting = false) {
+    const who = state.person, isNew = !deleting && !state.rows.some(x => x.id === child.id), next = { ...child, ...patch };
+    if (deleting) state.rows = state.rows.filter(x => x.id !== child.id);
+    else if (isNew) state.rows.push(next); else Object.assign(state.rows.find(x => x.id === child.id), patch);
+    const children = childrenOf(parent), before = parent.status;
+    parent.status = children.length && children.every(isDone) ? 'done' : children.some(isDone) ? 'doing' : 'todo';
+    parent.section = SUBTASKABLE.has(parent.section) && children.length ? '팔로업' : parent.section;
+    if (patch.status === 'done') confetti(document.activeElement);
+    if (isNew) state.expanded.add('p:' + parent.id); // 하위 업무를 넣는 동안 펼친 채 유지
+    if (parent.status === 'done' && before !== 'done') confetti(document.querySelector(`[data-id="${CSS.escape(parent.id)}"]`));
+    render();
+    if (isNew) document.querySelector(`.project-card[data-id="${CSS.escape(parent.id)}"] .add input`)?.focus(); // 연속 입력
+    const rows = [{ ...parent }, ...(!deleting ? [next] : [])];
+    changeSubtask.q = (changeSubtask.q || Promise.resolve()).then(async () => {
       if (deleting) await api.post({ action: 'delete', ids: [child.date + '|' + child.id], who });
-      const section = SUBTASKABLE.has(parent.section) && children.length ? '팔로업' : parent.section;
-      await api.post({ action: 'upsert', rows: [{ ...parent, status, section }, ...(!deleting ? [{ ...child, ...patch }] : [])], who });
-      if (state.person !== who) return;
-      const index = state.rows.findIndex(x => x.id === child.id);
-      if (deleting) state.rows = state.rows.filter(x => x.id !== child.id);
-      else if (index >= 0) state.rows[index] = { ...child, ...patch };
-      else state.rows.push({ ...child, ...patch });
-      parent.status = status; parent.section = section; render();
-    } catch (e) { toast('하위 업무 저장 실패: ' + e.message); load(); }
-    finally { changeSubtask.busy = false; }
+      await api.post({ action: 'upsert', rows, who });
+    }).catch(e => { toast('하위 업무 저장 실패: ' + e.message); load(); });
   }
+
   // 프로젝트(하위 업무가 있는 업무): 한 줄로 작게. 제목 · 작은 진행 막대 · n/m. 누르면 하위 업무가 펼쳐진다.
   function projectCard(r) {
     const p = progressOf(r), open = state.expanded.has('p:' + r.id);
@@ -246,7 +258,7 @@
     const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
     title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
     title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); title.blur(); } };
-    const prog = el(`<span class="pc-prog" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><i style="width:${p.percent}%"></i></span>`);
+    const C2 = 2 * Math.PI * 9, prog = el(`<span class="pc-ring" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--grey100)" stroke-width="3.5"/><circle cx="12" cy="12" r="9" fill="none" stroke="${p.percent === 100 ? 'var(--st-done)' : 'var(--blue)'}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(C2 * p.percent / 100).toFixed(1)} ${C2.toFixed(1)}" transform="rotate(-90 12 12)"/></svg></span>`);
     const tog = el(`<button type="button" class="pc-toggle" aria-expanded="${open}" title="하위 업무 ${open ? '접기' : '펼치기'}">${p.done}/${p.total} · ${p.percent}% ${open ? '▴' : '▾'}</button>`);
     tog.onclick = () => { open ? state.expanded.delete('p:' + r.id) : state.expanded.add('p:' + r.id); render(); };
     const del = el(`<button class="del" title="프로젝트 삭제" aria-label="프로젝트 삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); };
@@ -256,7 +268,7 @@
     childrenOf(r).forEach(child => {
       const sub = el('<div class="subtask"></div>');
       const check = el('<input type="checkbox">'); check.checked = isDone(child); check.setAttribute('aria-label', child.text + ' 완료');
-      check.onchange = () => { if (changeSubtask.busy) { check.checked = isDone(child); return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' }); };
+      check.onchange = () => changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' });
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
@@ -275,7 +287,9 @@
       if (e.key === 'Escape') { i.value = ''; i.blur(); }
       if (e.key !== 'Enter' || !i.value.trim()) return;
       const idx = [...document.querySelectorAll('.add input')].indexOf(i);
-      onAdd(i.value.trim()); i.value = ''; render();
+      onAdd(i.value.trim()); i.value = '';
+      if (!i.isConnected && document.activeElement?.matches('.add input')) return; // 추가한 쪽이 이미 다음 입력칸에 포커스를 줬음
+      render();
       document.querySelectorAll('.add input')[idx]?.focus(); // 연속 입력: 같은 자리의 입력칸으로 포커스 복귀
     };
     return w;
@@ -393,7 +407,7 @@
         api.post({ action: 'reelsStep', row: String(target.col).slice(5), step: st, on: set.has(st) })
           .then(j => { if (j.link) { updateRow(target, { end: j.link }); render(); toast('업로드 영상 링크를 연결했습니다'); } else if (st === '업로드' && set.has(st)) toast('콘텐츠 캘린더에 아직 오늘 게시물이 없어요. 올라오면 링크가 자동으로 채워집니다'); })
           .catch(e => toast('영상 기획 반영 실패: ' + e.message));
-        if (status === 'done') holdSort(target.id);
+        if (status === 'done') { holdSort(target.id); confetti(b); }
         render();
       };
       box.append(b);
@@ -839,13 +853,29 @@
     return { month, days };
   }
   const chip = s => `<span class="chip ${/💚|💜/.test(s) ? 'blog' : s.includes('@') ? 'ig' : ''}" title="${esc(s)}">${esc(s)}</span>`;
+  // 발행 링크: 콘텐츠 데이터(채널별 [날짜, 제목/캡션, 링크])에서 같은 날·같은 채널 게시물을 찾는다
+  const PUB_CH = [[/원개블|원장/, 'won'], [/자사블|병원 블로그/, 'jasa'], [/global|글로벌/i, 'global'], [/hongzz|홍크크/i, 'hongzz'], [/figo/i, 'figo'], [/arskin|아르스킨/i, 'arskin']];
+  function pubLink(day, txt) {
+    const cd = state.contentData; if (!cd) return '';
+    const ch = PUB_CH.find(([re]) => re.test(txt))?.[1]; if (!ch || !cd[ch]) return '';
+    const [y, m, d] = day.split('-').map(Number), key = `${y}. ${m}. ${d}`, same = cd[ch].filter(r => String(r[0]).trim() === key && /^https?:/.test(r[2]));
+    const words = txt.split('|').pop().replace(/[^\p{L}\p{N}]/gu, ' ').split(/\s+/).filter(w => w.length > 1);
+    return (same.find(r => words.some(w => String(r[1]).includes(w))) || same[0])?.[2] || '';
+  }
+  async function loadContentLinks() {
+    if (loadContentLinks.done) return; loadContentLinks.done = true;
+    const c = cacheGet('contentLinks'); if (c) { state.contentData = c; renderReport(); }
+    try { const j = await api.get({ action: 'content' }); const slim = {}; ['hongzz', 'global', 'figo', 'arskin', 'won', 'jasa'].forEach(k => { slim[k] = (j[k] || []).slice(-60).map(r => [r[0], String(r[1]).slice(0, 80), r[2]]); });
+      state.contentData = slim; cacheSet('contentLinks', slim); renderReport(); } catch {}
+  }
   // 이번 주(월~일) 발행 예정: 날짜와 내용만 한 줄씩 (콘텐츠 캘린더 시트에서)
   function publishingFor(d) {
     const c = state.calendar; if (!c) return null;
     const ws = weekStart(d), lines = [];
     for (let i = 0; i < 7; i++) {
       const day = shiftDate(ws, i), [, m, dd] = day.split('-').map(Number); if (m !== c.month) continue;
-      (c.days[dd] || []).forEach(t => lines.push(`<li><span class="pub-date">${m}/${dd} (${WD[new Date(day + 'T00:00:00').getDay()]})</span><span class="pub-text">${esc(t.replace(/^[^\p{L}\p{N}@]+/u, ''))}</span></li>`));
+      (c.days[dd] || []).forEach(t => { const txt = t.replace(/^[^\p{L}\p{N}@]+/u, ''), url = pubLink(day, txt);
+        lines.push(`<li><span class="pub-date">${m}/${dd} (${WD[new Date(day + 'T00:00:00').getDay()]})</span>${url ? `<a class="pub-text" href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)} ↗</a>` : `<span class="pub-text">${esc(txt)}</span>`}</li>`); });
     }
     return el(`<ul class="week-pub">${lines.join('') || '<li class="note-empty">이번 주 발행 예정이 없습니다</li>'}</ul>`);
   }
@@ -1081,7 +1111,7 @@
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
           ev.onpointerdown = e => longPressMove(e, wrap, r);
-          wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); spawnNext(r); renderShared(); renderTimeline(); };
+          wrap.querySelector('input').onchange = e => { if (e.target.checked) confetti(e.target); updateRow(r, { status: e.target.checked ? 'done' : '' }); spawnNext(r); renderShared(); renderTimeline(); };
           col.append(wrap);
         });
         const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
@@ -1225,6 +1255,7 @@
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
     api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
+    loadContentLinks();
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */

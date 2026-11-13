@@ -796,3 +796,6 @@ html.printing .card-cols .task-list{grid-template-columns:repeat(3,minmax(0,1fr)
 .week-pub li:last-child{border-bottom:none}
 .pub-date{flex:none;width:72px;color:var(--text-2);font-size:13px;font-variant-numeric:tabular-nums}
 .pub-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.pc-ring{flex:none;display:grid;place-items:center;width:24px;height:24px}
+.confetti{position:fixed;z-index:200;width:7px;height:7px;border-radius:2px;pointer-events:none}
+a.pub-text{color:var(--text-1);text-decoration:underline;text-decoration-color:var(--grey200);text-underline-offset:3px}a.pub-text:hover{color:var(--blue-text)}
