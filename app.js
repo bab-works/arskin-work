@@ -436,9 +436,14 @@
       wrap.querySelector(`[data-c="${c}"]`).append(n); }));
     return wrap;
   }
+  const CARD_PASTELS = [['하늘', '#a8cbff', '#eef5ff'], ['민트', '#9be3c8', '#ecfaf4'], ['레몬', '#f5d97a', '#fffbea'], ['피치', '#ffc4a3', '#fff3ec'], ['로즈', '#f7b2c4', '#fff0f4'], ['라벤더', '#c9b8f5', '#f5f1ff'], ['세이지', '#b8d4a8', '#f3f8ef'], ['그레이', '#cfd6de', '#f6f7f9']];
   function cardEditControls(n, k, col) {
     const h = n.querySelector('h3'); if (!h) return;
     const g = el(`<span class="card-grip" title="끌어서 옮기기">${icon('drag', 18)}</span>`); h.prepend(g);
+    // 파스텔 팔레트(테두리·채우기 한 쌍) 먼저, 세밀하게 고르고 싶으면 옆의 직접 선택
+    const pal = el(`<span class="card-palette" role="group" aria-label="파스텔 색">${CARD_PASTELS.map(([name, b, f]) => `<button type="button" title="${name}" aria-label="${name}" style="background:${f};border-color:${b}" data-b="${b}" data-f="${f}"></button>`).join('')}</span>`);
+    pal.onclick = e => { const b = e.target.closest('[data-b]'); if (!b) return; n.style.borderColor = b.dataset.b; n.style.background = b.dataset.f; n.classList.add('tinted'); const all = pref('cardColors', {}); all[k] = { border: b.dataset.b, fill: b.dataset.f }; setPref('cardColors', all); renderReport(); };
+    h.append(pal);
     const pick = el(`<span class="card-colors"><label title="테두리 색">테두리 <input type="color" value="${col.border || '#e5e8eb'}"></label><label title="채우기 색">채우기 <input type="color" value="${col.fill || '#ffffff'}"></label><button type="button" class="card-reset">기본</button></span>`);
     const [bi, fi] = pick.querySelectorAll('input'), saveC = v => { const all = pref('cardColors', {}); if (v) all[k] = v; else delete all[k]; setPref('cardColors', all); };
     bi.oninput = () => { n.style.borderColor = bi.value; n.classList.add('tinted'); }; fi.oninput = () => { n.style.background = fi.value; n.classList.add('tinted'); };

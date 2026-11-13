@@ -799,3 +799,8 @@ html.printing .card-cols .task-list{grid-template-columns:repeat(3,minmax(0,1fr)
 .pc-ring{flex:none;display:grid;place-items:center;width:24px;height:24px}
 .confetti{position:fixed;z-index:200;width:7px;height:7px;border-radius:2px;pointer-events:none}
 a.pub-text{color:var(--text-1);text-decoration:underline;text-decoration-color:var(--grey200);text-underline-offset:3px}a.pub-text:hover{color:var(--blue-text)}
+.card-palette{display:flex;gap:4px;margin-left:auto}
+.card-palette button{width:26px;height:26px;min-height:0;padding:0;border-radius:50%;border:2px solid;position:relative}
+.card-palette button::after{content:"";position:absolute;inset:-9px}
+.card-palette button:hover{transform:scale(1.12)}
+.card-palette+.card-colors{margin-left:8px}
