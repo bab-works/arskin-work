@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 19, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 20, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -47,6 +47,7 @@ function doGet(e) {
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
+  if (body.action === 'revenueArchive') { try { return json(revenueArchive_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenue') { try { return json(revenueData_(body.viewKey)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'contentPlanDelete' || body.action === 'contentPlanAddMany') { try { return json({ plan: body.action === 'contentPlanDelete' ? contentPlanDelete_(body) : contentPlanAddMany_(body.rows) }); } catch (err) { return json({ error: err.message }); } }
@@ -368,10 +369,29 @@ function syncInstagramNow() { return instagramSync_(true); }
 // 월간 매출표: 공개 API_KEY와 별개인 비공개 조회키가 있어야 읽을 수 있습니다.
 var REVENUE_SS_ID = '1XoxsdvRVo8-L_zSuZp6kWzLdlHLqikXRVhYgnIZmQpw';
 // 매출표 원본(월간요약 A1:AF100)을 비밀번호 확인 후 표시값 그대로 돌려준다. 화면 파싱은 revenue-model.js가 한다.
-function revenueRows_(provided) {
+function revenueKeyCheck_(provided) {
   var expected = PropertiesService.getScriptProperties().getProperty('REVENUE_VIEW_KEY');
   if (!expected) throw new Error('매출표 비밀번호가 아직 설정되지 않았습니다.');
   if (String(provided || '') !== expected) throw new Error('매출 비밀번호가 맞지 않습니다.');
+}
+// 달별 분석 보관: 원본 매출 시트(소유자만 접근)의 '_분석보관' 탭 [월 | 분석 JSON | 저장시각 | 저장자]
+function revenueArchive_(b, me) {
+  revenueKeyCheck_(b.revenueKey);
+  var ss = SpreadsheetApp.openById(REVENUE_SS_ID), sh = ss.getSheetByName('_분석보관');
+  if (!sh) { sh = ss.insertSheet('_분석보관'); sh.getRange('A:D').setNumberFormat('@'); sh.appendRow(['월', '분석', '저장시각', '저장자']); sh.hideSheet(); }
+  var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 2).getValues() : [];
+  if (b.op === 'list') return { months: rows.map(function (r) { return String(r[0]); }).filter(String).sort().reverse() };
+  var month = String(b.month || ''); if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('월 형식이 올바르지 않습니다');
+  var idx = -1; for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === month) { idx = i + 2; break; }
+  if (b.op === 'get') { if (idx < 0) throw new Error('보관된 분석이 없습니다'); return { data: JSON.parse(sh.getRange(idx, 2).getValue()) }; }
+  if (b.op !== 'save') throw new Error('unknown op');
+  var text = JSON.stringify(b.data || {}); if (text.length > 45000) throw new Error('분석 결과가 너무 큽니다');
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try { var row = [month, text, new Date().toISOString(), me]; if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row); } finally { lock.releaseLock(); }
+  return { ok: true };
+}
+function revenueRows_(provided) {
+  revenueKeyCheck_(provided);
   var sh = SpreadsheetApp.openById(REVENUE_SS_ID).getSheetByName('월간요약');
   if (!sh || sh.getSheetId() !== 1411519381) throw new Error('월간요약 시트를 확인해 주세요.');
   return sh.getRange('A1:AF100').getDisplayValues();

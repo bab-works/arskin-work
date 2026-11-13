@@ -8,7 +8,32 @@
   let generation = 0;
   let host, data, sourceMode = '', busy = false, chartMode = 'daily', selectedDay;
   const $ = id => document.getElementById(id);
-  const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? (sourceMode ? '<button id="rvRefresh">↻ 새로고침</button>' : '') + '<button id="rvLock">닫기</button>' : ''}</div></div>`;
+  const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? `<select id="rvMonth" aria-label="볼 달 선택"><option value="">이번 달 (실시간)</option>${months.map(m => `<option value="${m}"${m === shownMonth ? ' selected' : ''}>${+m.slice(0, 4)}년 ${+m.slice(5)}월 (보관)</option>`).join('')}</select><label class="rv-upload" title="그 달의 매출 파일(.xlsx 또는 월간요약 CSV)을 올리면 자동 분석해 보관합니다">파일로 달 추가<input type="file" id="rvUpload" accept=".xlsx,.xls,.csv" hidden></label>` + (sourceMode ? '<button id="rvRefresh">새로고침</button>' : '') + '<button id="rvLock">닫기</button>' : ''}</div></div>`;
+  let months = [], shownMonth = '';
+  // 보관함: 달별 분석 결과를 원본 매출 시트의 '_분석보관' 탭에 저장(매출 비밀번호 필요)
+  const archive = async (op, extra = {}) => {
+    const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ key: window.CONFIG.API_KEY, code: localStorage.accessCode || '', action: 'revenueArchive', op, revenueKey: savedKey(), ...extra }) })).json();
+    if (res.error) throw new Error(res.error); return res;
+  };
+  const loadMonths = () => archive('list').then(r => { months = r.months || []; if (data) render(); }).catch(() => {});
+  // 엑셀(.xlsx)은 필요할 때만 SheetJS 를 불러 읽는다
+  const loadXLSX = () => window.XLSX ? Promise.resolve(window.XLSX) : new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; sc.onload = () => ok(window.XLSX); sc.onerror = () => no(new Error('엑셀 읽기 도구를 불러오지 못했습니다')); document.head.append(sc); });
+  async function fileRows(file) {
+    if (file.size > 15 * 1024 * 1024) throw new Error('파일이 너무 큽니다 (15MB 이하).');
+    if (/\.csv$/i.test(file.name)) return window.RevenueModel.csv(await file.text());
+    const X = await loadXLSX(), wb = X.read(await file.arrayBuffer(), { type: 'array' });
+    const rowsOf = n => X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' });
+    const name = wb.SheetNames.find(n => n === '월간요약') || wb.SheetNames.find(n => { const r = rowsOf(n); return /\d{4}년\s*\d{1,2}월/.test(r[0]?.[0] || '') && r[5]?.[0] === '날짜'; });
+    if (!name) throw new Error("파일에서 '월간요약' 탭을 찾지 못했습니다.");
+    return rowsOf(name);
+  }
+  async function uploadMonth(file) {
+    const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
+    const rows = await fileRows(file), parsed = window.RevenueModel.parse(rows, rows), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
+    parsed.updated = file.name;
+    await archive('save', { month, data: parsed });
+    generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; await loadMonths(); render();
+  }
   window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) load(); } }, refresh() { if (sourceMode) load(); } };
   function renderLocked(message = '') {
     data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약</h2><p>연결된 Google 시트의 월간요약을 불러옵니다.</p><form class="rv-pass" id="rvPassForm"><label for="rvPass">매출 비밀번호</label><input type="password" id="rvPass" autocomplete="current-password" required><button class="primary" id="rvConnect">불러오기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 월간요약 탭에서 다운로드한 CSV를 이 기기에서 분석합니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".csv,text/csv"></details></section>`;
@@ -39,7 +64,7 @@
       if (requestGeneration !== generation) return;
       sourceMode = 'sheet';
       result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium' }).format(new Date());
-      data = result; selectedDay = selectedDay || result.daily.at(-1)?.day; render();
+      data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render(); loadMonths();
     } catch (error) {
       if (requestGeneration !== generation) return;
       if (data) { $('rvStatus').textContent = '새로고침 실패 · 이전 확인 내용을 표시 중: ' + error.message; }
@@ -71,6 +96,12 @@
       <details class="rv-card rv-detail"><summary>집계 기준과 검증 결과 보기</summary><div class="rv-check-list">${[['일별 금액 합계',data.checks.dailyDifference],['보고 건수 합계',data.checks.countDifference],['결제수단 합계',data.checks.paymentDifference],['국가별 금액 합계',data.checks.countryDifference],['담당자 금액 합계',data.checks.staffDifference],['최종 누적 금액',data.checks.cumulativeDifference],['원본 검증차액',m.checkDifference]].map(([n,v])=>`<div><span>${n}</span><b>${v == null ? '확인 불가' : v===0 ? '일치' : '차이 '+fmt(v)}</b></div>`).join('')}</div><p>보고 건수는 고유 고객 수가 아닙니다. 보고 기록일은 보고 건수가 1건 이상인 날짜로 계산하며, 영업일 여부를 판정하지 않습니다. 전월·목표 데이터가 없어 전월 대비와 목표 달성률은 표시하지 않습니다.</p><p>업셀 집계 ${won(m.upsellBasis)}는 원본의 특정 앱결제 제외 기준 집계이며, 추가 발생 매출을 뜻하지 않습니다. 베가스 금액 ${won(m.vegas)}는 별도 원본 항목으로 총금액에 더하지 않습니다.</p><p>원본의 계산 오류나 빈 값은 0으로 바꾸지 않고 확인 필요로 표시합니다.</p></details>`;
     if ($('rvRefresh')) $('rvRefresh').onclick = load;
     $('rvLock').onclick = () => { generation++; sourceMode = ''; renderLocked(); };
+    $('rvMonth').onchange = async e => {
+      const m = e.target.value; shownMonth = m;
+      if (!m) return load();
+      try { const r = await archive('get', { month: m }); generation++; sourceMode = ''; data = r.data; selectedDay = data.daily.at(-1)?.day; render(); } catch (err) { $('rvStatus').textContent = err.message; }
+    };
+    $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => { $('rvStatus').textContent = '파일 분석 실패: ' + err.message; }); e.target.value = ''; };
     host.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => { chartMode = button.dataset.chart; host.querySelectorAll('[data-chart]').forEach(b => b.setAttribute('aria-pressed',b===button)); renderChart(); });
     $('rvDaySlider').oninput = e => { selectedDay = data.daily[+e.target.value-1]?.day; renderDay(); };
     renderChart(); animateTotal();
