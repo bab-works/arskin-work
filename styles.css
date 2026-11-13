@@ -739,7 +739,7 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 /* 보기 전용(다른 사람 보고서) */
 .ro-banner{background:#fff8e6;color:#8a5a00;border-radius:var(--r-md);padding:10px 14px;font-size:14px;font-weight:600}
 .readonly .add,.readonly .del,.readonly .drag,.readonly .project-start,.readonly .reel-steps,.readonly #tlAdd,.readonly .cat-add{display:none!important}
-.readonly .st,.readonly [contenteditable],.readonly .tl-block,.readonly .tl-grid,.readonly .pc-toggle{pointer-events:none}
+.readonly .st,.readonly [contenteditable],.readonly .tl-grid,.readonly .pc-toggle{pointer-events:none}.readonly .tl-block{cursor:default;pointer-events:auto}
 .dir-subnav[hidden]{display:none!important}
 /* 2: 오른쪽 열 = 타임라인 + 완료 업무 (같은 폭) / 보고서 카드 두 칸 */
 @media(min-width:901px){.daily{grid-template-columns:minmax(0,1fr) 520px;justify-content:stretch}}
@@ -1155,3 +1155,17 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .hosp-kinds{display:flex;gap:6px;flex-wrap:wrap}.hosp-kinds label{display:flex;align-items:center;gap:4px;font-size:14px;min-height:36px;padding:0 8px;border-radius:6px;background:var(--grey50);cursor:pointer}
 .hosp-acts{display:flex;justify-content:flex-end;gap:6px}.hosp-acts button{min-height:40px;padding:0 14px}
 @media(max-width:700px){.hosp-grid .sc-day{min-height:72px;padding:4px}.hosp-leave{font-size:12px;padding:2px 4px}.hosp-leave small{display:none}}
+
+/* 타임라인 블록 마우스 오버: 전체 내용 */
+.tl-tip{position:fixed;z-index:80;width:280px;background:rgba(25,31,40,.94);color:#fff;border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.45;pointer-events:none;box-shadow:0 10px 28px rgba(0,27,55,.2)}
+.tl-tip b{display:block;white-space:pre-wrap;word-break:break-word}.tl-tip span{display:block;font-size:12px;opacity:.8;margin-top:4px}
+.tl-tip[hidden]{display:none}
+/* 팔로업 항목 메모: 말풍선 */
+.pc-memo{width:32px;height:32px;flex:none;padding:0;display:grid;place-items:center;background:none;border-radius:6px;color:var(--text-3,#8b95a1);position:relative}
+.pc-memo::after{content:"";position:absolute;inset:-6px}
+.pc-memo svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
+.pc-memo:hover{background:var(--grey100);color:var(--text-1)}.pc-memo.has{color:#e8590c}.pc-memo.has svg{fill:#fff4e6}
+.memo-bubble{position:fixed;z-index:75;width:280px;background:#fff;border-radius:12px;padding:10px;box-shadow:0 12px 32px rgba(0,27,55,.2);animation:popIn 160ms var(--ease);transform-origin:var(--tail,50%) 0}
+.memo-bubble::before{content:"";position:absolute;top:-7px;left:calc(var(--tail,140px) - 7px);width:14px;height:14px;background:#fff;transform:rotate(45deg);border-radius:2px;box-shadow:-2px -2px 4px rgba(0,27,55,.06)}
+.memo-bubble textarea{width:100%;border:none;background:var(--grey50);border-radius:6px;padding:8px;font:inherit;font-size:14px;line-height:1.5;resize:vertical;position:relative}
+.memo-bubble small{display:block;margin-top:4px;font-size:12px;color:var(--text-2)}

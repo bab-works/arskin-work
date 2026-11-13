@@ -270,7 +270,9 @@
     const tog = el(`<button type="button" class="pc-toggle" aria-expanded="${open}" title="하위 업무 ${open ? '접기' : '펼치기'}">${p.done}/${p.total} · ${p.percent}% ${open ? '▴' : '▾'}</button>`);
     tog.onclick = () => { open ? state.expanded.delete('p:' + r.id) : state.expanded.add('p:' + r.id); render(); };
     const del = el(`<button class="del" title="프로젝트 삭제" aria-label="프로젝트 삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); };
-    line.append(title, prog, tog, del); card.append(line);
+    const memo = el(`<button type="button" class="pc-memo${r.end ? ' has' : ''}" aria-haspopup="dialog" aria-label="${esc(r.text)} 메모${r.end ? ' 있음' : ''}" title="${esc(r.end || '메모')}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg></button>`);
+    memo.onclick = e => { e.stopPropagation(); memoBubble(memo, r); };
+    line.append(title, memo, prog, tog, del); card.append(line);
     if (!open) return card;
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
@@ -546,7 +548,7 @@
     };
     const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo', onAdd }));
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
-    if (s.key === '팔로업' && !readOnly()) { // 팔로업 메모: 팝업에서 쓰고 자동 저장(다음 날로 이어짐)
+    if (false && s.key === '팔로업' && !readOnly()) { // shortcut: 섹션 메모는 항목별 메모로 대체(코드·데이터 보관)
       const has = !!cellText(d, '팔로업메모', '').trim(), mb = el(`<button type="button" class="fu-memo-btn${has ? ' has' : ''}" aria-haspopup="dialog">메모${has ? ' •' : ''}</button>`);
       mb.onclick = () => openFollowMemo(d); node.querySelector('h3').append(mb);
     }
@@ -575,6 +577,20 @@
       if (planRows.length && rest.length) { const h = el(`<h4 class="reel-head">직접 추가 · ${rest.length}</h4>`); add.before(h); rest.forEach(n => add.before(n)); }
     }
     return node;
+  }
+  // 말풍선 메모: 누르면 바로 커서, 입력하는 대로 저장, 바깥 클릭·Esc로 닫힘
+  function memoBubble(anchor, r) {
+    document.querySelector('.memo-bubble')?.remove();
+    const b = anchor.getBoundingClientRect(), pop = el(`<div class="memo-bubble" role="dialog" aria-label="${esc(r.text)} 메모"><textarea rows="4" placeholder="이 항목 메모 (자동 저장)"></textarea><small>자동 저장 · Esc로 닫기</small></div>`);
+    const ta = pop.querySelector('textarea'); ta.value = r.end || ''; let t;
+    const flush = () => { clearTimeout(t); const v = ta.value.trim(); if (v !== (r.end || '')) { updateRow(r, { end: v }); anchor.classList.toggle('has', !!v); anchor.title = v || '메모'; } };
+    ta.oninput = () => { clearTimeout(t); t = setTimeout(flush, 700); };
+    const close = () => { flush(); pop.remove(); removeEventListener('pointerdown', off, true); anchor.focus(); };
+    const off = e => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
+    pop.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    document.body.append(pop);
+    const left = Math.max(8, Math.min(innerWidth - 300, b.left + b.width / 2 - 140)); pop.style.left = left + 'px'; pop.style.top = b.bottom + 10 + 'px'; pop.style.setProperty('--tail', (b.left + b.width / 2 - left) + 'px');
+    setTimeout(() => addEventListener('pointerdown', off, true), 0); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
   }
   function openFollowMemo(d) {
     const dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="fuMemoT"><h2 id="fuMemoT">팔로업 메모</h2><textarea rows="10" placeholder="팔로업 진행 상황, 연락할 사람, 다음 액션 등을 적어 두세요. 자동 저장됩니다."></textarea><div class="tr-acts"><small class="muted">자동 저장 · 다음 근무일로 이어집니다</small><button type="button" class="primary">닫기</button></div></dialog>`);
@@ -784,6 +800,13 @@
   const TL_COLORS = { blue: ['#e8f3ff', '#1b64da'], green: ['#e6f6ee', '#0a7a4a'], orange: ['#fff3e6', '#b35300'], purple: ['#f0ebff', '#5b3cc4'], pink: ['#ffeef6', '#b0236a'], grey: ['#f2f4f6', '#4e5968'] };
   const [H0, H1] = C.TIMELINE;
   const yToMin = (y, g) => Math.max(H0 * 60, Math.min(H1 * 60, Math.floor((H0 * 60 + (y / g.clientHeight) * (H1 - H0) * 60) / STEP) * STEP));
+  const tlTip = el('<div class="tl-tip" role="tooltip" hidden></div>'); document.body.append(tlTip);
+  document.addEventListener('mouseover', e => {
+    const b = e.target.closest?.('.tl-block:not(.ghost)'); if (!b) { tlTip.hidden = true; return; }
+    const sm = b.querySelector('small'), title = [...b.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+    tlTip.innerHTML = `<b>${esc(title || b.title)}</b>${sm ? `<span>${esc(sm.textContent.replace(/\n/g, ' '))}</span>` : ''}`; tlTip.hidden = false;
+    const r = b.getBoundingClientRect(); tlTip.style.left = Math.max(8, Math.min(innerWidth - 288, r.left - 290 > 8 ? r.left - 290 : r.right + 8)) + 'px'; tlTip.style.top = Math.max(8, Math.min(innerHeight - 80, r.top)) + 'px';
+  });
   function place(b, start, end) {
     const s = toMin(start), e = toMin(end);
     b.style.top = ((s - H0 * 60) / 60 * PX) + 'px'; b.style.height = Math.max(14, (e - s) / 60 * PX - 2) + 'px';
@@ -812,15 +835,14 @@
     (isDirector() ? state.teamTL : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
       const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정 ${esc(r.start)}~${esc(r.end)}">${esc(r.text)}<small>공통 · ${esc(r.start)}
 ~${esc(r.end)}</small></div>`);
-      place(b, r.start, r.end); b.onclick = () => isDirector() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
+      place(b, r.start, r.end); b.onclick = () => isDirector() || readOnly() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
       const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}">${esc(r.text)}<small>${esc(r.start)}
 ~${esc(r.end)}</small></div>`);
       if (c) Object.assign(b.style, { background: c[0], color: c[1], borderLeft: `3px solid ${c[1]}` });
       place(b, r.start, r.end); b._r = r;
-      b.onpointerdown = e => startMove(e, r, b, grid);
-      b.onclick = () => { if (!b.moved) openEditor(r, b); };
+      if (!readOnly()) { b.onpointerdown = e => startMove(e, r, b, grid); b.onclick = () => { if (!b.moved) openEditor(r, b); }; }
       grid.append(b);
     });
     layoutLanes(grid);
