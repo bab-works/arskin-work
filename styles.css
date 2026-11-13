@@ -1014,7 +1014,7 @@ dialog[open]{animation:popIn 180ms var(--ease)}
 @media(max-width:1200px){.rv-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.rv-span4{grid-column:span 6}.rv-span8{grid-column:span 12}.rv-grid .rv-span4:last-of-type{grid-column:span 12}}
 @media(max-width:700px){.rv-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rv-grid{grid-template-columns:minmax(0,1fr)}.rv-span4,.rv-span6,.rv-span8,.rv-span12{grid-column:auto}.rv-trend,.rv-insights ul{grid-template-columns:minmax(0,1fr)}.rv-cols2{columns:1}.rv-tile strong{font-size:17px}}
 @media(max-width:700px){.rv-grid>*{grid-column:1/-1!important}}
-.shared-tabs button{min-height:44px}
+.shared-tabs button{min-height:46px}
 /* 연월차 리디자인 */
 .lv-head{margin:4px 0 16px}.lv-head h1{font-size:22px;margin:0 0 4px}.lv-head p{margin:0;font-size:14px;color:var(--text-2)}
 .lv-people{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}
