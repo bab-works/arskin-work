@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 22, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 23, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -59,7 +59,7 @@ function doPost(e) {
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
-  if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row, body.undo ? '' : undefined) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
@@ -649,11 +649,11 @@ function directorEdit_(body, me) {
 
 /* ---------- 릴스업무 ↔ 영상 기획: 아직 촬영 안 한 기획을 가져오고, 촬영하면 기획 시트에 ⭕ 표시 ---------- */
 // 기획 시트 열: J 타겟팅, K 방식, L 영상 리스트(제목), M 촬영 여부, N 업로드완료, O 레퍼런스, P 업로드 영상
-function reelsPlan_() {
+function reelsPlan_() { // 기각·업로드 끝난 것 제외. shot: 촬영 표시(⭕) 여부, type: 방식(숙제/내부촬영)
   return contentPlanRead(SpreadsheetApp.openById(CALENDAR_SS_ID)).filter(function (r) {
     var v = r.v.map(function (x) { return String(x).trim(); });
-    return /[\p{L}\p{N}]/u.test(v[2]) && v[1] !== '기각' && v[3] !== '기각' && v[3] !== '⭕' && !v[4];
-  }).map(function (r) { return { row: r.row, title: String(r.v[2]).trim(), kind: String(r.v[0]).trim(), ref: String(r.v[5]).trim() }; });
+    return /[\p{L}\p{N}]/u.test(v[2]) && v[1] !== '기각' && v[3] !== '기각' && !v[4];
+  }).map(function (r) { var v = r.v.map(function (x) { return String(x).trim(); }); return { row: r.row, title: v[2], kind: v[0], type: v[1], shot: v[3] === '⭕', ref: v[5] }; });
 }
 function reelsShot_(row, mark) { // mark: '⭕'(촬영, 기본) 또는 '기각'
   row = Number(row);
@@ -662,8 +662,9 @@ function reelsShot_(row, mark) { // mark: '⭕'(촬영, 기본) 또는 '기각'
     var sh = contentPlanSheet(SpreadsheetApp.openById(CALENDAR_SS_ID));
     if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('기획 행 번호가 올바르지 않습니다');
     var cell = sh.getRange(row, 13);
-    if (String(cell.getDisplayValue()).trim() && mark !== '기각') return false; // 촬영 표시는 비어 있을 때만
-    cell.setValue(mark || '⭕'); SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    var cur = String(cell.getDisplayValue()).trim();
+    if (mark === '') { if (cur !== '⭕') return false; cell.clearContent(); } // 촬영 취소: ⭕ 일 때만 지움
+    else { if (cur && mark !== '기각') return false; cell.setValue(mark || '⭕'); } // 촬영 표시는 비어 있을 때만 SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
     return true;
   } finally { lock.releaseLock(); }
 }

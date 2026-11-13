@@ -12,6 +12,7 @@ window.CONFIG = {
     { name: '원장님', label: '원장님 워크시트', color: '#5b3cc4', sheet: '1P3QPPH6vb7ZuEfiZ0F2UeZxppuGFnlkAZoLWlTpvdnM', director: true }, // 월~토
   ],
   DEFAULT_PERSON: '전성환',
+  REELS_OWNER: '전성환', // 릴스 업무 담당(원장님 숙제 촬영 완료가 이 사람 릴스 행에 반영)
   DAYS: 5,            // 당일 기준 보여줄 근무일 수
   TIMELINE: [7, 22],  // 타임라인 시작/끝 시각
 };

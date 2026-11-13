@@ -705,3 +705,10 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 .sc-ev small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .reel-steps button:disabled{opacity:.35;cursor:default}
 .reel-group .tx{flex:1;min-width:0}
+/* 원장님 워크시트: 칸을 위아래로 한 줄씩 */
+.dir-stack{display:flex;flex-direction:column;gap:10px}
+.dir-stack .task-list{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.hw-plan{display:flex;align-items:center;gap:10px;min-height:40px;padding:2px 6px;cursor:pointer}
+.hw-plan input{width:20px;height:20px;accent-color:var(--blue-dark);flex:none}
+.hw-plan.done .tx{color:var(--text-2);text-decoration:line-through}
+.hw-src{margin-left:auto;font-size:12px;color:var(--blue-text);background:var(--blue-weak);padding:2px 6px;border-radius:6px}

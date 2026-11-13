@@ -372,7 +372,7 @@
         const set = reelSteps(target); set.has(st) ? set.delete(st) : set.add(st);
         const status = set.size === REEL_STEPS.length ? 'done' : set.size ? 'doing' : 'todo';
         updateRow(target, { start: REEL_STEPS.filter(x => set.has(x)).join(','), status });
-        if (st === '촬영' && set.has('촬영')) api.post({ action: 'reelsShot', row: String(target.col).slice(5) }).catch(() => {});
+        if (st === '촬영') api.post({ action: 'reelsShot', row: String(target.col).slice(5), undo: !set.has('촬영') }).catch(() => {}); // 영상 기획(원장님 숙제)에도 반영
         if (status === 'done') holdSort(target.id);
         render();
       };
@@ -396,7 +396,7 @@
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
     if (s.key === '릴스업무') { // 영상 기획에서 아직 촬영 안 한 항목: 오늘 행이 없으면 가상 행으로 보여주고 처음 누를 때 저장
       const have = new Set(all.map(r => r.col)), list = node.querySelector('.task-list'), add = list.querySelector(':scope > .add');
-      state.reelPlan.filter(p => !have.has('plan:' + p.row)).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
+      state.reelPlan.filter(p => !p.shot && !have.has('plan:' + p.row)).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
       // 정리: 영상 기획 연동 항목(단계 버튼) 묶음 → 직접 추가한 릴스 업무 묶음
       const planRows = [...list.querySelectorAll(':scope > .row.reel')], manual = [...list.querySelectorAll(':scope > [data-id]:not(.reel)')];
       if (planRows.length) { const h = el(`<h4 class="reel-head">영상 기획 연동 · ${planRows.length}</h4>`); list.prepend(h); [...planRows].reverse().forEach(n => h.after(n)); }
@@ -450,17 +450,39 @@
     });
     return g;
   }
-  const DIR_COLS = [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']];
+  const DIR_COLS = [['원개블', '원개블'], ['그외', '추가 업무'], ['릴스촬영', '릴스 촬영 리스트']]; // 시트 열 값(원개블/그외/릴스촬영)은 그대로
+  async function homeworkShot(p, on) {
+    p.shot = on; renderReport();
+    try {
+      await api.post({ action: 'reelsShot', row: p.row, undo: !on });
+      const owner = C.REELS_OWNER, d = todayKst(); if (!owner) return;
+      const rows = (await api.get({ who: owner, from: d, to: d })).rows, r = rows.find(x => x.col === 'plan:' + p.row);
+      const steps = new Set(String(r?.start || '').split(',').filter(Boolean)); on ? steps.add('촬영') : steps.delete('촬영');
+      const start = REEL_STEPS.filter(x => steps.has(x)).join(','), status = steps.size === REEL_STEPS.length ? 'done' : steps.size ? 'doing' : 'todo';
+      await api.post({ action: 'upsert', who: owner, rows: [r ? { ...r, start, status } : { id: newId(d), date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start, end: p.ref, status }] });
+      toast(on ? `촬영 완료로 표시했습니다 (영상 기획 · ${disp(owner)} 릴스)` : '촬영 표시를 취소했습니다');
+    } catch (e) { toast('연동 실패: ' + e.message); }
+  }
   function renderDirectorReport(d, box) {
     const items = col => rowsFor(d, '원장님리스트', col), pct = l => l.length ? Math.round(l.filter(isDone).length / l.length * 100) : 0;
     const all = DIR_COLS.flatMap(([c]) => items(c));
     const bar = (label, l) => `<div class="dir-prog"><div class="project-progress-label"><span>${esc(label)} · ${l.filter(isDone).length}/${l.length}</span><b>${pct(l)}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(label)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct(l)}"><span style="width:${pct(l)}%"></span></div></div>`;
     box.append(sec('진행률', el(`<div class="dir-progs">${bar('전체', all)}${DIR_COLS.map(([c, l]) => bar(l, items(c))).join('')}</div>`)));
-    const g = el('<div class="grid3 dir-lists"></div>');
+    const g = el('<div class="dir-lists dir-stack"></div>');
     DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
     box.append(sec('원장님 업무리스트업', g));
-    const hw = el('<div class="grid3 dir-lists dir-hw"></div>');
-    [['영어', '영상숙제(영어)'], ['영상', '영상숙제']].forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님숙제', col, { doneLast: true, defaultStatus: 'todo' })); hw.append(c); });
+    // 영상 기획의 방식 '숙제' 항목 = 원장님 숙제. 체크하면 기획 시트 촬영 ⭕ + 릴스 담당자 릴스 행에 '촬영' 반영 (반대로 릴스에서 촬영해도 여기 체크됨)
+    const hw = el('<div class="dir-lists dir-stack dir-hw"></div>');
+    [['영어', '영상숙제(영어)', p => p.kind === '영어'], ['영상', '영상숙제', p => p.kind !== '영어']].forEach(([col, label, pick]) => {
+      const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`), plan = state.reelPlan.filter(p => p.type === '숙제' && pick(p));
+      plan.forEach(p => {
+        const row = el(`<label class="row hw-plan${p.shot ? ' done' : ''}"><input type="checkbox"${p.shot ? ' checked' : ''}><span class="tx">${esc(p.title)}</span><small class="hw-src">영상 기획</small></label>`);
+        row.querySelector('input').onchange = e => homeworkShot(p, e.target.checked);
+        c.append(row);
+      });
+      c.append(itemList(d, '원장님숙제', col, { doneLast: true, defaultStatus: 'todo' }));
+      hw.append(c);
+    });
     box.append(sec('원장님 숙제', hw));
     const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
     box.querySelectorAll('textarea').forEach(autosize);
@@ -1052,7 +1074,7 @@
     render();
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
-    if (!isDirector()) api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; if (asked === state.person) renderReport(); }).catch(() => {});
+    api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; if (asked === state.person) renderReport(); }).catch(() => {});
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
