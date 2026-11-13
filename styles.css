@@ -519,3 +519,5 @@ html.printing .drag{display:none}
 html.printing .memo-sec{display:none!important}
 .dir-seg{margin:0 0 12px}
 @media(max-width:600px){.dir-progs{grid-template-columns:1fr}.sc-week.sc-7:not(.sc-month){display:flex}}
+.reel-title{display:inline-flex;align-items:center;min-height:44px;margin:-8px 0}
+.reel-steps button{min-width:44px}
