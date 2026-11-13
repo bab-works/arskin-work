@@ -617,7 +617,7 @@
     if (hits.length > 1 && !range) return null; // 시간이 여러 개(변경 메모 등)면 건드리지 않음
     const e0 = range ? hm(hits[1]) : s0 + 60;
     let text = raw.slice(0, hits[0].index) + raw.slice((range ? hits[1] : hits[0]).index + (range ? hits[1] : hits[0])[0].length);
-    text = text.replace(/^\s*-\s*\d{1,2}\s*\([월화수목금토일]\)\s*/, '').replace(/^[\s\/·,\-]+|[\s\/·,\-]+$/g, '').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim();
+    text = text.replace(/^\s*-?\s*\d{1,2}\s*\([월화수목금토일]\)\s*/, '').replace(/^[\s\/·,\-]+|[\s\/·,\-]+$/g, '').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim();
     return { start: toTime(s0), end: toTime(Math.min(e0 ?? s0 + 60, 23 * 60 + 59)), text: text || raw.trim() };
   }
   let editing = null;
