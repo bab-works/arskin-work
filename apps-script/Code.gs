@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 17, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 18, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -49,6 +49,7 @@ function doPost(e) {
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
   if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenue') { try { return json(revenueData_(body.viewKey)); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'contentPlanDelete' || body.action === 'contentPlanAddMany') { try { return json({ plan: body.action === 'contentPlanDelete' ? contentPlanDelete_(body) : contentPlanAddMany_(body.rows) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'contentPlanSave' || body.action === 'contentPlanAdd') {
     try { return json({ plan: contentPlanWrite(body) }); } catch (err) { return json({ error: err.message }); }
   }
@@ -156,7 +157,7 @@ function trashList_(who) {
   var vals = sh.getRange(2, 1, last - 1, NCOL + 2).getDisplayValues();
   var cutoff = new Date(Date.now() - TRASH_DAYS * 864e5).toISOString();
   for (var i = vals.length - 1; i >= 0; i--) if (vals[i][0] && vals[i][0] < cutoff) sh.deleteRow(i + 2); // 오래된 것 정리
-  return vals.filter(function (r) { return r[0] >= cutoff && (!who || r[1] === who || r[1] === '공통'); })
+  return vals.filter(function (r) { return r[0] >= cutoff && (!who || r[1] === who || (r[1] === '공통' && who !== PLAN_TRASH)); })
     .map(function (r) { var o = toObj(r.slice(2)); o.deletedAt = r[0]; o.who = r[1]; return o; });
 }
 function trashRestore_(keys) { // keys: ['삭제시각|id', ...]
@@ -166,6 +167,7 @@ function trashRestore_(keys) { // keys: ['삭제시각|id', ...]
   for (var i = vals.length - 1; i >= 0; i--) {
     if (keys.indexOf(vals[i][0] + '|' + vals[i][2]) < 0) continue;
     var o = toObj(vals[i].slice(2));
+    if (vals[i][1] === PLAN_TRASH) { contentPlanAddMany_([JSON.parse(o.end)], true); sh.deleteRow(i + 2); n++; continue; } // 영상 기획은 빈 행에 되돌림
     upsertRow(vals[i][1], { id: o.id, date: o.date, section: o.section, col: o.col, status: o.status, text: o.text, start: o.start, end: o.end, created: o.created, origin: o.origin, order: o.order });
     sh.deleteRow(i + 2); n++;
   }
@@ -673,4 +675,40 @@ function nudgeList_(since) {
   var from = Math.max(2, last - 49); // 최근 50건만 본다
   return sh.getRange(from, 1, last - from + 1, 2).getDisplayValues().filter(function (r) { return r[0] && (!since || r[0] > since); })
     .map(function (r) { return { at: r[0], from: r[1] }; });
+}
+
+/* ---------- 영상 기획: 삭제(휴지통 보관 후 행 비우기), 여러 개 한 번에 추가 ---------- */
+var PLAN_TRASH = '영상기획';
+function contentPlanDelete_(body) {
+  var row = Number(body.row), before = contentClean(body.before);
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), sh = contentPlanSheet(ss);
+    if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('행 번호가 올바르지 않습니다.');
+    var now = sh.getRange(row, 10, 1, 7).getDisplayValues()[0];
+    if (!now.every(function (x, i) { return String(x).trim() === before[i].trim(); })) throw new Error('다른 사람이 먼저 수정했어요. 새로고침 후 다시 시도해 주세요.');
+    // 휴지통 행: id=plan-행, 날짜=오늘, 구분=영상기획, 내용=제목, 종료=전체 값(JSON)
+    trashSheet_().appendRow([new Date().toISOString(), PLAN_TRASH, 'plan-' + row, todayKst_(), PLAN_TRASH, String(row), '', now[2], '', JSON.stringify(now), '', '', '', '', '']);
+    sh.getRange(row, 10, 1, 7).clearContent(); // 행 번호가 바뀌지 않게 지우지 않고 비운다
+    SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    return contentPlanRead(ss);
+  } finally { lock.releaseLock(); }
+}
+function contentPlanAddMany_(rows, locked) { // locked: 이미 잠금을 잡은 호출(휴지통 복원)
+  if (!Array.isArray(rows) || !rows.length || rows.length > 200) throw new Error('추가할 내용을 확인해 주세요 (최대 200개).');
+  rows = rows.map(contentClean).filter(function (v) { return v.some(function (x) { return x.trim(); }); });
+  var lock = locked ? null : LockService.getScriptLock(); if (lock) lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), sh = contentPlanSheet(ss);
+    var last = Math.max(4, sh.getLastRow()), vals = sh.getRange(4, 10, last - 3, 7).getDisplayValues(), empty = [];
+    for (var i = 0; i < vals.length; i++) if (vals[i].every(function (x) { return !String(x).trim(); })) empty.push(i + 4);
+    var next = last + 1;
+    rows.forEach(function (v) {
+      var r = empty.length ? empty.shift() : next++;
+      if (r > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 1);
+      sh.getRange(r, 10, 1, 7).setValues([v.map(function (x) { return /^=/.test(x) ? "'" + x : x; })]);
+    });
+    SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    return contentPlanRead(ss);
+  } finally { if (lock) lock.releaseLock(); }
 }

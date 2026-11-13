@@ -132,7 +132,22 @@ svg text{fill:var(--muted);font-size:12px;font-family:var(--font)}
 }
 @media (prefers-reduced-motion:no-preference){.item,.chip,.top button{transition:background .15s,border-color .15s}}
 
-:host{display:block;--bg:#f2f4f6;--accent:#3182f6;--accent-bg:#e8f3ff;--surface:#fff;--ink:#191f28;--line:#e5e8eb} .wrap{padding:8px 0 24px;min-width:0}.main{grid-template-columns:minmax(0,1fr) 340px;gap:16px}.cal,.panel,.card,.kpi{border:0;border-radius:20px}.panel{top:92px;max-height:calc(100vh - 110px)}.main>*{min-width:0} .content-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}.content-actions button,.content-actions a{font:inherit;font-size:12px;border:0;border-radius:10px;background:var(--surface);color:var(--ink);padding:9px 12px;text-decoration:none}.content-actions .refresh{background:var(--accent);color:white}.content-actions button:disabled{opacity:.5}.pull-indicator{text-align:center;color:var(--accent);font-size:12px;padding:10px;display:none}.pull-indicator.visible{display:block}.preview-placeholder{padding:24px 18px;background:var(--cell);border-radius:12px;text-align:center;color:var(--muted)}.preview-placeholder button{border:0;border-radius:10px;background:var(--accent);color:#fff;padding:10px 14px;margin-top:12px}.sync-state{color:var(--muted);font-size:12px}.day{min-height:120px}.plan{min-width:1000px}.tbl{max-width:100%}.seg button{min-height:36px}.item{min-height:35px}.seg button:disabled{opacity:.4;cursor:default}@media(max-width:1250px){.main{grid-template-columns:1fr}.panel{position:static;max-height:none}}@media(max-width:700px){.wrap{padding-top:0}header{gap:12px}.day{min-height:74px}.item{min-height:24px}.seg{width:100%}.seg button{flex:1}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi{padding:14px}.kpi b{font-size:20px}.card{padding:14px}.toast{bottom:80px}.plan input,.plan select{font-size:16px}}.item .acc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item>span{flex:1;min-width:0}</style>
+:host{display:block;--bg:#f2f4f6;--accent:#3182f6;--accent-bg:#e8f3ff;--surface:#fff;--ink:#191f28;--line:#e5e8eb} .wrap{padding:8px 0 24px;min-width:0}.main{grid-template-columns:minmax(0,1fr) 340px;gap:16px}.cal,.panel,.card,.kpi{border:0;border-radius:20px}.panel{top:92px;max-height:calc(100vh - 110px)}.main>*{min-width:0} .content-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}.content-actions button,.content-actions a{font:inherit;font-size:12px;border:0;border-radius:10px;background:var(--surface);color:var(--ink);padding:9px 12px;text-decoration:none}.content-actions .refresh{background:var(--accent);color:white}.content-actions button:disabled{opacity:.5}.pull-indicator{text-align:center;color:var(--accent);font-size:12px;padding:10px;display:none}.pull-indicator.visible{display:block}.preview-placeholder{padding:24px 18px;background:var(--cell);border-radius:12px;text-align:center;color:var(--muted)}.preview-placeholder button{border:0;border-radius:10px;background:var(--accent);color:#fff;padding:10px 14px;margin-top:12px}.sync-state{color:var(--muted);font-size:12px}.day{min-height:120px}.plan{min-width:1000px}.tbl{max-width:100%}.seg button{min-height:36px}.item{min-height:35px}.seg button:disabled{opacity:.4;cursor:default}@media(max-width:1250px){.main{grid-template-columns:1fr}.panel{position:static;max-height:none}}@media(max-width:700px){.wrap{padding-top:0}header{gap:12px}.day{min-height:74px}.item{min-height:24px}.seg{width:100%}.seg button{flex:1}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi{padding:14px}.kpi b{font-size:20px}.card{padding:14px}.toast{bottom:80px}.plan input,.plan select{font-size:16px}}.item .acc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item>span{flex:1;min-width:0}.plan-acts{display:flex;gap:6px;flex-wrap:wrap}
+.plan-filters{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.plan-filters select,.plan-filters input{min-height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font:inherit;background:var(--surface)}
+.plan-filters input{flex:1;min-width:160px}
+.th-sort{background:none;border:0;font:inherit;font-weight:600;color:inherit;cursor:pointer;padding:6px 2px;min-height:36px}
+.th-sort::after{content:" ↕";color:var(--soft)}.th-sort[data-dir=asc]::after{content:" ↑";color:inherit}.th-sort[data-dir=desc]::after{content:" ↓";color:inherit}
+.bulk{padding:14px;margin:8px 0;display:flex;flex-direction:column;gap:8px}.bulk textarea{width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px;resize:vertical}
+.bulk-defaults,.bulk-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bulk-acts{justify-content:flex-end}.bulk-acts .note{margin-right:auto}
+.bulk select{min-height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font:inherit}
+.btn.primary{background:#1b64da;color:#fff;border-color:#1b64da}
+.row-del{background:none;border:0;color:var(--muted);cursor:pointer;min-width:36px;min-height:36px;font-size:16px}
+.row-del:hover{color:#c92a2a}
+.trash-list{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin:10px 0}
+.trash-list label{display:flex;gap:10px;align-items:flex-start;padding:8px;border-bottom:1px solid var(--line)}
+dialog.plan-dlg{border:0;border-radius:18px;padding:22px;width:min(480px,calc(100vw - 32px))}dialog.plan-dlg::backdrop{background:rgba(25,31,40,.45)}
+</style>
 <div class="wrap">
   <header>
     <div>
@@ -171,11 +186,24 @@ svg text{fill:var(--muted);font-size:12px;font-family:var(--font)}
   <section id="planView" hidden>
     <div class="plan-top">
       <div class="chips" id="planChips" role="group" aria-label="진행 상태 필터"></div>
-      <button class="btn" id="planAdd">＋ 새 영상 추가</button>
+      <div class="plan-acts"><button class="btn" id="planTrash">휴지통</button><button class="btn" id="planBulk">여러 개 붙여넣기</button><button class="btn" id="planAdd">＋ 새 영상 추가</button></div>
+    </div>
+    <div class="plan-filters">
+      <select id="pfTarget" aria-label="타겟팅 필터"><option value="">타겟팅 전체</option><option>국내</option><option>영어</option><option value="-">미지정</option></select>
+      <select id="pfType" aria-label="방식 필터"><option value="">방식 전체</option><option>숙제</option><option>내부촬영</option><option>기각</option><option value="-">미지정</option></select>
+      <input id="pfQ" type="search" placeholder="제목·링크 검색" aria-label="검색">
+      <button class="btn" id="pfReset" type="button">필터 초기화</button>
+    </div>
+    <div class="card bulk" id="bulkBox" hidden>
+      <b>여러 개 붙여넣기</b>
+      <p class="note">한 줄에 영상 하나. 구글 시트에서 <b>타겟팅 · 방식 · 제목 · 촬영 · 업로드일 · 레퍼런스 · 업로드 영상</b> 순서 그대로 여러 칸을 복사해 붙여넣어도 됩니다. 제목만 쓰면 아래 기본값이 들어갑니다.</p>
+      <div class="bulk-defaults"><select id="bkTarget" aria-label="기본 타겟팅"><option value="">타겟팅 —</option><option>국내</option><option>영어</option></select><select id="bkType" aria-label="기본 방식"><option value="">방식 —</option><option>숙제</option><option>내부촬영</option></select></div>
+      <textarea id="bkText" rows="6" placeholder="예)&#10;겨울 보습 루틴&#10;레이저 토닝 Q&amp;A&#10;국내	숙제	표정 연기"></textarea>
+      <div class="bulk-acts"><span id="bkCount" class="note"></span><button class="btn" id="bkCancel" type="button">취소</button><button class="btn primary" id="bkAdd" type="button">추가</button></div>
     </div>
     <p class="note" id="planNote"></p>
     <div class="card tbl"><table class="plan">
-      <thead><tr><th>상태</th><th>타겟팅</th><th>방식</th><th>숙제영상</th><th>촬영</th><th>업로드일</th><th>레퍼런스</th><th>업로드 영상</th><th></th></tr></thead>
+      <thead><tr><th><button class="th-sort" data-sort="st">상태</button></th><th><button class="th-sort" data-sort="0">타겟팅</button></th><th><button class="th-sort" data-sort="1">방식</button></th><th><button class="th-sort" data-sort="2">숙제영상</button></th><th><button class="th-sort" data-sort="3">촬영</button></th><th><button class="th-sort" data-sort="4">업로드일</button></th><th>레퍼런스</th><th>업로드 영상</th><th></th></tr></thead>
       <tbody id="planBody"></tbody>
     </table></div>
   </section>

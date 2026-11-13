@@ -175,7 +175,7 @@ function showPost(id){
 }
 
 // ── 영상 기획 (시트 J:P 열) ──
-var plan = [], planFilter = 'all', live = false, adding = false;
+var plan = [], planFilter = 'all', live = false, adding = false, planSort = { k: '', dir: '' };
 var PST = { wait:'촬영 대기', shot:'촬영 완료', up:'업로드 완료', rej:'기각' };
 function pstat(v){ return v[1].trim()==='기각' || v[3].trim()==='기각' ? 'rej' : v[4].trim() ? 'up' : v[3].trim()==='⭕' ? 'shot' : 'wait'; }
 // 시트 표기 "2026. 11. 5" ↔ 날짜 입력칸 "2026-11-05"
@@ -197,13 +197,21 @@ function planRow(r){
     '<td><select class="sm" data-k="3"'+dis+'>'+opt(['','⭕','기각'], v[3].trim())+'</select></td>'+
     '<td><input class="dt" type="date" data-k="4" value="'+toISO(v[4])+'"'+dis+'></td>'+
     '<td>'+urlCell(5, v[5])+'</td><td>'+urlCell(6, v[6])+'</td>'+
-    '<td>'+(live ? '<button class="btn save" disabled>'+(r.row?'저장':'추가')+'</button>' : '')+'</td></tr>';
+    '<td>'+(live ? '<button class="btn save" disabled>'+(r.row?'저장':'추가')+'</button>'+(r.row ? '<button class="row-del" data-del="'+r.row+'" title="삭제 (휴지통에 14일 보관)" aria-label="삭제">🗑</button>' : '') : '')+'</td></tr>';
 }
 function renderPlan(){
   var cnt = {all:plan.length, wait:0, shot:0, up:0, rej:0}; plan.forEach(function(r){ cnt[pstat(r.v)]++; });
   $('planChips').innerHTML = [['all','전체'],['wait',PST.wait],['shot',PST.shot],['up',PST.up],['rej',PST.rej]].map(function(d){
     return '<button class="chip" data-pf="'+d[0]+'" aria-pressed="'+(planFilter===d[0])+'">'+d[1]+' <b>'+cnt[d[0]]+'</b></button>'; }).join('');
-  var rows = plan.filter(function(r){ return planFilter==='all' || pstat(r.v)===planFilter; });
+  // 필터: 상태 칩 + 타겟팅 + 방식 + 검색어, 정렬: 머리글 클릭
+  var ft = $('pfTarget').value, fy = $('pfType').value, q = $('pfQ').value.trim().toLowerCase();
+  var match = function(val, f){ val = String(val).trim(); return !f || (f === '-' ? !val : val === f); };
+  var rows = plan.filter(function(r){ return (planFilter==='all' || pstat(r.v)===planFilter) && match(r.v[0], ft) && match(r.v[1], fy) && (!q || r.v.join(' ').toLowerCase().indexOf(q) >= 0); });
+  if (planSort.k) {
+    var ORD = { wait:0, shot:1, up:2, rej:3 }, key = function(r){ return planSort.k === 'st' ? ORD[pstat(r.v)] : planSort.k === '4' ? toISO(r.v[4]) || '9999' : String(r.v[+planSort.k]).trim() || '\uffff'; };
+    rows = rows.slice().sort(function(a, b){ var x = key(a), y = key(b), c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'ko'); return planSort.dir === 'desc' ? -c : c; });
+  }
+  root.querySelectorAll('.th-sort').forEach(function(b){ if (b.dataset.sort === planSort.k) b.dataset.dir = planSort.dir; else delete b.dataset.dir; });
   $('planBody').innerHTML = (adding ? planRow({row:null, v:['','','','','','','']}) : '') + rows.map(planRow).join('');
   $('planAdd').disabled = !live || adding;
   $('planNote').textContent = live ? '내용을 수정한 뒤 저장을 누르면 팀원에게도 반영됩니다.' : '영상 기획 연결을 기다리고 있어요. 원본 시트에서 확인할 수 있습니다.';
@@ -229,6 +237,52 @@ $('planBody').addEventListener('click', function(e){
   var fail = function(err){ saving = false; b.disabled = false; b.textContent = row ? '저장' : '추가'; toast(err.message || String(err), true); };
   request(row ? { action: 'contentPlanSave', row: row, before: orig.v, after: after } : { action: 'contentPlanAdd', values: after }, true).then(function(data){ if (!Array.isArray(data.plan)) throw new Error('저장 결과를 확인하지 못했습니다. 새로고침해 주세요.'); done(data.plan); }).catch(fail);
 });
+// 정렬·필터
+root.querySelectorAll('.th-sort').forEach(function(b){ b.onclick = function(){ var k = b.dataset.sort; planSort = planSort.k !== k ? { k: k, dir: 'asc' } : planSort.dir === 'asc' ? { k: k, dir: 'desc' } : { k: '', dir: '' }; renderPlan(); }; });
+['pfTarget','pfType'].forEach(function(id){ $(id).onchange = renderPlan; }); $('pfQ').oninput = renderPlan;
+$('pfReset').onclick = function(){ $('pfTarget').value = ''; $('pfType').value = ''; $('pfQ').value = ''; planFilter = 'all'; planSort = { k: '', dir: '' }; renderPlan(); };
+// 삭제 → 휴지통
+$('planBody').addEventListener('click', function(e){
+  var d = e.target.closest('[data-del]'); if (!d || saving) return;
+  var row = +d.dataset.del, orig = plan.filter(function(r){ return r.row===row; })[0]; if (!orig) return;
+  if (!confirm('"'+(orig.v[2] || '이 항목')+'"을(를) 삭제할까요? 휴지통에 14일 보관됩니다.')) return;
+  saving = true;
+  request({ action: 'contentPlanDelete', row: row, before: orig.v }, true).then(function(data){ saving = false; plan = data.plan; cache = null; renderPlan(); toast('삭제했어요 (휴지통에서 복원 가능)'); }).catch(function(err){ saving = false; toast(err.message, true); });
+});
+$('planTrash').onclick = function(){
+  var dlg = window.document.createElement('dialog'); dlg.className = 'plan-dlg';
+  dlg.innerHTML = '<h3>영상 기획 휴지통</h3><p class="note">지운 기획은 14일 동안 보관됩니다.</p><div class="trash-list">불러오는 중…</div><div class="bulk-acts"><button class="btn" data-x>닫기</button><button class="btn primary" data-r disabled>복원</button></div>';
+  root.appendChild(dlg); dlg.showModal(); dlg.onclose = function(){ dlg.remove(); };
+  dlg.querySelector('[data-x]').onclick = function(){ dlg.close(); };
+  var list = dlg.querySelector('.trash-list'), btn = dlg.querySelector('[data-r]'), items = [];
+  request({ action: 'trash', who: '영상기획' }).then(function(j){
+    items = (j.rows || []).filter(function(r){ return r.who === '영상기획'; }).sort(function(a, b){ return b.deletedAt.localeCompare(a.deletedAt); });
+    list.innerHTML = items.length ? items.map(function(r, i){ return '<label><input type="checkbox" data-i="'+i+'"><span><b>'+esc(r.text || '(제목 없음)')+'</b><br><small class="note">'+new Date(r.deletedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})+' 삭제</small></span></label>'; }).join('') : '<p class="note">비어 있습니다.</p>';
+  }).catch(function(err){ list.textContent = err.message; });
+  list.onchange = function(){ btn.disabled = !list.querySelector(':checked'); };
+  btn.onclick = function(){
+    var keys = [].map.call(list.querySelectorAll(':checked'), function(c){ var r = items[c.dataset.i]; return r.deletedAt + '|' + r.id; });
+    btn.disabled = true;
+    request({ action: 'trashRestore', keys: keys }, true).then(function(j){ toast(j.restored + '개 복원했어요'); dlg.close(); return request({ action: 'content', fresh: '1' }); }).then(function(data){ if (data && Array.isArray(data.plan)) { plan = data.plan; renderPlan(); } }).catch(function(err){ toast(err.message, true); btn.disabled = false; });
+  };
+};
+// 여러 개 붙여넣기: 줄마다 1개, 탭으로 나뉜 칸은 시트 열 순서(타겟팅·방식·제목·촬영·업로드일·레퍼런스·업로드 영상)
+function bulkRows(){
+  return $('bkText').value.split(/\r?\n/).map(function(l){ return l.replace(/\s+$/,''); }).filter(function(l){ return l.trim(); }).map(function(l){
+    var c = l.split('\t');
+    if (c.length === 1) return [$('bkTarget').value, $('bkType').value, l.trim().replace(/^\s*(?:\d+[.)]|[-•·*])\s*/, ''), '', '', '', ''];
+    while (c.length < 7) c.push(''); return c.slice(0, 7).map(function(x){ return x.trim(); });
+  });
+}
+$('planBulk').onclick = function(){ var b = $('bulkBox'); b.hidden = !b.hidden; if (!b.hidden) $('bkText').focus(); };
+$('bkCancel').onclick = function(){ $('bkText').value = ''; $('bkCount').textContent = ''; $('bulkBox').hidden = true; };
+$('bkText').oninput = function(){ var n = bulkRows().length; $('bkCount').textContent = n ? n + '개 추가 예정' : ''; };
+$('bkAdd').onclick = function(){
+  var rows = bulkRows(); if (!rows.length) return toast('추가할 내용을 입력해 주세요.', true);
+  if (saving) return; saving = true; $('bkAdd').disabled = true;
+  request({ action: 'contentPlanAddMany', rows: rows }, true).then(function(data){ saving = false; $('bkAdd').disabled = false; plan = data.plan; cache = null; $('bkText').value = ''; $('bkCount').textContent = ''; $('bulkBox').hidden = true; renderPlan(); toast(rows.length + '개 추가했어요'); })
+    .catch(function(err){ saving = false; $('bkAdd').disabled = false; toast(err.message, true); });
+};
 $('planAdd').onclick = function(){ if (root.querySelector('tr.dirty')) return toast('수정 중인 행을 먼저 저장해 주세요.', true); adding = true; planFilter = 'all'; renderPlan(); var f = $('planBody').querySelector('.idea'); if (f) f.focus(); };
 
 function setView(v){ if (!['cal','ana','plan'].includes(v) || $('v-'+v).disabled) return; if (view === 'plan' && (adding || root.querySelector('tr.dirty'))) { toast('수정 중인 영상 기획을 먼저 저장해 주세요.', true); return; } view = v; ['cal','ana','plan'].forEach(function(k){ $('v-'+k).setAttribute('aria-pressed', v===k); $(k+'View').hidden = v!==k; }); $('calTools').hidden = v==='plan'; render(); syncNavigation(); }
