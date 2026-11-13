@@ -732,3 +732,5 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 .row.reel .reel-title,.row.reel .tx{flex:1;min-width:0}
 .row.reel .reel-steps{margin-left:auto;flex:none}
 .row.reel .del{flex:none}
+.jandi-link{display:flex;align-items:center;min-height:44px;margin-bottom:6px;padding:0 12px;border-radius:var(--r-sm);background:#e6f6ee;color:#0a7a4a!important;font-weight:700;text-decoration:none}
+.jandi-link:hover{background:#d3f0e1}

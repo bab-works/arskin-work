@@ -1452,6 +1452,7 @@
     });
   };
   applyNavOrder();
+  $('jandiLink').href = C.JANDI_URL || 'https://www.jandi.com/';
 
   load();
   loadDirector();

@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 24, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 25, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -65,7 +65,7 @@ function doPost(e) {
   if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
-  if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -603,6 +603,24 @@ function dailyGenerate() {
 function setupDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyGenerate') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('dailyGenerate').timeBased().everyDays(1).atHour(0).nearMinute(5).inTimezone('Asia/Seoul').create();
+  // 원장님 정기 재촉: 13·15·18시 잔디로 (브라우저가 꺼져 있어도 휴대폰 잔디 알림으로 감)
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'scheduledNag') ScriptApp.deleteTrigger(t); });
+  [13, 15, 18].forEach(function (h) { ScriptApp.newTrigger('scheduledNag').timeBased().everyDays(1).atHour(h).nearMinute(0).inTimezone('Asia/Seoul').create(); });
+}
+function scheduledNag() {
+  var d = todayKst_(); if (!isWorkday_(d, DIRECTOR)) return;
+  var left = listRows(DIRECTOR, d, d).filter(function (r) { return (r.section === '원장님리스트' || r.section === '원장님숙제') && r.status !== 'done'; }).length;
+  var h = Utilities.formatDate(new Date(), 'Asia/Seoul', 'H');
+  jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', '정기 재촉 · ' + h + '시' + (left ? ' · 남은 업무 ' + left + '개' : ''));
+}
+// 잔디 수신 웹훅(스크립트 속성 JANDI_WEBHOOK)이 있으면 메시지를 보낸다. 없으면 조용히 건너뜀.
+function jandiSend_(title, body) {
+  var url = PropertiesService.getScriptProperties().getProperty('JANDI_WEBHOOK'); if (!url) return false;
+  try {
+    UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', headers: { Accept: 'application/vnd.tosslab.jandi-v2+json' }, muteHttpExceptions: true,
+      payload: JSON.stringify({ body: title, connectColor: '#F04452', connectInfo: [{ title: body || '', description: '아르스킨 대시보드에서 원장님 워크시트를 확인해 주세요.' }] }) });
+    return true;
+  } catch (e) { console.error(e); return false; }
 }
 
 /* ---------- 원장님 숙제: 마케터가 원장님께 드리는 숙제. 마케터 모두 읽기·쓰기, 승인·거절은 원장님만 ---------- */
