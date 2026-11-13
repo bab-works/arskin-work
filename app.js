@@ -142,6 +142,7 @@
     if (r.section === '원장님숙제') return hwRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
     if (TASK_KEYS.has(r.section) || r.section === '원장님리스트' || r.section === '원장님숙제') row.append(dragHandle(r));
+    else if ((r.section === '공통업무' || r.section === '공통반복') && !isDirector()) { const h = el(`<button type="button" class="drag" aria-label="${esc(r.text)} 캘린더로 끌기" title="끌어서 캘린더 날짜에 놓으면 일정으로 등록">${icon('drag', 16)}</button>`); h.onpointerdown = e => startCalDrag(e, row, r); row.append(h); }
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
@@ -280,7 +281,9 @@
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
       const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
-      sub.append(check, text, remove); list.append(sub);
+      const grip = el(`<button type="button" class="drag sub-grip" aria-label="${esc(child.text)} 타임라인으로 끌기" title="끌어서 타임라인에 넣기">${icon('drag', 14)}</button>`);
+      grip.onpointerdown = e => startDrag(e, sub, child, { tlOnly: true });
+      sub.append(grip, check, text, remove); list.append(sub);
     });
     card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: 'todo', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
     return card;
@@ -333,6 +336,41 @@
     }, 400);
   }
   /* ---------- 드래그로 순서·칸 이동: 손잡이를 끌어 놓으면 그 칸의 순서를 1..n 으로 다시 저장 ---------- */
+  // 공통 업무 → 공용 캘린더 날짜에 놓으면 시간 입력 창이 뜬다(가까운 30분 + 1시간 기본)
+  function startCalDrag(e, node, r) {
+    if (e.button !== 0) return; e.preventDefault();
+    const box = node.getBoundingClientRect(), ghost = node.cloneNode(true), dx = e.clientX - box.left, dy = e.clientY - box.top; let day = null;
+    ghost.classList.add('drag-ghost'); Object.assign(ghost.style, { width: box.width + 'px', left: box.left + 'px', top: box.top + 'px' }); document.body.append(ghost); node.classList.add('dragging');
+    const move = ev => {
+      ghost.style.left = ev.clientX - dx + 'px'; ghost.style.top = ev.clientY - dy + 'px';
+      ghost.hidden = true; const d = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('#sharedcal .sc-day[data-date]'); ghost.hidden = false;
+      if (d !== day) { day?.classList.remove('drop-hover'); day = d; day?.classList.add('drop-hover'); }
+      if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12);
+    };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); ghost.remove(); node.classList.remove('dragging');
+      if (!day) return; day.classList.remove('drop-hover');
+      openEditor({ date: day.dataset.date, section: '일정', col: state.person, ...nearSlot(), text: r.text.replace(CAT_RE, '').trim() || r.text, _who: SHARED }, day, true);
+      setTimeout(() => $('beStart').focus(), 0); toast('시간을 정하고 저장하세요 (예: 1400)');
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  }
+  function dupMenu(anchor, r) {
+    document.querySelector('.dup-pop')?.remove();
+    const b = anchor.getBoundingClientRect(), pop = el(`<div class="dup-pop" role="menu"><button type="button" role="menuitem">복제</button></div>`);
+    Object.assign(pop.style, { left: b.left + 'px', top: b.bottom + 4 + 'px' }); document.body.append(pop); pop.querySelector('button').focus();
+    pop.querySelector('button').onclick = () => { pop.remove(); duplicateRow(r); };
+    setTimeout(() => addEventListener('pointerdown', function off(e) { if (!pop.contains(e.target)) { pop.remove(); removeEventListener('pointerdown', off); } }), 0);
+    pop.onkeydown = e => { if (e.key === 'Escape') { pop.remove(); anchor.focus(); } };
+  }
+  // 복제: '제목(1)', '제목(2)'… 하위 업무도 그대로
+  function duplicateRow(r) {
+    const base = r.text.replace(/\s*\(\d+\)\s*$/, '').trim(), esc2 = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), re = new RegExp('^' + esc2 + '\\((\\d+)\\)$');
+    const n = 1 + Math.max(0, ...state.rows.filter(x => x.date === r.date && x.section === r.section).map(x => +(x.text.trim().match(re)?.[1] || 0)));
+    const copy = addRow({ date: r.date, section: r.section, col: r.col, status: r.status, text: `${base}(${n})`, start: r.start, end: r.end });
+    if (copy) childrenOf(r).forEach(c => addRow({ date: c.date, section: '하위업무', col: copy.id, status: c.status, text: c.text }));
+    toast(`"${base}(${n})"로 복제했습니다`); render();
+  }
   function dragHandle(r) {
     const h = el(`<button type="button" class="drag" aria-label="끌어서 옮기기" title="끌어서 순서·칸 이동">${icon('drag', 16)}</button>`);
     h.onpointerdown = e => startDrag(e, h.closest('.row,.project-card'), r);
@@ -347,17 +385,23 @@
     h.setAttribute('aria-label', '끌어서 옮기기, 화살표 위·아래로 순서 이동');
     return h;
   }
-  function startDrag(e, node, r) {
+  function startDrag(e, node, r, opts = {}) {
     if (e.button !== 0) return;
     e.preventDefault();
+    const x0 = e.clientX, y0 = e.clientY, handle = e.target.closest('.drag'); let moved = false;
     const box = node.getBoundingClientRect(), ghost = node.cloneNode(true), ph = el('<div class="drop-ph"></div>');
     ghost.classList.add('drag-ghost'); Object.assign(ghost.style, { width: box.width + 'px', left: box.left + 'px', top: box.top + 'px' });
     ph.style.height = box.height + 'px'; node.after(ph); node.classList.add('dragging'); document.body.append(ghost);
     const dy = e.clientY - box.top, dx = e.clientX - box.left;
-    let tlAt = null, nestTo = null, hold = null; const tlGhost = el('<div class="tl-block ghost tl-drop"><small></small></div>');
+    let tlAt = null, nestTo = null, hold = null, calDay = null; const tlGhost = el('<div class="tl-block ghost tl-drop"><small></small></div>');
     const move = ev => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return; moved = true;
       ghost.style.top = ev.clientY - dy + 'px'; ghost.style.left = ev.clientX - dx + 'px';
       ghost.hidden = true; const under = document.elementFromPoint(ev.clientX, ev.clientY); ghost.hidden = false;
+      // 원장님 워크시트: 원장님 캘린더 날짜 위에 놓으면 그날 완료로 배치
+      const cd = isDirector() && !opts.tlOnly ? under?.closest('#sharedcal .sc-day[data-date]') : null;
+      if (cd !== calDay) { calDay?.classList.remove('drop-hover'); calDay = cd; calDay?.classList.add('drop-hover'); }
+      if (cd) { ph.hidden = true; return; } ph.hidden = false;
       // 타임라인 위: 1시간 블록 미리보기 (원래 업무는 제자리에 남음)
       const tl = under?.closest('.tl-grid');
       if (tl) {
@@ -366,6 +410,7 @@
         tlGhost.firstChild.textContent = `${toTime(s)} ~ ${toTime(s + 60)} · ${r.text}`; return;
       }
       tlAt = null; tlGhost.remove();
+      if (opts.tlOnly) { if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12); return; }
       const target = under?.closest('.task-list .row[data-id], .task-list .project-card[data-id]');
       const list = under?.closest('.task-list');
       // 다른 업무 가운데에 0.7초 머무르면 그 업무의 하위 업무로 넣을 준비 (테두리 표시). 가장자리로 가면 순서 이동.
@@ -396,6 +441,13 @@
         addRow({ date: state.sel, section: '타임라인', start: toTime(tlAt), end: toTime(tlAt + 60), text: r.text.replace(CAT_RE, '') || r.text });
         toast(`${toTime(tlAt)}~${toTime(tlAt + 60)} 타임라인에 넣었습니다`); return render();
       }
+      if (calDay) { // 원장님 캘린더에 완료 배치: 항목은 그날 완료, 캘린더엔 ✅ 일정
+        const d = calDay.dataset.date; calDay.classList.remove('drop-hover'); ph.remove(); clearNest();
+        updateRow(r, { status: 'done', completed: d });
+        addRow({ date: d, section: '원장님일정', text: '✅ ' + r.text.replace(/\s*\n\s*/g, ' / ').trim(), status: 'done', _who: DIRECTOR_WHO });
+        toast(`${d.slice(5).replace('-', '/')} 완료로 캘린더에 넣었습니다`); confetti(handle); renderShared(); return render();
+      }
+      if (!moved || opts.tlOnly) { ph.remove(); if (!moved && r.section === '팔로업' && handle) dupMenu(handle, r); return; } // 짧게 누르거나 꾹 눌렀다 떼면: 복제 메뉴
       const list = ph.closest('.task-list[data-section]'); if (!list) { ph.remove(); return; }
       ph.replaceWith(node);
       const key = list.dataset.section, col = list.dataset.col, ids = [...list.querySelectorAll(':scope > [data-id]')].map(n => n.dataset.id);
@@ -494,6 +546,10 @@
     };
     const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo', onAdd }));
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
+    if (s.key === '팔로업' && !readOnly()) { // 팔로업 메모: 팝업에서 쓰고 자동 저장(다음 날로 이어짐)
+      const has = !!cellText(d, '팔로업메모', '').trim(), mb = el(`<button type="button" class="fu-memo-btn${has ? ' has' : ''}" aria-haspopup="dialog">메모${has ? ' •' : ''}</button>`);
+      mb.onclick = () => openFollowMemo(d); node.querySelector('h3').append(mb);
+    }
     if (s.key === '릴스업무') { // 영상 기획에서 아직 촬영 안 한 항목: 오늘 행이 없으면 가상 행으로 보여주고 처음 누를 때 저장
       const have = new Set(all.map(r => r.col)), list = node.querySelector('.task-list'), add = list.querySelector(':scope > .add');
       const tkey = t => String(t).normalize('NFKC').replace(CAT_RE, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase(), seenT = new Set(all.map(r => tkey(r.text)));
@@ -519,6 +575,15 @@
       if (planRows.length && rest.length) { const h = el(`<h4 class="reel-head">직접 추가 · ${rest.length}</h4>`); add.before(h); rest.forEach(n => add.before(n)); }
     }
     return node;
+  }
+  function openFollowMemo(d) {
+    const dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="fuMemoT"><h2 id="fuMemoT">팔로업 메모</h2><textarea rows="10" placeholder="팔로업 진행 상황, 연락할 사람, 다음 액션 등을 적어 두세요. 자동 저장됩니다."></textarea><div class="tr-acts"><small class="muted">자동 저장 · 다음 근무일로 이어집니다</small><button type="button" class="primary">닫기</button></div></dialog>`);
+    const ta = dlg.querySelector('textarea'); ta.value = cellText(d, '팔로업메모', ''); let t;
+    const flush = () => { clearTimeout(t); if (ta.value !== cellText(d, '팔로업메모', '')) setCellText(d, '팔로업메모', '', ta.value); };
+    ta.oninput = () => { clearTimeout(t); t = setTimeout(flush, 800); };
+    dlg.querySelector('.primary').onclick = () => dlg.close();
+    dlg.onclose = () => { flush(); dlg.remove(); renderReport(); };
+    document.body.append(dlg); dlg.showModal(); ta.focus();
   }
   function sectionChips(d) { // 섹션 바로가기 칩: 남은 개수 표시
     const nav = el('<nav class="sec-chips" aria-label="섹션 바로가기"></nav>');
@@ -1281,13 +1346,14 @@
     const box = $('settingsHub'), adm = state.admin, y = todayKst().slice(0, 4);
     const list = Object.values(state.holidays).filter(h => h.date >= y).sort((a, b) => a.date < b.date ? -1 : 1);
     box.innerHTML = `<div class="dir-head"><h1>설정</h1><p>${adm ? '관리자(미스타전)로 접속했습니다. 휴일을 추가·삭제할 수 있습니다.' : '휴일 추가·삭제는 관리자(미스타전)만 할 수 있습니다. 여기서는 볼 수만 있습니다.'}</p></div>
-      <section class="sec"><h3>휴일 관리 <small class="sec-count">${list.length}일</small></h3><p class="muted">공휴일은 Google 캘린더에서 자동으로 가져옵니다(노동절 제외). 회사 휴무일만 직접 추가하세요.</p>
+      <details class="sec fold" data-fold="hol"><summary><h3>휴일 관리 <small class="sec-count">${list.length}일</small></h3></summary><p class="muted">공휴일은 Google 캘린더에서 자동으로 가져옵니다(노동절 제외). 회사 휴무일만 직접 추가하세요.</p>
       ${adm ? '<form class="hol-add"><input type="date" required aria-label="날짜"><input placeholder="이름 (예: 창립기념일)" aria-label="휴일 이름" maxlength="40"><button class="primary">추가</button></form>' : ''}
-      <ul class="hol-list">${list.map(h => `<li><span>${h.date.slice(2).replace(/-/g, '.')} (${WD[new Date(h.date + 'T00:00:00').getDay()]})</span><b>${esc(h.name)}</b>${h.source === 'manual' && adm ? `<button type="button" data-date="${h.date}" aria-label="${esc(h.name)} 삭제">${icon('x', 14)}</button>` : `<small>${h.source === 'manual' ? '회사 휴무' : '공휴일'}</small>`}</li>`).join('')}</ul></section>
-      ${adm ? `<section class="sec perm-sec"><h3>메뉴 권한</h3><p class="muted">사람(접속 코드)마다 볼 수 있는 메뉴를 고릅니다. 끄면 그 사람 사이드바·하단 메뉴·홈 바로가기에서 사라집니다. 관리자는 항상 전부 보입니다.</p>
+      <ul class="hol-list">${list.map(h => `<li><span>${h.date.slice(2).replace(/-/g, '.')} (${WD[new Date(h.date + 'T00:00:00').getDay()]})</span><b>${esc(h.name)}</b>${h.source === 'manual' && adm ? `<button type="button" data-date="${h.date}" aria-label="${esc(h.name)} 삭제">${icon('x', 14)}</button>` : `<small>${h.source === 'manual' ? '회사 휴무' : '공휴일'}</small>`}</li>`).join('')}</ul></details>
+      ${adm ? `<details class="sec fold perm-sec" data-fold="perm"><summary><h3>메뉴 권한</h3></summary><p class="muted">사람(접속 코드)마다 볼 수 있는 메뉴를 고릅니다. 끄면 그 사람 사이드바·하단 메뉴·홈 바로가기에서 사라집니다. 관리자는 항상 전부 보입니다.</p>
         <div class="perm-wrap"><table class="perm-table"><thead><tr><th scope="col">메뉴</th>${state.members.map(n => `<th scope="col">${esc(n === DIRECTOR_WHO ? '원장님' : disp(n))}</th>`).join('')}</tr></thead><tbody>${PERMS.map(([k, label]) => `<tr${k.includes(':') ? ' class="perm-sub"' : ''}><th scope="row">${label}</th>${state.members.map(n => `<td><label class="perm-cell"><input type="checkbox" data-who="${esc(n)}" data-k="${k}"${(state.perms[n] || []).includes(k) ? '' : ' checked'} aria-label="${esc(disp(n))} ${label.replace('└ ', '')} 보기"></label></td>`).join('')}</tr>`).join('')}</tbody></table></div>
-        <div class="perm-actions"><button type="button" class="primary" id="permSave">권한 저장</button></div></section>` : ''}
-      <section class="sec"><h3>메뉴</h3><p class="muted">사이드바 아래 '메뉴 순서 편집'으로 대메뉴 순서를 바꿀 수 있습니다(브라우저마다 저장).</p></section>`;
+        <div class="perm-actions"><button type="button" class="primary" id="permSave">권한 저장</button></div></details>` : ''}
+      <details class="sec fold" data-fold="menu"><summary><h3>메뉴</h3></summary><p class="muted">사이드바 아래 '메뉴 순서 편집'으로 대메뉴 순서를 바꿀 수 있습니다(브라우저마다 저장).</p></details>`;
+    box.querySelectorAll('details.fold').forEach(d => { d.open = pref('fold:' + d.dataset.fold, false); d.ontoggle = () => setPref('fold:' + d.dataset.fold, d.open); }); // 노션 토글처럼 접기, 열림 상태 기억
     const ps = box.querySelector('#permSave');
     if (ps) ps.onclick = async () => {
       const perms = {}; box.querySelectorAll('.perm-table input:not(:checked)').forEach(i => (perms[i.dataset.who] ||= []).push(i.dataset.k));
@@ -1316,7 +1382,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members || []; applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members?.length ? j.members : C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);

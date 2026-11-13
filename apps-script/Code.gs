@@ -912,7 +912,7 @@ var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:ta
 function permsAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PERMS') || '{}'); } catch (e) { return {}; } }
 function memberNames_() {
   var map = {}; try { map = JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESS_CODES') || '{}'); } catch (e) {}
-  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n]) return false; seen[n] = 1; return true; }); // 코드는 내보내지 않고 이름만
+  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n]) return false; seen[n] = 1; return true; }).concat(Object.keys(map).some(function (k) { return String(map[k]) === DIRECTOR; }) ? [] : [DIRECTOR]).filter(function (n, i, a) { return a.indexOf(n) === i; }); // 코드는 내보내지 않고 이름만, 원장님은 항상 포함
 }
 function permsSave_(perms) {
   var names = memberNames_(), out = {};

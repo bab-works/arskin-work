@@ -9,7 +9,8 @@
   let generation = 0;
   let host, data, sourceMode = '', busy = false, chartMode = 'daily', selectedDay;
   const $ = id => document.getElementById(id);
-  const header = () => `<div class="rv-heading"><div><span class="rv-eyebrow">ARSKIN BUSINESS</span><h1>월간 매출표</h1><p>한 달의 흐름을, 숫자로 선명하게</p></div><div class="rv-actions"><a href="${sourceURL}" target="_blank" rel="noopener">원본 요약 ↗</a>${data ? `<select id="rvMonth" aria-label="볼 달 선택"><option value="">이번 달 (실시간)</option>${months.map(m => `<option value="${m}"${m === shownMonth ? ' selected' : ''}>${+m.slice(0, 4)}년 ${+m.slice(5)}월 (보관)</option>`).join('')}</select><label class="rv-upload" title="그 달의 매출 파일(.xlsx 또는 월간요약 CSV)을 올리면 자동 분석해 보관합니다">파일로 달 추가<input type="file" id="rvUpload" accept=".xlsx,.xls,.csv" hidden></label>` + (sourceMode ? '<button id="rvRefresh">새로고침</button>' : '') + '<button id="rvLock">닫기</button>' : ''}</div></div>`;
+  // 오른쪽 위: 볼 달 선택만 보이고 나머지는 ☰ 메뉴 안으로 (원본 링크는 메뉴 맨 아래)
+  const header = () => `<div class="rv-heading"><div><h1>월간 매출표</h1></div><div class="rv-actions">${data ? `<select id="rvMonth" aria-label="볼 달 선택"><option value="">이번 달 (실시간)</option>${months.map(m => `<option value="${m}"${m === shownMonth ? ' selected' : ''}>${+m.slice(0, 4)}년 ${+m.slice(5)}월 (보관)</option>`).join('')}</select>` : ''}<div class="rv-menu-wrap"><button type="button" class="icon-btn rv-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="매출표 메뉴">☰</button><div class="rv-menu" role="menu" hidden>${data ? `<label class="rv-upload" role="menuitem" title="일일마감 엑셀(통합데이터 탭) 또는 월간요약 파일">파일로 달 추가<input type="file" id="rvUpload" accept=".xlsx,.xls,.csv" hidden></label>` + (sourceMode ? '<button id="rvRefresh" role="menuitem">새로고침</button>' : '') + '<button id="rvLock" role="menuitem">닫기 (잠금)</button>' : ''}<a href="${sourceURL}" target="_blank" rel="noopener" role="menuitem" class="tool-quiet">원본 요약 시트 ↗</a></div></div></div></div>`;
   let months = [], shownMonth = '';
   // 보관함: 달별 분석 결과를 원본 매출 시트의 '_분석보관' 탭에 저장(매출 비밀번호 필요)
   const archive = async (op, extra = {}) => {
@@ -47,6 +48,11 @@
     try { localStorage.revenueAdminKey = adminKey; } catch {}
     generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; await loadMonths(); render();
   }
+  document.addEventListener('click', e => { // 매출표 ☰ 메뉴 열고 닫기
+    const btn = e.target.closest('.rv-menu-btn'), menu = document.querySelector('.rv-menu'); if (!menu) return;
+    if (btn) { const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', open); return; }
+    if (!e.target.closest('.rv-menu') || e.target.closest('button,a')) { menu.hidden = true; document.querySelector('.rv-menu-btn')?.setAttribute('aria-expanded', 'false'); }
+  });
   window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) load(); } }, refresh() { if (sourceMode) load(); } };
   function renderLocked(message = '') {
     data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약</h2><p>연결된 Google 시트의 월간요약을 불러옵니다.</p><form class="rv-pass" id="rvPassForm"><label for="rvPass">매출 비밀번호</label><input type="password" id="rvPass" autocomplete="current-password" required><button class="primary" id="rvConnect">불러오기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 월간요약 탭에서 다운로드한 CSV를 이 기기에서 분석합니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".xlsx,.xls,.csv"></details></section>`;
