@@ -31,12 +31,13 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 21, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 22, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
@@ -59,6 +60,7 @@ function doPost(e) {
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
@@ -387,6 +389,10 @@ function revenueArchive_(b, me) {
   var idx = -1; for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === month) { idx = i + 2; break; }
   if (b.op === 'get') { if (idx < 0) throw new Error('보관된 분석이 없습니다'); return { data: JSON.parse(sh.getRange(idx, 2).getValue()) }; }
   if (b.op !== 'save') throw new Error('unknown op');
+  // 올리기는 업로드 토큰(스크립트 속성 REVENUE_ADMIN_KEYS, 쉼표로 여러 개)이 있어야 한다
+  var admins = String(PropertiesService.getScriptProperties().getProperty('REVENUE_ADMIN_KEYS') || '').split(',').map(function (x) { return x.trim(); }).filter(String);
+  if (!admins.length) throw new Error('업로드 토큰이 아직 설정되지 않았습니다 (스크립트 속성 REVENUE_ADMIN_KEYS)');
+  if (admins.indexOf(String(b.adminKey || '')) < 0) throw new Error('업로드 토큰이 맞지 않습니다');
   var text = JSON.stringify(b.data || {}); if (text.length > 45000) throw new Error('분석 결과가 너무 큽니다');
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try { var row = [month, text, new Date().toISOString(), me]; if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row); } finally { lock.releaseLock(); }
@@ -489,7 +495,7 @@ function holidayFetch_(year) {
   var cal = CalendarApp.getCalendarById(HOLIDAY_CAL) || CalendarApp.subscribeToCalendar(HOLIDAY_CAL);
   var out = [];
   cal.getEvents(new Date(year, 0, 1), new Date(year + 1, 0, 1)).forEach(function (ev) {
-    if (!ev.isAllDayEvent() || /기념일/.test(ev.getDescription())) return; // 어버이날 같은 기념일은 휴일이 아님
+    if (!ev.isAllDayEvent() || /기념일/.test(ev.getDescription()) || /노동절|근로자/.test(ev.getTitle())) return; // 기념일·노동절(병원 근무일)은 휴일 아님
     for (var d = new Date(ev.getAllDayStartDate()); d < ev.getAllDayEndDate(); d.setDate(d.getDate() + 1))
       out.push([Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd'), ev.getTitle(), 'auto']);
   });
@@ -507,7 +513,7 @@ function holidays_(fresh) {
     changed = true;
   });
   if (changed) { var lock = LockService.getScriptLock(); lock.waitLock(10000); try { holidayWrite_(sh, rows); } finally { lock.releaseLock(); } }
-  return rows.map(function (r) { return { date: r[0], name: r[1], source: r[2] }; });
+  return rows.filter(function (r) { return !(r[2] === 'auto' && /노동절|근로자/.test(r[1])); }).map(function (r) { return { date: r[0], name: r[1], source: r[2] }; });
 }
 function holidayEdit_(body) {
   var date = String(body.date || ''), name = String(body.name || '').trim().slice(0, 40);
@@ -555,7 +561,7 @@ function generateDay_(who, d, force) {
     // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
     var newWeek = isoWeek_(d) !== isoWeek_(src);
     var parents = srcRows.filter(function (r) {
-      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !(r.section === '원장님리스트' && isDone(r)); // 원장님: 끝난 리스트·일정은 넘기지 않음
+      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !((r.section === '원장님리스트' || r.section === '원장님숙제') && isDone(r)); // 원장님: 끝난 리스트·숙제·일정은 넘기지 않음
       if (NO_CARRY_.indexOf(r.section) >= 0) return false;
       if (r.section === '데일리고정' || r.section === '주간고정') return true;
       return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));
@@ -646,7 +652,7 @@ function directorEdit_(body, me) {
 function reelsPlan_() {
   return contentPlanRead(SpreadsheetApp.openById(CALENDAR_SS_ID)).filter(function (r) {
     var v = r.v.map(function (x) { return String(x).trim(); });
-    return v[2] && v[1] !== '기각' && v[3] !== '기각' && v[3] !== '⭕' && !v[4];
+    return /[\p{L}\p{N}]/u.test(v[2]) && v[1] !== '기각' && v[3] !== '기각' && v[3] !== '⭕' && !v[4];
   }).map(function (r) { return { row: r.row, title: String(r.v[2]).trim(), kind: String(r.v[0]).trim(), ref: String(r.v[5]).trim() }; });
 }
 function reelsShot_(row, mark) { // mark: '⭕'(촬영, 기본) 또는 '기각'
@@ -750,4 +756,34 @@ function contentPlanAddMany_(rows, locked) { // locked: 이미 잠금을 잡은 
     SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
     return contentPlanRead(ss);
   } finally { if (lock) lock.releaseLock(); }
+}
+
+/* ---------- 연월차: 공통 시트 leaves 탭 [id | 날짜 | 이름 | 종류 | 메모 | 등록자 | 등록시각]. 종류: 연차(1일) / 오전 반차·오후 반차(0.5일) ---------- */
+var LEAVE_KINDS = ['연차', '오전 반차', '오후 반차'];
+function leaveSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('leaves');
+  if (!sh) { sh = ss.insertSheet('leaves'); sh.getRange('A:G').setNumberFormat('@'); sh.appendRow(['id', '날짜', '이름', '종류', '메모', '등록자', '등록시각']); sh.setFrozenRows(1); }
+  return sh;
+}
+function leaveList_() {
+  var sh = leaveSheet_(); if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 7).getDisplayValues().filter(function (r) { return r[0]; })
+    .map(function (r) { return { id: r[0], date: r[1], who: r[2], kind: r[3], memo: r[4], by: r[5] }; });
+}
+function leaveEdit_(b, me) {
+  if (!me) throw new Error('unauthorized');
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = leaveSheet_();
+    if (b.action === 'leaveDelete') {
+      var last = sh.getLastRow(), ids = last > 1 ? sh.getRange(2, 1, last - 1, 1).getDisplayValues() : [];
+      for (var i = ids.length - 1; i >= 0; i--) if (ids[i][0] === String(b.id)) sh.deleteRow(i + 2);
+    } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.date))) throw new Error('날짜 형식이 올바르지 않습니다');
+      if (LEAVE_KINDS.indexOf(b.kind) < 0) throw new Error('종류를 확인해 주세요');
+      var who = String(b.who || me).slice(0, 20);
+      sh.appendRow(['L' + Date.now().toString(36), b.date, who, b.kind, String(b.memo || '').slice(0, 60), me, new Date().toISOString()]);
+    }
+  } finally { lock.releaseLock(); }
+  return leaveList_();
 }

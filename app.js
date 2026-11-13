@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -64,13 +64,13 @@
   const api = {
     async get(params) {
       const u = new URL(C.API_URL);
-      Object.entries({ key: C.API_KEY, code: accessCode(), who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
+      Object.entries({ code: accessCode(), who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
       const j = await (await fetch(u)).json();
       checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
     async post(body) { // text/plain body → CORS preflight 없이 Apps Script 로 전달
-      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ key: C.API_KEY, code: accessCode(), who: state.person, ...body }) })).json();
+      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ code: accessCode(), who: state.person, ...body }) })).json();
       checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
@@ -128,7 +128,7 @@
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
-    if (TASK_KEYS.has(r.section) || r.section === '원장님리스트') row.append(dragHandle(r));
+    if (TASK_KEYS.has(r.section) || r.section === '원장님리스트' || r.section === '원장님숙제') row.append(dragHandle(r));
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
@@ -195,7 +195,7 @@
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
   const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무' || r.section === '원장님리스트') holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무' || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -300,7 +300,7 @@
     h.onkeydown = e => { // 키보드: ↑↓ 로 같은 칸 안에서 한 칸씩 이동
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
-      const list = rowsFor(r.date, r.section, r.section === '원장님리스트' ? r.col : undefined), i = list.indexOf(r), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+      const list = rowsFor(r.date, r.section, r.section.startsWith('원장님') ? r.col : undefined), i = list.indexOf(r), j = i + (e.key === 'ArrowUp' ? -1 : 1);
       if (j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]]; list.forEach((x, k) => { x.order = String(k + 1); }); save(list); render();
       document.querySelector(`[data-id="${CSS.escape(r.id)}"] .drag`)?.focus();
@@ -430,7 +430,9 @@
     const g = el('<div class="grid3 dir-lists"></div>');
     DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
     box.append(sec('원장님 업무리스트업', g));
-    box.append(sec('원장님 숙제', cellGrid(d, '원장님숙제', [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], 'cols', 'text')));
+    const hw = el('<div class="grid3 dir-lists dir-hw"></div>');
+    [['영어', '영상숙제(영어)'], ['영상', '영상숙제']].forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님숙제', col, { doneLast: true, defaultStatus: 'todo' })); hw.append(c); });
+    box.append(sec('원장님 숙제', hw));
     const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
     box.querySelectorAll('textarea').forEach(autosize);
   }
@@ -470,7 +472,7 @@
   const pref = (k, def) => { try { const v = localStorage[prefKey(k)]; return v == null ? def : JSON.parse(v); } catch { return def; } };
   const setPref = (k, v) => { try { localStorage[prefKey(k)] = JSON.stringify(v); } catch {} };
   const doneRange = () => pref('doneRange', null) || { from: weekStart(todayKst()), to: todayKst() };
-  const DONE_SECS = new Set([...TASK_KEYS, '원장님리스트']);
+  const DONE_SECS = new Set([...TASK_KEYS, '원장님리스트', '원장님숙제']);
   async function loadDone() {
     const { from, to } = doneRange(), key = [state.person, from, to].join('|');
     if (state.doneKey === key) return renderDone();
@@ -558,7 +560,7 @@
         const lane = team.findIndex(p => p.name === r._name);
         const b = el(`<div class="tl-block tl-shared tl-team" title="${esc(disp(r._name))} 타임라인"><small>${esc(disp(r._name))} · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
         place(b, r.start, r.end); Object.assign(b.style, { left: `calc(44px + ${lane} * (100% - 46px) / ${team.length})`, width: `calc((100% - 46px) / ${team.length} - 2px)`, right: 'auto' });
-        grid.append(b);
+        b.onclick = () => bigPeek(`${disp(r._name)} · ${r.start}~${r.end}`, r.text); grid.append(b);
       });
     }
     (isDirector() ? [] : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
@@ -605,6 +607,19 @@
       if (b.moved) { const s = +b.dataset.s; updateRow(r, { start: toTime(s), end: toTime(s + dur) }); renderTimeline(); }
     };
   }
+  // 일정 글에 적힌 시간 읽기: "09시", "12시 반", "10시 15분", "9시~11시", "14시 /" 등. 1~7시는 오후로 본다. 시간이 하나일 때만 글자에서 지운다.
+  function parseTimeText(raw) {
+    const T = /(\d{1,2})\s*시\s*(반|(\d{1,2})\s*분)?/g, hits = [...String(raw).matchAll(T)];
+    if (!hits.length) return null;
+    const hm = m => { let h = +m[1], mi = m[2] === '반' ? 30 : +(m[3] || 0); if (h >= 1 && h <= 7) h += 12; return h > 23 || mi > 59 ? null : h * 60 + mi; };
+    const s0 = hm(hits[0]); if (s0 == null) return null;
+    const range = hits.length === 2 && /^\s*[~\-–]\s*$/.test(raw.slice(hits[0].index + hits[0][0].length, hits[1].index));
+    if (hits.length > 1 && !range) return null; // 시간이 여러 개(변경 메모 등)면 건드리지 않음
+    const e0 = range ? hm(hits[1]) : s0 + 60;
+    let text = raw.slice(0, hits[0].index) + raw.slice((range ? hits[1] : hits[0]).index + (range ? hits[1] : hits[0])[0].length);
+    text = text.replace(/^\s*-\s*\d{1,2}\s*\([월화수목금토일]\)\s*/, '').replace(/^[\s\/·,\-]+|[\s\/·,\-]+$/g, '').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim();
+    return { start: toTime(s0), end: toTime(Math.min(e0 ?? s0 + 60, 23 * 60 + 59)), text: text || raw.trim() };
+  }
   let editing = null;
   function openEditor(r, anchor, isNew) {
     editing = { r, isNew };
@@ -625,7 +640,9 @@
     if (!text) return toast('내용을 입력하세요');
     if (editing.r.section === '타임라인' && (!start || !end)) return toast('시작과 종료 시각을 입력하세요');
     if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
-    if (editing.isNew) addRow({ ...editing.r, text, start, end }); else updateRow(editing.r, { text, start, end });
+    let t = { text, start, end };
+    if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
+    if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
     closeEditor(); renderTimeline(); renderShared();
   };
   $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); renderShared(); };
@@ -795,6 +812,22 @@
     };
     addEventListener('pointermove', move, { passive: false }); addEventListener('pointerup', up); addEventListener('pointercancel', up);
   }
+  // 달 고르기 팝업: 연도 ‹ › + 12개월
+  function openMonthPicker(anchorEl, anchor, go) {
+    document.querySelector('.month-pop')?.remove();
+    let y = +anchor.slice(0, 4);
+    const pop = el('<div class="month-pop range-pop" role="dialog" aria-label="달 고르기"></div>'); document.body.append(pop);
+    const r = anchorEl.getBoundingClientRect(); pop.style.top = r.bottom + 6 + 'px'; pop.style.left = Math.max(8, Math.min(innerWidth - 300, r.left + r.width / 2 - 150)) + 'px';
+    const close = () => { pop.remove(); removeEventListener('pointerdown', out, true); }, out = e => { if (!pop.contains(e.target) && e.target !== anchorEl) close(); };
+    addEventListener('pointerdown', out, true);
+    const paint = () => { pop.innerHTML = `<div class="rp-head"><button type="button" data-y="-1" aria-label="이전 해">‹</button><b>${y}년</b><button type="button" data-y="1" aria-label="다음 해">›</button></div><div class="mp-grid">${Array.from({ length: 12 }, (_, i) => `<button type="button" data-mo="${i + 1}" class="${y === +anchor.slice(0, 4) && i + 1 === +anchor.slice(5, 7) ? 'edge' : ''}">${i + 1}월</button>`).join('')}</div>`; };
+    pop.onclick = e => { const yb = e.target.closest('[data-y]'); if (yb) { y += +yb.dataset.y; return paint(); } const m = e.target.closest('[data-mo]'); if (m) { close(); go(`${y}-${String(m.dataset.mo).padStart(2, '0')}-01`); } };
+    paint(); pop.querySelector('.edge, [data-mo]')?.focus();
+  }
+  // 연월차: 공통 시트 leaves 탭
+  const LEAVE_KINDS = ['연차', '오전 반차', '오후 반차'];
+  async function loadLeaves() { try { state.leaves = (await api.get({ action: 'leaves' })).leaves || []; renderShared(); if (state.view === 'team') renderTeam(); } catch {} }
+  async function leaveEdit(body) { try { state.leaves = (await api.post(body)).leaves || []; toast(body.action === 'leaveAdd' ? `${body.kind} 등록했습니다` : '취소했습니다'); } catch (e) { toast(e.message); } renderShared(); if (state.view === 'team') renderTeam(); }
   // 주간↔월간: 높이를 이전 값에서 새 값으로 부드럽게 (모션 줄이기면 즉시)
   function switchCalMode(mode) {
     const cal = $('sharedcal'), h0 = cal.offsetHeight;
@@ -821,8 +854,14 @@
     if (!dir) cal.querySelector('.sc-header').after(who);
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
-    const nav = el(`<div class="sc-navigation"><button type="button" aria-label="이전 ${monthly ? '달' : '주'}">‹ 이전 ${monthly ? '달' : '주'}</button><button type="button">${monthly ? '이번 달' : '이번 주'}</button><button type="button" aria-label="다음 ${monthly ? '달' : '주'}">다음 ${monthly ? '달' : '주'} ›</button></div>`);
-    [...nav.children].forEach((b, i) => b.onclick = () => { state.sharedAnchor = i === 1 ? today : monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 1 + (i === 0 ? -1 : 1), 1)) : shiftDate(ws, i === 0 ? -7 : 7); renderShared(); loadShared(); });
+    // ‹ [2026년 11월] › 오늘 — 가운데 버튼을 누르면 달 고르기
+    const nav = el(`<div class="sc-navigation"><button type="button" class="sc-prev" aria-label="이전 ${monthly ? '달' : '주'}">‹</button><button type="button" class="sc-month-btn" aria-haspopup="dialog" aria-label="달 고르기">${+anchor.slice(0, 4)}년 ${+anchor.slice(5, 7)}월${monthly ? '' : ` <small>${ws.slice(5).replace('-', '.')}~${shiftDate(ws, N - 1).slice(5).replace('-', '.')}</small>`} ▾</button><button type="button" class="sc-next" aria-label="다음 ${monthly ? '달' : '주'}">›</button><button type="button" class="sc-today">오늘</button>${dir ? '' : `<span class="sc-leave-btns" role="group" aria-label="연차 등록">${LEAVE_KINDS.map(k => `<button type="button" data-leave="${k}" aria-pressed="${state.leaveMode === k}">${k}</button>`).join('')}</span>`}</div>`);
+    const go = a => { state.sharedAnchor = a; renderShared(); loadShared(); };
+    nav.querySelector('.sc-prev').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 2, 1)) : shiftDate(ws, -7));
+    nav.querySelector('.sc-next').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 1)) : shiftDate(ws, 7));
+    nav.querySelector('.sc-today').onclick = () => go(today);
+    nav.querySelector('.sc-month-btn').onclick = e => openMonthPicker(e.currentTarget, anchor, go);
+    nav.querySelectorAll('[data-leave]').forEach(b => b.onclick = () => { state.leaveMode = state.leaveMode === b.dataset.leave ? '' : b.dataset.leave; renderShared(); if (state.leaveMode) toast(`${state.leaveMode}: 캘린더에서 날짜를 누르세요 (다시 누르면 취소)`); });
     body.append(nav);
     const grid = el(`<div class="sc-week${monthly ? ' sc-month' : ''}${dir ? ' sc-7' : ''}" role="group" aria-label="${monthly ? '월간' : '주간'} 평일 일정"></div>`);
     const dates = [];
@@ -834,6 +873,12 @@
     dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'), outside = monthly && !d.startsWith(month);
       const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><button type="button" class="sc-date" aria-label="${d} 보고서 보기"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b>${state.holidays[d] ? `<em class="sc-hol">${esc(state.holidays[d].name)}</em>` : ''}</button></div>`);
+      if (!dir) state.leaves.filter(l => l.date === d).forEach(l => {
+        const chip = el(`<button type="button" class="sc-leave k-${LEAVE_KINDS.indexOf(l.kind)}" title="${esc(disp(l.who))} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''} (누르면 취소)">${esc(disp(l.who))} ${esc(l.kind.replace(' 반차', '반차'))}</button>`);
+        chip.onclick = e => { e.stopPropagation(); if (confirm(`${disp(l.who)} ${d} ${l.kind}를 취소할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
+        col.append(chip);
+      });
+      if (state.leaveMode && !dir) { col.classList.add('leave-pick'); col.onclick = e => { if (e.target.closest('.sc-leave')) return; leaveEdit({ action: 'leaveAdd', date: d, kind: state.leaveMode, who: state.person }); state.leaveMode = ''; }; }
       col.querySelector('.sc-date').onclick = () => { // 캘린더 → 그날 보고서
         if (!state.dates.includes(d)) return toast('보고서는 최근 근무일 5일만 볼 수 있습니다');
         state.sel = d; render(); $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -940,7 +985,7 @@
     const asked = state.person;
     $('report').innerHTML = '<div class="empty-note">불러오는 중…</div>';
     try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return; state.rows = rows; }
-    catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL / API_KEY 와 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
+    catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL 과 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
     render();
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
@@ -960,7 +1005,7 @@
   async function loadDirector() {
     try { const j = await api.get({ action: 'director' }); state.dir = { tasks: j.tasks || [], me: j.me || '' }; } catch { return; }
     if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
-    if (state.view === 'director') renderDirector(); else paintDirBadge();
+    if (state.view === 'director') renderDirector(); else { paintDirBadge(); if (state.view === 'home') renderHome(); }
   }
   async function saveDirector(body) {
     try { state.dir.tasks = (await api.post(body)).tasks; } catch (e) { toast(e.message); }
@@ -1091,27 +1136,49 @@
 
   /* ---------- 홈: 음각 로고 + 오늘 요약 ---------- */
   function renderHome() {
-    const box = $('homeHub'), d = todayKst(), t = state.team.date === d ? state.team : null;
-    const prog = rows => { const l = (rows || []).filter(r => TASK_KEYS.has(r.section) && !String(r.col).startsWith('plan:')); const n = l.filter(isDone).length; return { n, t: l.length, p: l.length ? Math.round(n / l.length * 100) : 0 }; };
-    const dir = state.dir.tasks, cnt = k => dir.filter(x => x.status === k).length;
+    const box = $('homeHub'), dir = state.dir.tasks, cnt = k => dir.filter(x => x.status === k).length;
+    // 가운데: 파란 자명종 + 초 단위로 흐르는 시계 (마케터는 그 아래 큰 재촉 버튼)
     box.innerHTML = `<div class="home-logo" aria-hidden="true"><span class="deboss"></span></div><h1 class="sr-only">아르스킨 대시보드</h1>
-      <p class="home-date">${fmtDate(d)}</p>
+      <section class="clock-hero" aria-label="현재 시각">
+        <svg class="alarm" viewBox="0 0 120 120" aria-hidden="true">
+          <g class="bells"><path d="M22 34a18 18 0 0 1 24-24z" fill="#3182f6"/><path d="M98 34a18 18 0 0 0-24-24z" fill="#3182f6"/></g>
+          <path d="M34 104l-8 10M86 104l8 10" stroke="#1b64da" stroke-width="7" stroke-linecap="round"/>
+          <circle cx="60" cy="64" r="44" fill="#3182f6"/><circle cx="60" cy="64" r="36" fill="#fff"/>
+          <g stroke="#cfe2ff" stroke-width="3" stroke-linecap="round">${Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6; return `<line x1="${60 + 31 * Math.sin(a)}" y1="${64 - 31 * Math.cos(a)}" x2="${60 + 34 * Math.sin(a)}" y2="${64 - 34 * Math.cos(a)}"/>`; }).join('')}</g>
+          <line class="h-h" x1="60" y1="64" x2="60" y2="44" stroke="#191f28" stroke-width="5" stroke-linecap="round"/>
+          <line class="h-m" x1="60" y1="64" x2="60" y2="36" stroke="#191f28" stroke-width="3.5" stroke-linecap="round"/>
+          <line class="h-s" x1="60" y1="70" x2="60" y2="32" stroke="#f04452" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="60" cy="64" r="4" fill="#191f28"/>
+        </svg>
+        <p class="clock-date"></p>
+        <p class="clock-time" aria-live="off"></p>
+        ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
+      </section>
       <div class="home-cards">
-        <section class="home-card"><h2>오늘 팀 진행률</h2>${t ? marketers().map(p => { const g = prog(t[p.name]); return `<div class="dir-prog"><div class="project-progress-label"><span>${esc(disp(p.name))} · ${g.n}/${g.t}</span><b>${g.p}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(disp(p.name))} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.p}"><span style="width:${g.p}%"></span></div></div>`; }).join('') : '<p class="muted">불러오는 중…</p>'}<button type="button" class="more" data-go="team">업무 체크로 →</button></section>
-        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><div class="home-acts"><button type="button" class="more" data-go="director">숙제 보기 →</button>${state.dir.me && !isBoss() ? '<button type="button" class="nudge-btn" data-nudge>🔥 원장님 재촉하기</button>' : ''}</div></section>
-        <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="revenue">월간 매출표</button></div></section>
+        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="director">숙제 보기 →</button></section>
+        <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="team">마케팅 공용</button></div></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
     box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
-    if (!t) loadTeam(d).then(() => { if (state.view === 'home') renderHome(); });
+    const tick = () => {
+      if (!box.isConnected || state.view !== 'home') return clearInterval(renderHome.t);
+      const k = new Date(Date.now() + 9 * 36e5), h = k.getUTCHours(), m = k.getUTCMinutes(), sec = k.getUTCSeconds(), p2 = n => String(n).padStart(2, '0');
+      box.querySelector('.clock-date').textContent = fmtDate(k.toISOString().slice(0, 10));
+      box.querySelector('.clock-time').innerHTML = `${p2(h)}<i>:</i>${p2(m)}<i>:</i><b>${p2(sec)}</b>`;
+      const rot = (cls, deg) => box.querySelector(cls).setAttribute('transform', `rotate(${deg} 60 64)`);
+      rot('.h-h', (h % 12) * 30 + m / 2); rot('.h-m', m * 6 + sec / 10); rot('.h-s', sec * 6);
+    };
+    clearInterval(renderHome.t); tick(); renderHome.t = setInterval(tick, 1000);
   }
+
 
   /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
   function renderTeam() {
     const box = $('teamHub'), page = state.teamPage || 'check';
-    box.innerHTML = `<div class="seg team-seg"><button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button><button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button></div>`;
+    box.innerHTML = `<div class="seg team-seg"><button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button><button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button><button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button></div>`;
     box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
     if (page === 'tags') return renderTagAdmin(box);
+    if (page === 'leaves') return renderLeaves(box);
     const d = todayKst();
     box.append(el(`<div class="dir-head"><h1>팀 업무 체크</h1><p>${fmtDate(d)} · 각자의 고정 업무와 변동 업무를 한 화면에서 확인하고 상태를 바꿀 수 있습니다.</p></div>`));
     if (state.team.date !== d) return box.append(el('<div class="empty-note">불러오는 중…</div>'));
@@ -1134,6 +1201,17 @@
       grid.append(col);
     });
     box.append(grid);
+  }
+  function renderLeaves(box) {
+    const y = todayKst().slice(0, 4), days = l => l.kind === '연차' ? 1 : 0.5;
+    const list = state.leaves.filter(l => l.date.startsWith(y)).sort((a, b) => b.date.localeCompare(a.date));
+    box.append(el(`<div class="dir-head"><h1>연월차</h1><p>${y}년 사용 내역입니다. 등록은 마케팅 공용 캘린더의 <b>연차 · 오전 반차 · 오후 반차</b> 버튼으로 합니다. 연차 1일, 반차 0.5일로 셉니다.</p></div>`));
+    box.append(el(`<div class="home-cards">${marketers().map(p => { const mine = list.filter(l => l.who === p.name); return `<section class="home-card"><h2>${esc(disp(p.name))}</h2><div class="home-nums"><div><b>${mine.reduce((a, l) => a + days(l), 0)}</b><span>사용 일수</span></div><div><b>${mine.filter(l => l.kind === '연차').length}</b><span>연차</span></div><div><b>${mine.filter(l => l.kind !== '연차').length}</b><span>반차</span></div></div></section>`; }).join('')}</div>`));
+    const sec2 = el('<section class="sec leave-list"><h3>내역</h3></section>');
+    if (!list.length) sec2.append(el('<p class="muted">아직 등록된 연월차가 없습니다.</p>'));
+    list.forEach(l => { const r = el(`<div class="row"><span class="sc-leave k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><div class="tx">${fmtDate(l.date)} · <b>${esc(disp(l.who))}</b>${l.memo ? ' · ' + esc(l.memo) : ''}</div><button type="button" class="del" aria-label="삭제">${icon('x', 14)}</button></div>`);
+      r.querySelector('.del').onclick = () => { if (confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); }; sec2.append(r); });
+    box.append(sec2);
   }
   function renderTagAdmin(box) {
     const found = new Map();
@@ -1194,6 +1272,10 @@
     } catch {}
   }
   setInterval(bossCheck, 60e3); // 창이 열려 있는 동안 1분마다
+  function bigPeek(title, text) {
+    const dlg = el(`<dialog class="code-dlg peek-dlg"><p class="muted">${esc(title)}</p><h2>${esc(text)}</h2><button type="button" class="primary">닫기</button></dialog>`);
+    dlg.querySelector('button').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove(); document.body.append(dlg); dlg.showModal();
+  }
   // 화면 가운데 큰 확인 메시지(누르거나 3초 뒤 사라짐)
   function bigNotice(text) {
     document.querySelector('.big-notice')?.remove();
@@ -1247,5 +1329,6 @@
   load();
   loadDirector();
   loadTags();
+  loadLeaves();
   setView('home');
 })();

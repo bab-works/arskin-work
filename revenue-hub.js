@@ -12,7 +12,7 @@
   let months = [], shownMonth = '';
   // 보관함: 달별 분석 결과를 원본 매출 시트의 '_분석보관' 탭에 저장(매출 비밀번호 필요)
   const archive = async (op, extra = {}) => {
-    const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ key: window.CONFIG.API_KEY, code: localStorage.accessCode || '', action: 'revenueArchive', op, revenueKey: savedKey(), ...extra }) })).json();
+    const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ code: localStorage.accessCode || '', action: 'revenueArchive', op, revenueKey: savedKey(), ...extra }) })).json();
     if (res.error) throw new Error(res.error); return res;
   };
   const loadMonths = () => archive('list').then(r => { months = r.months || []; if (data) render(); }).catch(() => {});
@@ -31,7 +31,11 @@
     const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
     const rows = await fileRows(file), parsed = window.RevenueModel.parse(rows, rows), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
     parsed.updated = file.name;
-    await archive('save', { month, data: parsed });
+    let adminKey = ''; try { adminKey = localStorage.revenueAdminKey || ''; } catch {}
+    if (!adminKey) adminKey = (prompt('매출 파일 업로드 토큰을 입력해 주세요 (관리자에게 받은 값)') || '').trim();
+    if (!adminKey) throw new Error('업로드 토큰이 필요합니다');
+    try { await archive('save', { month, data: parsed, adminKey }); } catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} throw e; }
+    try { localStorage.revenueAdminKey = adminKey; } catch {}
     generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; await loadMonths(); render();
   }
   window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) load(); } }, refresh() { if (sourceMode) load(); } };
@@ -55,7 +59,7 @@
     try {
       // 매출은 Apps Script가 비밀번호를 확인한 뒤에만 돌려준다(공개 CSV 사용 안 함).
       const key = entered ?? savedKey(); if (!key) throw new Error('매출 비밀번호를 입력해 주세요.');
-      const body = { key: window.CONFIG.API_KEY, code: localStorage.accessCode || '', action: 'revenueRows', revenueKey: key };
+      const body = { code: localStorage.accessCode || '', action: 'revenueRows', revenueKey: key };
       const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })).json();
       if (res.error) { if (/비밀번호/.test(res.error)) localStorage.removeItem('revenueKey'); throw new Error(res.error); }
       localStorage.revenueKey = key;

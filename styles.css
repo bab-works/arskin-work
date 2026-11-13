@@ -629,3 +629,42 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 .big-notice.out{opacity:0;transition:opacity .25s}
 @keyframes bn-in{from{opacity:0}}@keyframes bn-pop{from{transform:scale(.85)}}
 @media(prefers-reduced-motion:reduce){.big-notice,.big-notice>div{animation:none}}
+/* 레이아웃: 보고서·완료 페이지 폭을 공용 구간과 맞추고 간격을 넓힘, 타임라인 넓게 */
+:root{--tl:400px}
+.report-pair{gap:24px}
+.report-pair>.report,.report-pair>.done-page{flex:1 1 520px;max-width:none}
+/* 캘린더 상단: ‹ 2026년 11월 › 오늘 + 연차 버튼 */
+.sc-navigation{justify-content:flex-start;gap:6px;flex-wrap:wrap}
+.sc-navigation .sc-prev,.sc-navigation .sc-next{width:36px;padding:0;font-size:18px}
+.sc-month-btn{font-weight:700;font-size:14px!important}.sc-month-btn small{font-weight:500;color:var(--text-2);margin-left:4px}
+.sc-leave-btns{display:flex;gap:6px;margin-left:auto}
+.sc-leave-btns button{font-size:12px;padding:7px 10px;background:#fff3e6;color:#b35300}
+.sc-leave-btns button[aria-pressed=true]{background:#b35300;color:#fff}
+.mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.mp-grid button{min-height:44px}.mp-grid button.edge{background:var(--blue-dark);color:#fff}
+.sc-leave{display:block;width:100%;min-height:24px;margin:2px 0;padding:2px 6px;border-radius:6px;font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+.sc-leave.k-0{background:#ffe8d9;color:#9a3d00}.sc-leave.k-1,.sc-leave.k-2{background:#fff3e6;color:#b35300}
+.leave-list .sc-leave{display:inline-block;width:auto;flex:none}
+.sc-day.leave-pick{cursor:copy;box-shadow:inset 0 0 0 2px #f4a259}
+.sc-day.leave-pick:hover{background:#fff3e6}
+.peek-dlg h2{font-size:20px;line-height:1.5;overflow-wrap:anywhere}
+.dir-hw.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* 홈: 파란 자명종 + 초 단위 시계, 재촉 버튼 크게 */
+.home-logo{margin:28px 0 4px}.home .deboss{width:min(320px,70vw)}
+.clock-hero{display:flex;flex-direction:column;align-items:center;gap:6px;margin:8px 0 32px}
+.alarm{width:132px;height:132px;transform-origin:50% 60%;animation:ring 3s var(--ease) infinite}
+.alarm .bells{transform-origin:60px 30px;animation:bells 3s linear infinite}
+@keyframes ring{0%,70%,100%{transform:rotate(0)}74%{transform:rotate(-9deg)}78%{transform:rotate(9deg)}82%{transform:rotate(-7deg)}86%{transform:rotate(7deg)}90%{transform:rotate(-3deg)}94%{transform:rotate(0)}}
+@keyframes bells{0%,70%,100%{transform:translateY(0)}74%,82%,90%{transform:translateY(-2px)}78%,86%{transform:translateY(1px)}}
+.clock-date{margin:6px 0 0;font-size:clamp(22px,2.4vw,30px);font-weight:700;color:var(--text-1)}
+.clock-time{margin:0;font-size:clamp(56px,8vw,104px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#1b64da;line-height:1.05}
+.clock-time i{font-style:normal;color:#9cc8ff;margin:0 .04em;animation:blink 1s steps(1) infinite}
+.clock-time b{color:#3182f6}
+@keyframes blink{50%{opacity:.35}}
+.nudge-hero{margin-top:18px;min-height:72px;padding:0 44px;border-radius:999px;font-size:clamp(22px,2.4vw,30px);font-weight:800;color:#fff;background:linear-gradient(135deg,#d9480f,#c92a2a);box-shadow:0 14px 36px rgba(240,68,82,.35);animation:pulse 2.4s var(--ease) infinite}
+.nudge-hero:hover{filter:brightness(1.05)}.nudge-hero:active{transform:scale(.97)}
+@keyframes pulse{0%,100%{box-shadow:0 14px 36px rgba(240,68,82,.35)}50%{box-shadow:0 14px 48px rgba(240,68,82,.55)}}
+.nudge-sub{margin:4px 0 0;color:var(--text-2);font-size:14px}
+.home-cards{max-width:760px;margin:0 auto}
+@media(prefers-reduced-motion:reduce){.alarm,.alarm .bells,.clock-time i,.nudge-hero{animation:none}}
+.sc-month-btn small{font-size:12px}
+.sc-leave{position:relative}.sc-leave::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
