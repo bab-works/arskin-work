@@ -1386,11 +1386,13 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members?.length ? j.members : C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.members = (j.members?.length ? j.members.filter(n => !['골져스차', '눈밑지수술한사람'].includes(n)) : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
+  // 권한·휴일 등은 창으로 돌아올 때(5분마다 최대 1번) 다시 받아 새로고침 없이 반영
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
-    try { const j = await api.get({ action: 'boot' }); applyBoot(j); cacheSet('boot', j); }
+    try { const j = await api.get({ action: 'boot' }); boot.at = Date.now(); applyBoot(j); cacheSet('boot', j); }
     catch { if (!c) await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); loadDirector(); loadTags(); loadLeaves(); } // 옛 서버
     paintDirBadge(); if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
     const mine = C.PEOPLE.find(p => p.name === state.dir.me && !p.director); // 접속한 사람의 일일보고를 먼저
