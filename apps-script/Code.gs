@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 14, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 15, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -526,7 +526,7 @@ function generateDay_(who, d, force) {
     // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
     var newWeek = isoWeek_(d) !== isoWeek_(src);
     var parents = srcRows.filter(function (r) {
-      if (who === DIRECTOR) return r.section !== '타임라인'; // 원장님 워크시트는 전날 내용을 그대로 이어감
+      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !(r.section === '원장님리스트' && isDone(r)); // 원장님: 끝난 리스트·일정은 넘기지 않음
       if (NO_CARRY_.indexOf(r.section) >= 0) return false;
       if (r.section === '데일리고정' || r.section === '주간고정') return true;
       return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));

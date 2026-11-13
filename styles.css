@@ -506,3 +506,16 @@ html.printing .drag{display:none}
 .reel-steps button[aria-pressed=true]{background:#e6f6ee;color:#0a7a4a}
 .row.reel.done .reel-steps button[aria-pressed=true]{background:#0a7a4a;color:#fff}
 .row.virtual{opacity:.85}
+/* 원장님 워크시트 2차: 숙제 메뉴 아래, 월~일 캘린더, 진행률, 인쇄 시 메모 숨김 */
+.nav>button[data-view=director].active+.dir-subnav{display:flex}
+.sc-week.sc-7{grid-template-columns:repeat(7,minmax(0,1fr))}
+.sc-day.sat .sc-date b{color:var(--blue-text)}
+.sc-day.holiday .sc-date span{color:#c92a2a}
+.dir-progs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 20px}
+.dir-prog .project-progress-label{display:flex;justify-content:space-between;font-size:13px;color:var(--text-2);margin-bottom:4px}
+.dir-lists .task-list{grid-template-columns:minmax(0,1fr)}.dir-lists{grid-template-columns:repeat(3,minmax(0,1fr))}.dir-lists .cell{min-width:0}
+.dir-lists .cell{background:var(--grey50);padding:10px}
+.tl-block.tl-team{cursor:default;font-size:12px;padding:2px 6px}
+html.printing .memo-sec{display:none!important}
+.dir-seg{margin:0 0 12px}
+@media(max-width:600px){.dir-progs{grid-template-columns:1fr}.sc-week.sc-7:not(.sc-month){display:flex}}

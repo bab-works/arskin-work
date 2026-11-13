@@ -20,7 +20,7 @@
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -28,6 +28,7 @@
   const shiftDate = (s, n) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return iso(d); };
   const fmtDate = s => { const d = new Date(s + 'T00:00:00'); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()} (${WD[d.getDay()]})`; };
   const todayKst = () => new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10); // 기기 시간대와 무관하게 한국 날짜
+  const DIRECTOR_WHO = '원장님';
   const isDirector = () => !!C.PEOPLE.find(p => p.name === state.person)?.director;
   const isWorkday = d => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return wd !== 0 && (wd !== 6 || isDirector()) && !state.holidays[d]; }; // 마케터 월~금, 원장님 월~토
   function workDates(n) { // 당일 + 이전 근무일(월~금, 공휴일 제외)
@@ -126,7 +127,7 @@
     if (SUBTASKABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
     const row = el(`<div class="row${isDone(r) ? ' done' : ''}" data-id="${esc(r.id)}"></div>`);
-    if (TASK_KEYS.has(r.section)) row.append(dragHandle(r));
+    if (TASK_KEYS.has(r.section) || r.section === '원장님리스트') row.append(dragHandle(r));
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
@@ -193,7 +194,7 @@
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
   const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무') holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무' || r.section === '원장님리스트') holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -265,7 +266,7 @@
     return w;
   }
   function itemList(date, section, col, opts = {}) {
-    const box = document.createElement('div'); if (opts.doneLast) box.className = 'task-list';
+    const box = document.createElement('div'); if (opts.doneLast) { box.className = 'task-list'; box.dataset.section = section; if (col !== undefined) box.dataset.col = col; }
     let rows = rowsFor(date, section, col);
     if (opts.doneLast && state.doneLast) { const late = r => isDone(r) && !sortHold.has(r.id); rows = [...rows.filter(r => !late(r)), ...rows.filter(late)]; }
     const key = date + section + (col ?? '');
@@ -298,7 +299,7 @@
     h.onkeydown = e => { // 키보드: ↑↓ 로 같은 칸 안에서 한 칸씩 이동
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
-      const list = rowsFor(r.date, r.section), i = list.indexOf(r), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+      const list = rowsFor(r.date, r.section, r.section === '원장님리스트' ? r.col : undefined), i = list.indexOf(r), j = i + (e.key === 'ArrowUp' ? -1 : 1);
       if (j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]]; list.forEach((x, k) => { x.order = String(k + 1); }); save(list); render();
       document.querySelector(`[data-id="${CSS.escape(r.id)}"] .drag`)?.focus();
@@ -325,11 +326,11 @@
     const up = () => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
       ghost.remove(); node.classList.remove('dragging');
-      const sec = ph.closest('.sec[id^="sec-"]'); if (!sec) { ph.remove(); return; }
+      const list = ph.closest('.task-list[data-section]'); if (!list) { ph.remove(); return; }
       ph.replaceWith(node);
-      const key = sec.id.slice(4), ids = [...sec.querySelectorAll('.task-list > [data-id]')].map(n => n.dataset.id);
+      const key = list.dataset.section, col = list.dataset.col, ids = [...list.querySelectorAll(':scope > [data-id]')].map(n => n.dataset.id);
       const changed = [];
-      ids.forEach((id, i) => { const x = state.rows.find(y => y.id === id); if (!x) return; const patch = { order: String(i + 1), section: key }; if (x.order !== patch.order || x.section !== key) { Object.assign(x, patch); changed.push(x); } });
+      ids.forEach((id, i) => { const x = state.rows.find(y => y.id === id); if (!x) return; const patch = { order: String(i + 1), section: key, ...(col !== undefined && { col }) }; if (Object.keys(patch).some(k => x[k] !== patch[k])) { Object.assign(x, patch); changed.push(x); } });
       if (changed.length) save(changed);
       render();
     };
@@ -396,26 +397,21 @@
     });
     return g;
   }
+  const DIR_COLS = [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']];
   function renderDirectorReport(d, box) {
+    const items = col => rowsFor(d, '원장님리스트', col), pct = l => l.length ? Math.round(l.filter(isDone).length / l.length * 100) : 0;
+    const all = DIR_COLS.flatMap(([c]) => items(c));
+    const bar = (label, l) => `<div class="dir-prog"><div class="project-progress-label"><span>${esc(label)} · ${l.filter(isDone).length}/${l.length}</span><b>${pct(l)}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(label)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct(l)}"><span style="width:${pct(l)}%"></span></div></div>`;
+    box.append(sec('진행률', el(`<div class="dir-progs">${bar('전체', all)}${DIR_COLS.map(([c, l]) => bar(l, items(c))).join('')}</div>`)));
+    const g = el('<div class="grid3 dir-lists"></div>');
+    DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
+    box.append(sec('원장님 업무리스트업', g));
     box.append(sec('원장님 숙제', cellGrid(d, '원장님숙제', [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], 'cols', 'text')));
-    box.append(sec('원장님 업무리스트업', cellGrid(d, '원장님리스트', [['원개블', '원개블'], ['그외', '그외'], ['릴스촬영', '릴스 촬영 리스트업']], 'grid3', 'list')));
-    box.append(sec('원장님 완료', cellGrid(d, '원장님완료', ['월', '화', '수', '목', '금', '토'].map(w => [w, w]), 'grid6', 'text')));
-    box.append(sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
+    const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
     box.querySelectorAll('textarea').forEach(autosize);
   }
-  function renderDirCal(cal) {
-    const anchor = state.sel, month = anchor.slice(0, 7), first = new Date(month + '-01T00:00:00Z');
-    const start = shiftDate(month + '-01', -((first.getUTCDay() + 6) % 7)), today = todayKst(); // 월요일 시작
-    let html = `<div class="sc-header"><div><b>원장님 일정</b><small>${month.replace('-', '년 ')}월 · 월~일 · 휴일은 빨간색</small></div></div><div class="dir-cal" role="grid" aria-label="${month} 달력">`;
-    html += ['월', '화', '수', '목', '금', '토', '일'].map(w => `<div class="dc-dow${w === '일' ? ' sun' : w === '토' ? ' sat' : ''}">${w}</div>`).join('');
-    for (let i = 0; i < 42; i++) {
-      const d = shiftDate(start, i); if (i >= 35 && !d.startsWith(month)) break;
-      const wd = (i % 7), hol = state.holidays[d], cls = ['dc-day', !d.startsWith(month) && 'out', (wd === 6 || hol) && 'off', wd === 5 && 'sat', d === today && 'today', d === state.sel && 'sel', state.dates.includes(d) && 'has'].filter(Boolean).join(' ');
-      html += `<button type="button" class="${cls}" data-date="${d}" ${state.dates.includes(d) ? '' : 'aria-disabled="true"'} title="${d}${hol ? ' ' + esc(hol.name) : ''}"><b>${+d.slice(8)}</b>${hol ? `<small>${esc(hol.name)}</small>` : ''}</button>`;
-    }
-    cal.innerHTML = html + '</div>'; cal.className = 'sharedcal';
-    cal.querySelectorAll('.dc-day.has').forEach(b => b.onclick = () => { state.sel = b.dataset.date; render(); });
-  }
+
+
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
     if (!state.rows.some(r => r.date === d)) {
@@ -424,14 +420,14 @@
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
     }
-    box.append(el(`<div class="titlebar"><span>업무보고 및 회의록</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
+    box.append(el(`<div class="titlebar"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(state.person)}</span></div>`));
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
     const pub = publishingFor(d);
     if (pub) box.append(sec('오늘 발행 (콘텐츠 캘린더)', pub));
-    box.append(sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')));
+    const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
     box.querySelectorAll('textarea').forEach(autosize);
   }
 
@@ -458,7 +454,21 @@
     const grid = el('<div class="tl-grid"></div>'); grid.style.height = (H1 - H0) * PX + 'px';
     for (let h = H0; h < H1; h++) grid.append(el(`<div class="tl-hour"><span>${pad(h)}:00</span></div>`));
     // 공용 캘린더의 회의(시간 있는 일정)는 모두의 타임라인에 같은 색으로 표시, 수정은 공용 일정 편집기로
-    state.shared.filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
+    if (isDirector()) {
+      const sel = state.sel, team = C.PEOPLE.filter(p => !p.director && p.sheet);
+      if (state.teamTLDate !== sel) {
+        state.teamTLDate = sel; state.teamTL = [];
+        Promise.all(team.map(p => api.get({ who: p.name, from: sel, to: sel }).then(j => j.rows.filter(r => r.section === '타임라인').map(r => ({ ...r, _name: p.name }))).catch(() => [])))
+          .then(l => { if (state.teamTLDate === sel && isDirector()) { state.teamTL = l.flat(); renderTimeline(); } });
+      }
+      state.teamTL.forEach(r => { // 읽기 전용: 마케팅 공용 색, 사람마다 한 줄
+        const lane = team.findIndex(p => p.name === r._name);
+        const b = el(`<div class="tl-block tl-shared tl-team" title="${esc(r._name)} 타임라인"><small>${esc(r._name)} · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+        place(b, r.start, r.end); Object.assign(b.style, { left: `calc(44px + ${lane} * (100% - 46px) / ${team.length})`, width: `calc((100% - 46px) / ${team.length} - 2px)`, right: 'auto' });
+        grid.append(b);
+      });
+    }
+    (isDirector() ? [] : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
       const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정"><small>공통 · ${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
       place(b, r.start, r.end); b.onclick = () => openEditor(r, b); grid.append(b);
     });
@@ -566,16 +576,27 @@
   }
   const personInfo = () => C.PEOPLE.find(p => p.name === state.person);
   function renderPeople() {
-    const make = () => C.PEOPLE.map(p => {
+    const make = () => C.PEOPLE.filter(p => !p.director).map(p => {
       const b = el(`<button class="${p.name === state.person ? 'active' : ''}">${esc(p.label || p.name)}${p.sheet ? '' : '<small>연결 대기</small>'}</button>`);
-      b.onclick = () => { if (p.name === state.person) return setView('daily'); state.person = p.name; localStorage.person = p.name; state.rows = []; state.expanded.clear(); setView('daily'); load(); };
+      b.onclick = () => { if (p.name === state.person) return setView('daily'); state.person = p.name; localStorage.person = p.name; state.rows = []; state.sel = null; state.expanded.clear(); setView('daily'); load(); };
       return b;
     });
-    $('subnav').replaceChildren(...make()); $('peopleM').replaceChildren(...make());
+    $('subnav').replaceChildren(...make());
+    if (isDirector()) { const l = el('<button>숙제 목록</button>'), w = el('<button class="active">원장님 워크시트</button>'); l.onclick = () => setView('director'); $('peopleM').replaceChildren(l, w); }
+    else $('peopleM').replaceChildren(...make());
   }
+  // 원장님 워크시트는 '원장님 숙제' 메뉴 아래에서 연다. 일간보고서를 누르면 직전 마케터로 돌아간다.
+  function openDirSheet() {
+    if (!isDirector()) { state.prevPerson = state.person; state.person = DIRECTOR_WHO; state.rows = []; state.sel = null; state.sharedAnchor = null; state.teamTLDate = null; }
+    setView('daily'); load();
+  }
+  function leaveDirSheet() { state.person = state.prevPerson || C.DEFAULT_PERSON; state.rows = []; state.sel = null; state.sharedAnchor = null; load(); }
+
   function setView(v) {
     state.view = v;
-    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+    const navV = v === 'daily' && isDirector() ? 'director' : v;
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === navV));
+    document.querySelectorAll('[data-dir]').forEach(b => b.classList.toggle('active', (b.dataset.dir === 'sheet') === (v === 'daily')));
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
     $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
@@ -587,7 +608,8 @@
   }
   function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
-  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); } setView(b.dataset.view); });
+  document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => b.dataset.dir === 'sheet' ? openDirSheet() : setView('director'));
   document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => {
     document.querySelectorAll('[data-pane]').forEach(x => x.classList.toggle('active', x === b));
     $('report').parentElement.classList.toggle('hidden-m', b.dataset.pane !== 'report');
@@ -628,10 +650,11 @@
     if (!(await checkBackend())) { state.shared = []; return renderShared(); }
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor);
     const monthEnd = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
-    const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 4), todayKst()].sort().pop();
+    const dir = isDirector(), owner = dir ? DIRECTOR_WHO : SHARED;
+    const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 6), todayKst()].sort().pop();
     const requested = anchor;
 
-    try { const result = await api.get({ who: SHARED, from, to }); if (requested !== (state.sharedAnchor || state.sel)) return; state.shared = result.rows.map(r => ({ ...r, _who: SHARED })); }
+    try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; state.shared = result.rows.filter(r => !dir || r.section === '원장님일정').map(r => ({ ...r, _who: owner })); }
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
@@ -647,30 +670,30 @@
   function renderShared() {
     const cal = $('sharedcal'), tasks = $('sharedtasks');
     if (!cal) return;
-    if (isDirector()) { tasks.hidden = true; return renderDirCal(cal); }
     if (backendOk === false) { cal.innerHTML = '<div class="sc-head"><b>공통 캘린더</b><small>Apps Script를 새 버전으로 재배포하면 켜집니다</small></div>'; tasks.hidden = true; return; }
-    tasks.hidden = false;
+    const dir = isDirector(), N = dir ? 7 : 5, EV = dir ? '원장님일정' : '일정', OWNER = dir ? DIRECTOR_WHO : SHARED; // 원장님: 월~일, 자기 시트의 일정
+    tasks.hidden = dir;
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor), today = todayKst();
     const monthly = state.sharedMode === 'month', month = anchor.slice(0, 7);
     cal.classList.toggle('sc-collapsed', state.sharedCollapsed);
     cal.classList.toggle('sc-month-view', monthly);
-    cal.innerHTML = `<div class="sc-header"><div><b>마케팅 공용 캘린더</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, 4).slice(5).replace('-', '.')} · 월~금</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div><button type="button" class="more sc-holbtn">휴일 관리</button></div>`;
+    cal.innerHTML = `<div class="sc-header"><div><b>${dir ? '원장님 캘린더' : '마케팅 공용 캘린더'}</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, N - 1).slice(5).replace('-', '.')} · ${dir ? '월~일' : '월~금'}</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div><button type="button" class="more sc-holbtn">휴일 관리</button></div>`;
     cal.querySelector('.sc-holbtn').onclick = openHolidays;
     const who = el(`<div class="sc-who" role="group" aria-label="담당자 필터">${['', ...C.PEOPLE.map(p => p.name)].map(n => `<button type="button" data-who="${esc(n)}" aria-pressed="${state.calWho === n}">${n ? esc(n) : '전체'}</button>`).join('')}</div>`);
     who.onclick = e => { const b = e.target.closest('[data-who]'); if (!b) return; state.calWho = b.dataset.who; try { localStorage.calWho = state.calWho; } catch {} renderShared(); };
-    cal.querySelector('.sc-header').after(who);
+    if (!dir) cal.querySelector('.sc-header').after(who);
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
     const nav = el(`<div class="sc-navigation"><button type="button" aria-label="이전 ${monthly ? '달' : '주'}">‹ 이전 ${monthly ? '달' : '주'}</button><button type="button">${monthly ? '이번 달' : '이번 주'}</button><button type="button" aria-label="다음 ${monthly ? '달' : '주'}">다음 ${monthly ? '달' : '주'} ›</button></div>`);
     [...nav.children].forEach((b, i) => b.onclick = () => { state.sharedAnchor = i === 1 ? today : monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 1 + (i === 0 ? -1 : 1), 1)) : shiftDate(ws, i === 0 ? -7 : 7); renderShared(); loadShared(); });
     body.append(nav);
-    const grid = el(`<div class="sc-week${monthly ? ' sc-month' : ''}" role="group" aria-label="${monthly ? '월간' : '주간'} 평일 일정"></div>`);
+    const grid = el(`<div class="sc-week${monthly ? ' sc-month' : ''}${dir ? ' sc-7' : ''}" role="group" aria-label="${monthly ? '월간' : '주간'} 평일 일정"></div>`);
     const dates = [];
     if (monthly) {
       const first = month + '-01', end = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
       const lastWeek = weekStart(end);
-      for (let w = weekStart(first); w <= lastWeek; w = shiftDate(w, 7)) for (let i = 0; i < 5; i++) dates.push(shiftDate(w, i));
-    } else for (let i = 0; i < 5; i++) dates.push(shiftDate(ws, i));
+      for (let w = weekStart(first); w <= lastWeek; w = shiftDate(w, 7)) for (let i = 0; i < N; i++) dates.push(shiftDate(w, i));
+    } else for (let i = 0; i < N; i++) dates.push(shiftDate(ws, i));
     dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'), outside = monthly && !d.startsWith(month);
       const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><button type="button" class="sc-date" aria-label="${d} 보고서 보기"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b>${state.holidays[d] ? `<em class="sc-hol">${esc(state.holidays[d].name)}</em>` : ''}</button></div>`);
@@ -678,9 +701,9 @@
         if (!state.dates.includes(d)) return toast('보고서는 최근 근무일 5일만 볼 수 있습니다');
         state.sel = d; render(); $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
       };
-      if (state.holidays[d]) col.classList.add('holiday');
+      if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
       if (!outside) {
-        state.shared.filter(r => r.section === '일정' && r.date === d && (!state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
+        state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
           const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev');
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + r.col : ''}`;
@@ -689,13 +712,13 @@
           col.append(wrap);
         });
         const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
-        add.onclick = () => openEditor({ date: d, section: '일정', col: state.person, start: '10:00', end: '11:00', text: '', _who: SHARED }, add, true);
+        add.onclick = () => openEditor({ date: d, section: EV, col: dir ? '' : state.person, start: dir ? '' : '10:00', end: dir ? '' : '11:00', text: '', _who: OWNER }, add, true);
         col.append(add);
       }
       grid.append(col);
     });
     body.append(grid);
-    const notes = state.shared.filter(r => r.section === '일정메모' && (monthly ? r.date.startsWith(month) : r.date >= ws && r.date <= shiftDate(ws, 4)));
+    const notes = state.shared.filter(r => r.section === '일정메모' && (monthly ? r.date.startsWith(month) : r.date >= ws && r.date <= shiftDate(ws, N - 1)));
     if (notes.length) { const box = el('<div class="sc-notes"><h4>날짜 확인이 필요한 회의 일정</h4></div>'); notes.forEach(r => box.append(itemRow(r, { noStatus: true }))); body.append(box); }
     const grip = el(`<button type="button" class="sc-grip" aria-label="${monthly ? '주간으로 접기' : '월간으로 펼치기'}" title="끌거나 눌러서 주간·월간 전환"><span></span></button>`);
     grip.onpointerdown = e => {
@@ -807,9 +830,10 @@
   function renderDirector() {
     const box = $('directorHub'), { tasks, me } = state.dir, isDir = me === DIRECTOR, seen = dirSeen();
     const count = k => tasks.filter(t => t.status === k).length;
-    box.innerHTML = `<div class="dir-head"><h1>원장님 숙제</h1><p>마케터가 원장님께 드리는 숙제입니다. 누구나 쓰고 고칠 수 있고, 승인·거절은 원장님만 할 수 있습니다.</p></div>
+    box.innerHTML = `<div class="seg mobile-only dir-seg"><button class="active">숙제 목록</button><button data-open-sheet>원장님 워크시트</button></div><div class="dir-head"><h1>원장님 숙제</h1><p>마케터가 원장님께 드리는 숙제입니다. 누구나 쓰고 고칠 수 있고, 승인·거절은 원장님만 할 수 있습니다.</p></div>
       <div class="dir-sum">${Object.keys(DIR_ST).map(k => `<span class="dir-pill d-${k}">${DIR_ST[k]} <b>${count(k)}</b></span>`).join('')}</div>
       <form class="dir-add"><input name="text" placeholder="원장님께 드릴 숙제" aria-label="숙제 내용" maxlength="500" required><input name="due" type="date" aria-label="마감일"><button class="primary">추가</button></form>`;
+    box.querySelector('[data-open-sheet]').onclick = openDirSheet;
     box.querySelector('form').onsubmit = e => { e.preventDefault(); const f = e.target; saveDirector({ action: 'directorSave', task: { text: f.text.value, due: f.due.value } }); };
     [['pending', '대기 중'], ['approved', '승인됨'], ['done', '완료'], ['rejected', '거절됨']].forEach(([k, label]) => {
       const list = tasks.filter(t => t.status === k).sort((a, b) => (b.updated > a.updated ? 1 : -1));
