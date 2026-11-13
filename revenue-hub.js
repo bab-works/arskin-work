@@ -37,16 +37,22 @@
     if (!name) throw new Error("파일에서 '월간요약' 탭을 찾지 못했습니다.");
     return rowsOf(name);
   }
+  function rvAlert(title, msg) { // 놓치지 않게 화면 가운데 알림
+    const d = document.createElement('dialog'); d.className = 'code-dlg'; d.innerHTML = `<h2>${esc(title)}</h2><p>${esc(msg)}</p><div class="tr-acts"><button type="button" class="primary">확인</button></div>`;
+    d.querySelector('button').onclick = () => d.close(); d.onclose = () => d.remove(); document.body.append(d); d.showModal();
+  }
   async function uploadMonth(file) {
     const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
     const parsed = await fileParse(file), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
     parsed.updated = file.name;
+    // 먼저 화면에 보여주고(저장 실패해도 볼 수 있게), 그다음 보관 저장
+    generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; hist[month] = parsed; render();
     let adminKey = ''; try { adminKey = localStorage.revenueAdminKey || ''; } catch {}
-    if (!adminKey) adminKey = (prompt('매출 파일 업로드 토큰을 입력해 주세요 (관리자에게 받은 값)') || '').trim();
-    if (!adminKey) throw new Error('업로드 토큰이 필요합니다');
-    try { await archive('save', { month, data: parsed, adminKey }); } catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} throw e; }
-    try { localStorage.revenueAdminKey = adminKey; } catch {}
-    generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; await loadMonths(); render();
+    if (!adminKey) adminKey = (prompt(`${parsed.month}월 매출을 보관하려면 업로드 토큰을 입력하세요 (관리자에게 받은 값)\n취소하면 지금 화면에서만 보입니다.`) || '').trim();
+    if (!adminKey) return rvAlert(`${parsed.month}월 매출을 화면에만 띄웠어요`, '업로드 토큰을 넣지 않아 보관하지 않았어요. 새로고침하면 사라집니다. 토큰은 스크립트 속성 REVENUE_ADMIN_KEYS 에 넣은 값이에요.');
+    try { await archive('save', { month, data: parsed, adminKey }); try { localStorage.revenueAdminKey = adminKey; } catch {} }
+    catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} return rvAlert(`${parsed.month}월 매출 보관에 실패했어요`, e.message + ' · 화면에는 보이지만 새로고침하면 사라집니다.'); }
+    await loadMonths(); if ($('rvStatus')) $('rvStatus').textContent = `${file.name} · ${parsed.month}월 보관 완료`;
   }
   document.addEventListener('click', e => { // 매출표 ☰ 메뉴 열고 닫기
     const btn = e.target.closest('.rv-menu-btn'), menu = document.querySelector('.rv-menu'); if (!menu) return;
@@ -81,7 +87,8 @@
       if (requestGeneration !== generation) return;
       sourceMode = 'sheet';
       result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date());
-      data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render(); loadMonths();
+      data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render();
+      loadMonths().then(async () => { const live = `${result.year}-${String(result.month).padStart(2, '0')}`, newest = months.slice().sort().pop(); if (newest && newest > live && !shownMonth && requestGeneration === generation) { try { const r = hist[newest] || (await archive('get', { month: newest })).data; hist[newest] = r; generation++; sourceMode = ''; data = r; shownMonth = newest; selectedDay = r.daily.at(-1)?.day; render(); } catch {} } });
     } catch (error) {
       if (requestGeneration !== generation) return;
       if (data) { $('rvStatus').textContent = '새로고침 실패 · 이전 확인 내용을 표시 중: ' + error.message; }
@@ -170,7 +177,7 @@
       if (!mo) return load();
       try { const r = hist[mo] || (await archive('get', { month: mo })).data; hist[mo] = r; generation++; sourceMode = ''; data = r; selectedDay = data.daily.at(-1)?.day; render(); } catch (err) { $('rvStatus').textContent = err.message; }
     };
-    $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => { $('rvStatus').textContent = '파일 분석 실패: ' + err.message; }); e.target.value = ''; };
+    $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => rvAlert('파일을 읽지 못했어요', err.message)); e.target.value = ''; };
     host.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => { chartMode = button.dataset.chart; host.querySelectorAll('[data-chart]').forEach(b => b.setAttribute('aria-pressed', b === button)); renderChart(); });
     $('rvDaySlider').oninput = e => { selectedDay = data.daily[+e.target.value - 1]?.day; renderDay(); };
     $('rvProcFilter').onclick = e => openProcFilter(e.currentTarget, cats);

@@ -924,7 +924,7 @@ button,input,select,textarea{letter-spacing:inherit}
 /* 상태 아이콘 색: 어디서나 같게 */
 .sti-todo{color:var(--st-todo)}.sti-doing{color:var(--st-doing)}.sti-done{color:var(--st-done)}.sti-check{color:var(--st-check)}
 /* 큰 화면: 본문을 사이드바 쪽으로 붙여 빈 띠 제거 */
-@media(min-width:901px){.daily{justify-content:start}}
+@media(min-width:901px){.daily{justify-content:center}}
 /* 제목만 있던 '업무보고 및 회의록' 카드 → 카드 없이 제목 줄 */
 .titlebar{background:none;padding:6px 4px 2px}
 .titlebar>span:first-child{font-size:22px;font-weight:700}
