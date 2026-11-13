@@ -21,7 +21,7 @@
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const mySections = () => TASK_SECTIONS.filter(s => s.key !== '릴스업무' || state.person === (C.REELS_OWNER || state.person)); // 릴스 칸은 릴스 담당자(미스타전)만
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', sharedTab: (() => { try { return localStorage.sharedTab || '변동'; } catch { return '변동'; } })(), reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, deletedTags: [], leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', sharedTab: (() => { try { return localStorage.sharedTab || '변동'; } catch { return '변동'; } })(), reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -145,7 +145,7 @@
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
-    const paint = () => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
+    const paint = () => { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
     paint();
     tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
@@ -426,9 +426,9 @@
   }
   // 보고서 카드 배치(사람별 브라우저 저장): 왼쪽·오른쪽 두 칸, 순서, 카드별 테두리·채우기 색
   const CARD_DEFAULT = { L: ['주간고정', '데일리고정', '배치예정', '팔로업'], R: ['변동업무', '릴스업무', 'pub', 'memo'] };
-  function cardColumns(cards) {
-    const lay = pref('cardLayout', CARD_DEFAULT), colors = pref('cardColors', {}), placed = new Set([...lay.L, ...lay.R]);
-    const L = [...lay.L], Rr = [...lay.R]; Object.keys(cards).forEach(k => { if (!placed.has(k)) (k === 'memo' || k === 'pub' ? Rr : L).push(k); });
+  function cardColumns(cards, def = CARD_DEFAULT) {
+    const lay = pref('cardLayout', def), colors = pref('cardColors', {}), placed = new Set([...lay.L, ...lay.R]);
+    const L = [...lay.L], Rr = [...lay.R]; Object.keys(cards).forEach(k => { if (!placed.has(k)) (/memo|pub|dhw/.test(k) ? Rr : L).push(k); });
     const wrap = el(`<div class="card-cols${state.cardEdit ? ' editing' : ''}"><div class="card-col" data-c="L"></div><div class="card-col" data-c="R"></div></div>`);
     [['L', L], ['R', Rr]].forEach(([c, keys]) => keys.forEach(k => { const n = cards[k]; if (!n) return; n.dataset.card = k;
       const col = colors[k]; if (col) { n.style.borderColor = col.border || ''; n.style.background = col.fill || ''; n.classList.add('tinted'); }
@@ -552,10 +552,11 @@
     const items = col => rowsFor(d, '원장님리스트', col), pct = l => l.length ? Math.round(l.filter(isDone).length / l.length * 100) : 0;
     const all = DIR_COLS.flatMap(([c]) => items(c));
     const bar = (label, l) => `<div class="dir-prog"><div class="project-progress-label"><span>${esc(label)} · ${l.filter(isDone).length}/${l.length}</span><b>${pct(l)}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(label)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct(l)}"><span style="width:${pct(l)}%"></span></div></div>`;
-    box.append(sec('진행률', el(`<div class="dir-progs">${bar('전체', all)}${DIR_COLS.map(([c, l]) => bar(l, items(c))).join('')}</div>`)));
+    const cards = {};
+    cards.dprog = sec('진행률', el(`<div class="dir-progs">${bar('전체', all)}${DIR_COLS.map(([c, l]) => bar(l, items(c))).join('')}</div>`));
     const g = el('<div class="dir-lists dir-stack"></div>');
     DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
-    box.append(sec('원장님 업무리스트업', g));
+    cards.dlist = sec('원장님 업무리스트업', g);
     // 원장님 숙제: 위 = 그날 배치된 숙제(시트 행, 미완료는 다음 날로 이월) / 아래 = 영상 기획 '숙제' 전체 목록(끌어 올리거나 '배치')
     const HW_COLS = [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], colOf = p => p.kind === '영어' ? '영어' : '영상';
     const hw = el('<div class="dir-lists dir-stack dir-hw"></div>');
@@ -578,8 +579,10 @@
     });
     if (!pool.length) back.append(el('<p class="muted">배치할 숙제가 없습니다.</p>'));
     hw.append(back);
-    box.append(sec('원장님 숙제', hw));
-    const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
+    cards.dhw = sec('원장님 숙제', hw);
+    const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); cards.dmemo = memo;
+    Object.entries(cards).forEach(([k, n]) => { n.id = 'sec-' + k; });
+    box.append(cardColumns(cards, { L: ['dprog', 'dlist'], R: ['dhw', 'dmemo'] }));
     box.querySelectorAll('textarea').forEach(autosize);
   }
 
@@ -931,7 +934,7 @@
     $('viewSettings').classList.toggle('hidden', v !== 'settings');
     if (v === 'settings') renderSettings();
     if (v === 'home') renderHome();
-    if (v === 'team') { state.teamPage = state.teamPage || 'check'; renderTeam(); loadTeam(todayKst()).then(renderTeam); }
+    if (v === 'team') { state.teamPage = state.teamPage || (isBoss() ? 'tags' : 'check'); renderTeam(); if (!isBoss()) loadTeam(todayKst()).then(renderTeam); }
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('active', v === 'team' && b.dataset.team === state.teamPage));
     if (v === 'director') { renderDirector(); loadDirector(); }
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
@@ -943,6 +946,8 @@
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
     if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); }
+    const mineD = C.PEOPLE.find(p => p.name === state.dir.me && !p.director);
+    if (b.dataset.view === 'daily' && mineD && state.person !== mineD.name) { state.person = mineD.name; state.rows = []; state.sel = null; setView('daily'); return load(); } // 일간보고서 = 내 보고서부터
     if (b.dataset.view === 'director') return openDirSheet(); // 숙제 목록 페이지는 숨김(코드는 보관)
     setView(b.dataset.view);
   });
@@ -1222,7 +1227,8 @@
   const cacheGet = k => { try { return JSON.parse(localStorage['c:' + k] || 'null'); } catch { return null; } };
   const cacheSet = (k, v) => { try { localStorage['c:' + k] = JSON.stringify(v); } catch {} };
   function applyBoot(j) {
-    setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.leaves = j.leaves || [];
+    setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
+    document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
     state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin;
   }
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
@@ -1230,6 +1236,8 @@
     try { const j = await api.get({ action: 'boot' }); applyBoot(j); cacheSet('boot', j); }
     catch { if (!c) await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); loadDirector(); loadTags(); loadLeaves(); } // 옛 서버
     paintDirBadge(); if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
+    const mine = C.PEOPLE.find(p => p.name === state.dir.me && !p.director); // 접속한 사람의 일일보고를 먼저
+    if (mine && !boot.moved && state.person !== mine.name && !isDirector()) { boot.moved = true; state.person = mine.name; state.rows = []; state.sel = null; renderPeople(); load(); }
     if (state.view === 'home') renderHome(); if (state.view === 'team') renderTeam();
   }
   async function load() {
@@ -1446,8 +1454,9 @@
 
   /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
   function renderTeam() {
+    if (isBoss() && (state.teamPage || 'check') === 'check') state.teamPage = 'tags'; // 원장님은 팀 업무 체크 접근 불가
     const box = $('teamHub'), page = state.teamPage || 'check';
-    box.innerHTML = `<div class="seg team-seg"><button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button><button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button><button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button></div>`;
+    box.innerHTML = `<div class="seg team-seg">${isBoss() ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button><button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button></div>`;
     box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
     if (page === 'tags') return renderTagAdmin(box);
     if (page === 'leaves') return renderLeaves(box);
@@ -1485,30 +1494,41 @@
       r.querySelector('.del').onclick = () => { if (confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); }; sec2.append(r); });
     box.append(sec2);
   }
+  // 태그 관리: 카드로 4~5개씩. 지운 태그는 '태그 휴지통'(영구 보관)으로 가고 칩 표시를 멈춘다. 복원 가능.
   function renderTagAdmin(box) {
-    const found = new Map();
+    const found = new Map(), gone = new Set(state.deletedTags.map(t => t.tag));
     const scan = rows => (rows || []).forEach(r => { const m = String(r.text).match(CAT_RE); if (m && r.text.slice(m[0].length)) found.set(m[1], (found.get(m[1]) || 0) + 1); });
     marketers().forEach(p => scan(state.team[p.name])); scan(state.rows); scan(state.shared);
     Object.keys(state.tags).forEach(t => found.has(t) || found.set(t, 0));
-    const tags = [...found.keys()].sort((a, b) => a.localeCompare(b, 'ko'));
-    box.append(el(`<div class="dir-head"><h1>태그 관리</h1><p>업무 앞에 <b>Figo)</b> <b>촬영)</b> 처럼 직접 쓰는 방식은 그대로입니다. 여기서는 색·표시 이름·설명만 정합니다.</p></div>`));
-    const list = el('<div class="sec tag-list"></div>');
+    const tags = [...found.keys()].filter(t => !gone.has(t)).sort((a, b) => a.localeCompare(b, 'ko'));
+    box.append(el(`<div class="dir-head"><h1>태그 관리</h1><p>업무 앞에 <b>Figo)</b> <b>촬영)</b> 처럼 직접 쓰는 방식은 그대로입니다. 여기서는 색·표시 이름·설명을 정하고, 안 쓰는 태그는 지울 수 있습니다.</p></div>`));
+    const grid = el('<div class="tag-grid"></div>');
     tags.forEach(t => {
       const cur = state.tags[t] || {};
-      const row = el(`<form class="tag-row"><span class="cat" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code>
+      const card = el(`<form class="tag-card"><div class="tag-card-head"><span class="cat" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code><button type="button" class="tag-del" title="태그 휴지통으로" aria-label="${esc(t)} 태그 삭제">${icon('trash', 16)}</button></div>
         <input name="label" placeholder="표시 이름" aria-label="${esc(t)} 표시 이름" value="${esc(cur.label || '')}" maxlength="20">
         <div class="swatches" role="radiogroup" aria-label="${esc(t)} 색">${Object.entries(TAG_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="color" value="${k}"${cur.color === k ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join('')}</div>
-        <input name="desc" placeholder="설명 (예: 피고 외주 관련)" aria-label="${esc(t)} 설명" value="${esc(cur.desc || '')}" maxlength="60">
+        <input name="desc" placeholder="설명" aria-label="${esc(t)} 설명" value="${esc(cur.desc || '')}" maxlength="60">
         <button class="primary">저장</button></form>`);
-      row.onsubmit = async e => {
-        e.preventDefault(); const f = e.target, body = { action: 'tagSave', tag: t, label: f.label.value.trim(), color: f.color.value || '', desc: f.desc.value.trim() };
-        try { const j = await api.post(body); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); toast(`${t} 태그를 저장했습니다`); renderTeam(); render(); } catch (err) { toast(err.message); }
+      card.onsubmit = async e => {
+        e.preventDefault(); const f = e.target;
+        try { const j = await api.post({ action: 'tagSave', tag: t, label: f.label.value.trim(), color: f.color.value || '', desc: f.desc.value.trim() }); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); toast(`${t} 태그를 저장했습니다`); renderTeam(); render(); } catch (err) { toast(err.message); }
       };
-      list.append(row);
+      card.querySelector('.tag-del').onclick = () => tagTrash('tagDelete', t);
+      grid.append(card);
     });
-    if (!tags.length) list.append(el('<p class="muted">아직 태그가 없습니다. 업무 앞에 "분류)" 를 붙여 쓰면 여기에 나타납니다.</p>'));
-    box.append(list);
+    if (!tags.length) grid.append(el('<p class="muted">아직 태그가 없습니다. 업무 앞에 "분류)" 를 붙여 쓰면 여기에 나타납니다.</p>'));
+    box.append(grid);
+    const trash = el(`<details class="sec tag-trash"><summary>태그 휴지통 <small class="sec-count">${state.deletedTags.length}개 · 영구 보관</small></summary><div class="tag-trash-list">${state.deletedTags.map(t => `<div class="tag-trash-item"><span class="cat">${esc(t.label || t.tag)}</span><code>${esc(t.tag)})</code><small class="muted">${t.deletedAt ? new Date(t.deletedAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }) : ''} · ${esc(disp(t.by || ''))}</small><button type="button" data-restore="${esc(t.tag)}">복원</button></div>`).join('') || '<p class="muted">비어 있습니다.</p>'}</div></details>`);
+    trash.onclick = e => { const b = e.target.closest('[data-restore]'); if (b) tagTrash('tagRestore', b.dataset.restore); };
+    box.append(trash);
   }
+  async function tagTrash(action, tag) {
+    if (action === 'tagDelete' && !confirm(`"${tag}" 태그를 지울까요? 업무 글은 그대로 두고, 칩 표시만 멈춥니다. 태그 휴지통에 영구 보관되어 언제든 복원할 수 있어요.`)) return;
+    try { const j = await api.post({ action, tag }); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); state.deletedTags = j.deletedTags || []; toast(action === 'tagDelete' ? '태그를 휴지통으로 옮겼습니다' : '태그를 복원했습니다'); renderTeam(); render(); }
+    catch (e) { toast(e.message); }
+  }
+
 
   /* ---------- 원장님 알림: 원장님 접속 코드로 연 창에서만. 재촉(마케터 버튼)과 미달성 경고 ---------- */
   const NAG = '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥';

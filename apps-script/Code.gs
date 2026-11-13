@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 27, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 28, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -40,7 +40,7 @@ function doGet(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code); return json({ me: me, admin: me === ADMIN, holidays: holidays_(false), tags: tagList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code); return json({ me: me, admin: me === ADMIN, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -67,6 +67,7 @@ function doPost(e) {
   if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row, body.undo ? '' : undefined) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'tagDelete' || body.action === 'tagRestore') { try { tagTrash_(body.action, String(body.tag || ''), memberFor_(body.code)); return json({ tags: tagList_(), deletedTags: tagTrashList_() }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
@@ -869,4 +870,34 @@ function reelsAdd_(title, kind) {
   var plan = contentPlanAddMany_([[kind === '영어' ? '영어' : '국내', '내부촬영', title, '', '', '', '']]);
   var hit = plan.filter(function (r) { return String(r.v[2]).trim() === title; }).pop();
   return { row: hit ? hit.row : 0, ref: '' };
+}
+
+/* ---------- 태그 휴지통(영구 보관): 지운 태그는 tags_trash 탭으로 옮겨 계속 남긴다. 복원하면 다시 tags 로 ---------- */
+function tagTrashSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('tags_trash');
+  if (!sh) { sh = ss.insertSheet('tags_trash'); sh.getRange('A:F').setNumberFormat('@'); sh.appendRow(['태그', '표시명', '색', '설명', '삭제시각', '삭제한 사람']); sh.setFrozenRows(1); }
+  return sh;
+}
+function tagTrashList_() {
+  var sh = tagTrashSheet_(); if (sh.getLastRow() < 2) return [];
+  return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues().filter(function (r) { return r[0]; })
+    .map(function (r) { return { tag: r[0], label: r[1], color: r[2], desc: r[3], deletedAt: r[4], by: r[5] }; });
+}
+function tagTrash_(action, tag, me) {
+  if (!me) throw new Error('unauthorized'); if (!tag) throw new Error('태그가 비어 있습니다');
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var live = tagSheet_(), trash = tagTrashSheet_();
+    var find = function (sh) { var n = sh.getLastRow(); if (n < 2) return -1; var v = sh.getRange(2, 1, n - 1, 1).getDisplayValues(); for (var i = 0; i < v.length; i++) if (v[i][0] === tag) return i + 2; return -1; };
+    if (action === 'tagDelete') {
+      var i = find(live), row = i > 0 ? live.getRange(i, 1, 1, 4).getDisplayValues()[0] : [tag, '', '', ''];
+      if (find(trash) < 0) trash.appendRow(row.concat([new Date().toISOString(), me]));
+      if (i > 0) live.deleteRow(i);
+    } else {
+      var j = find(trash); if (j < 0) return;
+      var r = trash.getRange(j, 1, 1, 4).getDisplayValues()[0];
+      if (find(live) < 0) live.appendRow(r);
+      trash.deleteRow(j);
+    }
+  } finally { lock.releaseLock(); }
 }
