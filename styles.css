@@ -1188,3 +1188,33 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .lv-staff-list{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
 .lv-staff-list li b,.lv-staff-list li small,.lv-staff-list li span{white-space:nowrap}
 .lv-staff-list li span{overflow:hidden;text-overflow:ellipsis}
+/* 연월차 · 조직도 탭 */
+.lv-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.lv-tabs{display:flex;background:#e5e8eb;border-radius:12px;padding:4px;gap:2px}
+.lv-tabs button{min-height:40px;padding:0 18px;border-radius:9px;background:none;font-size:14px;font-weight:600;color:var(--text-2)}
+.lv-tabs button.active{background:#fff;color:var(--text-1);box-shadow:0 1px 3px rgba(0,27,55,.08)}
+/* 조직도: 여백 넉넉, 얇은 연결선, 부드러운 아바타 */
+.org{--line:#d9dee4;padding:28px 8px 12px;display:flex;flex-direction:column;align-items:center}
+.org-card{background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 1px 2px rgba(0,27,55,.04),0 6px 20px rgba(0,27,55,.05)}
+.org-root{position:relative;padding-bottom:28px}
+.org-root::after{content:"";position:absolute;left:50%;bottom:0;width:1.5px;height:28px;background:var(--line)}
+.org-top{display:flex;align-items:center;gap:14px;padding:18px 28px}
+.org-top b{display:block;font-size:17px;letter-spacing:-.2px}.org-top small{font-size:14px;color:var(--text-2)}
+.org-av{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:700;color:var(--pc,#1b64da);background:color-mix(in srgb,var(--pc,#1b64da) 14%,#fff)}
+.org-av-lg{width:52px;height:52px;font-size:18px;color:#fff;background:linear-gradient(135deg,#3182f6,#1b64da)}
+.org-teams{list-style:none;margin:0;padding:28px 0 0;display:flex;gap:16px;justify-content:center;flex-wrap:wrap;position:relative;width:100%}
+.org-team{position:relative;flex:0 1 220px;min-width:200px}
+/* 가로 연결선: 첫·마지막 팀 가운데까지만 */
+.org-team::before{content:"";position:absolute;top:-28px;left:50%;width:1.5px;height:28px;background:var(--line)}
+.org-team::after{content:"";position:absolute;top:-28px;left:-8px;right:-8px;height:1.5px;background:var(--line)}
+.org-team:first-child::after{left:50%}.org-team:last-child::after{right:50%}.org-team:only-child::after{display:none}
+.org-team-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
+.org-team-head b{font-size:15px}.org-team-head small{font-size:12px;color:var(--text-2)}
+.org-people{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.org-p{display:flex;align-items:center;gap:10px;min-height:52px;padding:4px 6px;border-radius:12px;transition:background var(--dur-fast) var(--ease)}
+.org-p:hover{background:var(--grey50)}
+.org-name{display:flex;flex-direction:column;min-width:0}.org-name b{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.org-off{font-style:normal;font-size:12px;font-weight:600;color:#b35000;display:inline-flex;align-items:center;gap:4px}
+.org-off::before{content:"";width:6px;height:6px;border-radius:50%;background:#f76707}
+@media(max-width:700px){.org-teams{flex-direction:column;align-items:stretch;padding-top:16px}.org-team{flex:auto}.org-team::after{display:none}.org-team::before{top:-16px;height:16px}}
+@media print{.org-card{box-shadow:none;border:1px solid #ddd}}
