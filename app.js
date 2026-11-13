@@ -463,6 +463,74 @@
     state.rows.push(...j.rows); render(); toast(`${j.src} 항목 ${j.rows.length}개를 가져왔습니다`);
   }
 
+
+  /* ---------- 완료 업무 모아보기(A4): 완료일 기준 범위 선택, 사람마다 브라우저에 저장, 인쇄 포함 여부도 저장 ---------- */
+  const prefKey = k => `${k}:${state.person}`;
+  const pref = (k, def) => { try { const v = localStorage[prefKey(k)]; return v == null ? def : JSON.parse(v); } catch { return def; } };
+  const setPref = (k, v) => { try { localStorage[prefKey(k)] = JSON.stringify(v); } catch {} };
+  const doneRange = () => pref('doneRange', null) || { from: weekStart(todayKst()), to: todayKst() };
+  const DONE_SECS = new Set([...TASK_KEYS, '원장님리스트']);
+  async function loadDone() {
+    const { from, to } = doneRange(), key = [state.person, from, to].join('|');
+    if (state.doneKey === key) return renderDone();
+    state.doneKey = key; state.doneRows = null; renderDone();
+    try { const j = await api.get({ from: shiftDate(from, -7), to }); if (state.doneKey === key) { state.doneRows = j.rows; renderDone(); } } // 완료일 기준이라 조금 앞 날짜부터 읽는다
+    catch (e) { if (state.doneKey === key) { state.doneRows = []; renderDone(); toast('완료 업무를 불러오지 못했습니다: ' + e.message); } }
+  }
+  function renderDone() {
+    const box = $('donePage'); if (!box) return;
+    const { from, to } = doneRange(), printOn = pref('printDone', false);
+    const all = [...(state.doneRows || []), ...state.rows].filter(r => DONE_SECS.has(r.section) && isDone(r));
+    const latest = new Map(); all.forEach(r => { const k = r.origin || r.id, c = r.completed || r.date; if (c >= from && c <= to && (!latest.has(k) || latest.get(k).date < r.date)) latest.set(k, { ...r, _c: c }); });
+    const byDay = {}; [...latest.values()].forEach(r => (byDay[r._c] = byDay[r._c] || []).push(r));
+    const days = Object.keys(byDay).sort().reverse();
+    box.innerHTML = `<div class="titlebar"><span>완료 업무</span><span class="meta">${esc(disp(state.person))}</span></div>
+      <div class="done-bar"><button type="button" class="done-range" aria-haspopup="dialog">📅 ${fmtDate(from)} ~ ${fmtDate(to)}</button><span class="sec-count">${latest.size}건</span>
+      <label class="print-pick" title="인쇄 버튼을 누를 때 이 페이지도 함께 출력"><input type="checkbox"${printOn ? ' checked' : ''}><span class="dot-check" aria-hidden="true"></span>인쇄에 포함</label></div>`;
+    box.querySelector('.print-pick input').onchange = e => { setPref('printDone', e.target.checked); box.classList.toggle('print-on', e.target.checked); };
+    box.classList.toggle('print-on', printOn);
+    box.querySelector('.done-range').onclick = e => openRangePicker(e.currentTarget);
+    if (!state.doneRows) return box.append(el('<div class="empty-note">불러오는 중…</div>'));
+    if (!days.length) return box.append(el('<div class="empty-note">이 기간에 완료한 업무가 없습니다.</div>'));
+    days.forEach(d => {
+      const g = el(`<section class="sec done-day"><h3>${fmtDate(d)} <small class="sec-count">${byDay[d].length}건</small></h3></section>`);
+      byDay[d].forEach(r => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
+        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
+      box.append(g);
+    });
+  }
+  // 여행 예약처럼: 시작일 → 종료일 순서로 누르면 범위가 정해진다
+  function openRangePicker(anchor) {
+    document.querySelector('.range-pop')?.remove();
+    let { from, to } = doneRange(), pick = null, month = (to || todayKst()).slice(0, 7);
+    const pop = el('<div class="range-pop" role="dialog" aria-label="완료일 범위 선택"></div>'); document.body.append(pop);
+    const a = anchor.getBoundingClientRect(); pop.style.top = a.bottom + 6 + 'px'; pop.style.left = Math.max(8, Math.min(innerWidth - 340, a.left)) + 'px';
+    const close = () => { pop.remove(); removeEventListener('pointerdown', outside, true); };
+    const outside = e => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
+    addEventListener('pointerdown', outside, true);
+    const paint = () => {
+      const first = month + '-01', start = weekStart(first), y = +month.slice(0, 4), mo = +month.slice(5, 7);
+      let cells = ''; for (let i = 0; i < 42; i++) { const d = shiftDate(start, i); if (i >= 35 && !d.startsWith(month)) break;
+        const lo = pick || from, hi = pick ? pick : to, inR = d >= lo && d <= hi;
+        cells += `<button type="button" data-d="${d}" class="${d.startsWith(month) ? '' : 'out'}${inR ? ' in' : ''}${d === lo ? ' edge' : ''}${d === hi ? ' edge' : ''}${d === todayKst() ? ' today' : ''}">${+d.slice(8)}</button>`; }
+      pop.innerHTML = `<div class="rp-head"><button type="button" data-m="-1" aria-label="이전 달">‹</button><b>${y}년 ${mo}월</b><button type="button" data-m="1" aria-label="다음 달">›</button></div>
+        <div class="rp-dow">${['월', '화', '수', '목', '금', '토', '일'].map(w => `<span>${w}</span>`).join('')}</div><div class="rp-grid">${cells}</div>
+        <p class="rp-hint">${pick ? '끝 날짜를 고르세요' : '시작 날짜를 고르세요'}</p>
+        <div class="rp-presets"><button type="button" data-p="w">이번 주</button><button type="button" data-p="m">이번 달</button><button type="button" data-p="l">지난달</button><button type="button" data-p="30">최근 30일</button></div>`;
+    };
+    const apply = (f, t) => { setPref('doneRange', { from: f, to: t }); close(); loadDone(); };
+    pop.onclick = e => {
+      const m = e.target.closest('[data-m]'); if (m) { const d = new Date(month + '-01T00:00:00'); d.setMonth(d.getMonth() + +m.dataset.m); month = iso(d).slice(0, 7); return paint(); }
+      const p = e.target.closest('[data-p]'); if (p) { const t = todayKst(), k = p.dataset.p;
+        if (k === 'w') return apply(weekStart(t), t); if (k === 'm') return apply(t.slice(0, 8) + '01', t); if (k === '30') return apply(shiftDate(t, -29), t);
+        const lm = new Date(t.slice(0, 8) + '01T00:00:00'); lm.setDate(0); return apply(iso(lm).slice(0, 8) + '01', iso(lm)); }
+      const b = e.target.closest('[data-d]'); if (!b) return;
+      if (!pick) { pick = b.dataset.d; return paint(); }
+      const [f, t] = [pick, b.dataset.d].sort(); apply(f, t);
+    };
+    pop.onpointerover = e => { const b = e.target.closest('[data-d]'); if (!pick || !b) return; pop.querySelectorAll('[data-d]').forEach(x => { const d = x.dataset.d, [lo, hi] = [pick, b.dataset.d].sort(); x.classList.toggle('in', d >= lo && d <= hi); }); };
+    paint();
+  }
   /* ---------- timeline ---------- */
   const PX = 48; // 1시간 높이
   const STEP = 30; // 타임라인 기본 단위(분)
@@ -636,7 +704,7 @@
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
-  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
+  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
@@ -675,6 +743,7 @@
     document.documentElement.classList.add('printing');
     const mm = 96 / 25.4, h = $('report').scrollHeight;
     document.documentElement.style.setProperty('--print-zoom', Math.min(1, (279 * mm) / h).toFixed(3));
+    document.documentElement.style.setProperty('--print-zoom2', Math.min(1, (279 * mm) / $('donePage').scrollHeight).toFixed(3));
   });
   addEventListener('afterprint', () => document.documentElement.classList.remove('printing'));
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */

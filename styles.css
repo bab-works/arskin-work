@@ -578,3 +578,35 @@ html.printing .memo-sec{display:none!important}
 .sc-ev-wrap.lifting{opacity:.35}
 .sc-drag-ghost{position:fixed;z-index:90;pointer-events:none;box-shadow:0 12px 28px rgba(0,27,55,.22);border-radius:8px;background:var(--card);transform:rotate(-2deg)}
 .sc-day.drop-on{box-shadow:inset 0 0 0 2px var(--blue);background:var(--blue-weak)}
+/* K4: 완료 업무 A4 페이지 */
+.report-pair{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}
+.report-pair>.report{flex:1 1 560px}
+.done-page{flex:1 1 380px;max-width:794px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.done-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border-radius:var(--r-lg);padding:10px 14px}
+.done-range{min-height:44px;background:var(--grey100);font-weight:600}
+.print-pick{margin-left:auto;display:inline-flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-size:14px;color:var(--text-2);position:relative}
+.print-pick input{position:absolute;opacity:0;width:44px;height:44px;left:-12px;margin:0;cursor:pointer}
+.dot-check{width:22px;height:22px;border-radius:50%;border:2px solid #b0b8c1;display:grid;place-items:center;transition:background var(--dur-fast),border-color var(--dur-fast)}
+.print-pick input:checked+.dot-check{background:var(--blue-dark);border-color:var(--blue-dark)}
+.print-pick input:checked+.dot-check::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg) translate(-1px,-1px)}
+.print-pick input:focus-visible+.dot-check{outline:2px solid var(--blue);outline-offset:2px}
+.print-pick input:checked~*{color:var(--text-1)}
+.done-day h3{margin:0 0 4px}.done-day .row{min-height:32px;padding:2px 4px;align-items:center}
+.done-day .row .tx{color:var(--text-1)}.done-sec{margin-left:auto;color:var(--text-2);font-size:12px;white-space:nowrap}
+.range-pop{position:fixed;z-index:95;width:320px;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.2);padding:14px}
+.rp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.rp-head button{width:44px;min-height:44px;background:none;font-size:20px}
+.rp-dow,.rp-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}
+.rp-dow span{font-size:12px;color:var(--text-2);padding:4px 0}
+.rp-grid button{min-height:40px;background:none;border-radius:0;padding:0;font-weight:500}
+.rp-grid button.out{color:var(--text-3)}.rp-grid button.today{font-weight:800;text-decoration:underline}
+.rp-grid button.in{background:var(--blue-weak);color:var(--blue-dark)}
+.rp-grid button.edge{background:var(--blue-dark);color:#fff;border-radius:10px}
+.rp-hint{margin:8px 0;font-size:13px;color:var(--text-2);text-align:center}
+.rp-presets{display:flex;gap:6px;flex-wrap:wrap}.rp-presets button{flex:1;min-height:40px;font-size:13px}
+html.printing .done-page:not(.print-on){display:none!important}
+html.printing .done-page{break-before:page;width:194mm;max-width:none;gap:4px}
+html.printing .done-day{padding:5px 8px;border:1px solid #ddd;border-radius:6px}html.printing .done-day .row{min-height:0;padding:0 2px}html.printing .done-day .row .tx{line-height:15px;font-size:11px}html.printing .done-bar{padding:4px 8px;border:1px solid #ddd}
+html.printing .done-bar .done-range{background:none;padding:0}html.printing .print-pick{display:none}
+html.printing .report-pair{display:block}
+@media print{.done-page{zoom:var(--print-zoom2,1)}}
+.done-day .sti,.done-day .pst{color:var(--st-done)}
