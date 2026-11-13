@@ -1107,18 +1107,18 @@
     tasks.querySelector('.sec-toggle').onclick = () => { state.sharedTasksOpen = !open; try { localStorage.sharedTasksOpen = open ? '0' : '1'; } catch {} renderShared(); };
     tasks.classList.toggle('folded', !open);
     // 탭: 변동 업무(공통업무) / 반복 업무(공통반복 — 끝내도 다음 날 다시 '시작 전'으로)
-    const SEC = state.sharedTab === '반복' ? '공통반복' : '공통업무';
-    const tabs = el(`<div class="seg shared-tabs" role="tablist">${[['변동', '공통업무', '변동 업무'], ['반복', '공통반복', '반복 업무']].map(([k, sec, l]) => `<button type="button" role="tab" data-st="${k}" aria-selected="${(state.sharedTab || '변동') === k}" class="${(state.sharedTab || '변동') === k ? 'active' : ''}">${l}</button>`).join('')}</div>`);
+    const DONE_TAB = state.sharedTab === '완료', SEC = state.sharedTab === '반복' ? '공통반복' : '공통업무'; // 완료 탭: 변동·반복에서 끝낸 업무를 모아 봄
+    const tabs = el(`<div class="seg shared-tabs" role="tablist">${[['변동', '공통업무', '변동 업무'], ['반복', '공통반복', '반복 업무'], ['완료', '', '완료']].map(([k, sec, l]) => `<button type="button" role="tab" data-st="${k}" aria-selected="${(state.sharedTab || '변동') === k}" class="${(state.sharedTab || '변동') === k ? 'active' : ''}">${l}</button>`).join('')}</div>`);
     tabs.onclick = e => { const b = e.target.closest('[data-st]'); if (!b) return; state.sharedTab = b.dataset.st; state.sharedCat = ''; try { localStorage.sharedTab = state.sharedTab; } catch {} renderShared(); };
     tasks.append(tabs);
     // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
     const latest = new Map();
     // 장식용 앞 기호와 공백만 무시한다. 내용이 다른 업무는 각각 유지한다.
     const taskKey = text => text.normalize('NFKC').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s+/g, '').toLocaleLowerCase('ko');
-    state.shared.filter(r => r.section === SEC && r.date <= state.sel && taskKey(r.text))
+    state.shared.filter(r => (DONE_TAB ? ['공통업무', '공통반복'].includes(r.section) : r.section === SEC) && r.date <= state.sel && taskKey(r.text))
       .sort((a, b) => a.date.localeCompare(b.date) || (a.updated || '').localeCompare(b.updated || '') || a.id.localeCompare(b.id))
       .forEach(r => latest.set(taskKey(r.text), r));
-    if (SEC === '공통반복') latest.forEach((r, k) => { // 지난날 끝낸 반복 업무는 오늘 '시작 전' 새 행으로 보여준다(누르기 전엔 저장 안 함)
+    if (SEC === '공통반복' && !DONE_TAB) latest.forEach((r, k) => { // 지난날 끝낸 반복 업무는 오늘 '시작 전' 새 행으로 보여준다(누르기 전엔 저장 안 함)
       if (r.date < state.sel && isDone(r)) { const v = { ...r, id: newId(state.sel), date: state.sel, status: 'todo', completed: '', origin: r.origin || r.id }; state.shared.push(v); latest.set(k, v); }
     });
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
@@ -1129,12 +1129,13 @@
     const bar = el(`<div class="cat-bar" role="group" aria-label="카테고리 필터">${['', ...cats].map(c => `<button type="button" data-cat="${esc(c)}" aria-pressed="${state.sharedCat === c}">${c ? esc(c) : '전체'}</button>`).join('')}</div>`);
     bar.onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; state.sharedCat = b.dataset.cat; renderShared(); };
     if (cats.length) tasks.append(bar);
-    const shown = latestRows.filter(r => !state.sharedCat || catOf(r) === state.sharedCat).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
+    const shown = latestRows.filter(r => (DONE_TAB ? isDone(r) : !isDone(r) || sortHold.has(r.id)) && (!state.sharedCat || catOf(r) === state.sharedCat)).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
     // '완료 업무 접기'도 공통 업무에 적용: 완료한 줄은 숨기고 '완료 N건 보기'
     const fold = state.collapse && !state.expanded.has('shared:' + SEC); let hiddenN = 0;
     (state.doneLast ? rankSort(shown) : shown).forEach(r => { const n = itemRow(r); if (fold && isDone(r) && !sortHold.has(r.id)) { n.classList.add('collapsed'); hiddenN++; } list.append(n); });
     if (hiddenN) { const m = el(`<button class="more shared-more">… 완료 ${hiddenN}건 보기</button>`); m.onclick = () => { state.expanded.add('shared:' + SEC); renderShared(); }; list.append(m); }
-    tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
+    tasks.querySelector('.sec-count').textContent = DONE_TAB ? `${shown.length}건 완료` : `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
+    if (!shown.length) list.append(el(`<p class="muted shared-empty">${DONE_TAB ? '완료한 공통 업무가 없습니다.' : '진행할 업무가 없습니다.'}</p>`));
     tasks.append(list);
     // 등록할 때 카테고리를 고르거나 새로 입력 → '분류) 내용' 형식으로 저장
     const form = el(`<form class="cat-add"><input class="cat-in" list="catList" placeholder="분류" aria-label="카테고리" value="${esc(state.sharedCat)}" maxlength="12"><datalist id="catList">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist><input class="txt-in" placeholder="+ 공통 업무 추가 (Enter)" aria-label="공통 업무 내용"><button type="submit" hidden>추가</button></form>`);
@@ -1145,7 +1146,7 @@
       document.querySelector('.cat-add .txt-in')?.focus();
     };
     form.querySelector('.txt-in').onkeydown = e => { if (e.isComposing) e.stopPropagation(); if (e.key === 'Escape') e.target.value = ''; };
-    tasks.append(form);
+    if (!DONE_TAB) tasks.append(form);
   }
   setInterval(() => { if (!document.hidden) loadShared(); }, 60000); // 다른 팀원 변경분 반영
   addEventListener('focus', () => loadShared());
