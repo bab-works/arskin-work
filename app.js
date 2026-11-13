@@ -528,6 +528,7 @@
       b.onclick = () => $('sec-' + s.key)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
       nav.append(b);
     });
+    if (state.calendar) { const b = el('<button type="button">이번 주 발행</button>'); b.onclick = () => $('sec-pub')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); nav.append(b); }
     dragScroll(nav);
     return nav;
   }
@@ -1331,7 +1332,7 @@
     const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
     api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
     loadContentLinks();
-    api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
+    api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); renderReport(); }).catch(() => {}); // 홈에 있을 때 도착해도 보고서에 반영
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
   const DIR_ST = { pending: '대기', approved: '승인', rejected: '거절', done: '완료' };
