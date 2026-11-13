@@ -259,7 +259,7 @@ $('planTrash').onclick = function(){
   var list = dlg.querySelector('.trash-list'), btn = dlg.querySelector('[data-r]'), items = [];
   request({ action: 'trash', who: '영상기획' }).then(function(j){
     items = (j.rows || []).filter(function(r){ return r.who === '영상기획'; }).sort(function(a, b){ return b.deletedAt.localeCompare(a.deletedAt); });
-    list.innerHTML = items.length ? items.map(function(r, i){ return '<label><input type="checkbox" data-i="'+i+'"><span><b>'+esc(r.text || '(제목 없음)')+'</b><br><small class="note">'+new Date(r.deletedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})+' 삭제</small></span></label>'; }).join('') : '<p class="note">비어 있습니다.</p>';
+    list.innerHTML = items.length ? items.map(function(r, i){ return '<label><input type="checkbox" data-i="'+i+'"><span><b>'+esc(r.text || '(제목 없음)')+'</b><br><small class="note">'+new Date(r.deletedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',dateStyle:'short',timeStyle:'short',hourCycle:'h23'})+' 삭제</small></span></label>'; }).join('') : '<p class="note">비어 있습니다.</p>';
   }).catch(function(err){ list.textContent = err.message; });
   list.onchange = function(){ btn.disabled = !list.querySelector(':checked'); };
   btn.onclick = function(){

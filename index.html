@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/arskin-icon.png?v=2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="styles.css?v=202611131510">
+<link rel="stylesheet" href="styles.css?v=202611131513">
 </head>
 <body>
 <div class="app">
@@ -94,7 +94,7 @@
 
 <div id="blockEditor" class="popover hidden">
   <input id="beTitle" placeholder="무슨 일?">
-  <div class="be-times"><input id="beStart" type="time" step="1800"> ~ <input id="beEnd" type="time" step="1800"></div>
+  <div class="be-times"><input id="beStart" class="be-time" inputmode="numeric" placeholder="09:00" maxlength="5" aria-label="시작 시각 (예: 0930, 14)" autocomplete="off"> ~ <input id="beEnd" class="be-time" inputmode="numeric" placeholder="10:00" maxlength="5" aria-label="종료 시각 (예: 1030, 15)" autocomplete="off"><small class="be-hint">24시 · 0930, 14 처럼 입력</small></div>
   <div class="be-color swatches" id="beColorWrap" role="radiogroup" aria-label="블록 색" hidden></div>
   <label class="be-repeat" id="beRepeatWrap">반복 <select id="beRepeat"><option value="">안 함</option><option value="w">매주</option><option value="2w">격주</option><option value="m">매월</option></select><small>완료 체크하면 다음 일정이 자동으로 생깁니다</small></label>
   <div class="be-copy" id="beCopyWrap"><input id="beCopyDate" type="date" aria-label="복제할 날짜"><select id="beCopyTo" aria-label="복제할 캘린더"><option value="공통">마케팅 공용</option><option value="원장님">원장님 캘린더</option><option value="me">내 타임라인</option></select><button id="beCopy" type="button">복제</button></div>
@@ -102,10 +102,10 @@
 </div>
 <div id="appToast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<script src="config.js?v=202611131510"></script>
-<script src="content-hub.js?v=202611131510"></script>
-<script src="revenue-model.js?v=202611131510"></script>
-<script src="revenue-hub.js?v=202611131510"></script>
-<script src="app.js?v=202611131510"></script>
+<script src="config.js?v=202611131513"></script>
+<script src="content-hub.js?v=202611131513"></script>
+<script src="revenue-model.js?v=202611131513"></script>
+<script src="revenue-hub.js?v=202611131513"></script>
+<script src="app.js?v=202611131513"></script>
 </body>
 </html>

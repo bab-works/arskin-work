@@ -855,7 +855,7 @@
     if (!editing) return;
     const r = editing.r, d = $('beCopyDate').value, to = $('beCopyTo').value;
     if (!d) return toast('복제할 날짜를 고르세요');
-    const text = $('beTitle').value.trim() || r.text, start = $('beStart').value, end = $('beEnd').value;
+    const text = $('beTitle').value.trim() || r.text, start = normTime($('beStart').value), end = normTime($('beEnd').value);
     if (to === 'me') { if (!start || !end) return toast('타임라인은 시작·종료 시각이 필요합니다'); const row = { id: newId(d), date: d, section: '타임라인', col: '', status: '', text, start, end }; if (d === state.sel) state.rows.push(row); await save([row]); }
     else { const who = to, section = to === '원장님' ? '원장님일정' : '일정', row = { id: newId(d), date: d, section, col: to === '원장님' ? '' : state.person, status: '', text, start, end };
       await api.post({ action: 'upsert', rows: [row], who }); if ((to === '원장님') === isDirector()) state.shared.push({ ...row, _who: who }); }
@@ -864,8 +864,9 @@
   };
   $('beSave').onclick = () => {
     if (!editing) return;
-    const text = $('beTitle').value.trim(), start = $('beStart').value, end = $('beEnd').value;
+    const text = $('beTitle').value.trim(), start = normTime($('beStart').value), end = normTime($('beEnd').value);
     if (!text) return toast('내용을 입력하세요');
+    if (['beStart', 'beEnd'].some(id => $(id).value.trim() && !normTime($(id).value))) return toast('시각은 0930, 14 처럼 24시로 입력하세요');
     if (editing.r.section === '타임라인' && (!start || !end)) return toast('시작과 종료 시각을 입력하세요');
     if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
     let t = { text, start, end };
@@ -876,6 +877,26 @@
     closeEditor(); renderTimeline(); renderShared();
   };
   $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); renderShared(); };
+  // 시각 직접 입력(24시): 9 → 09:00, 930 → 09:30, 1415 → 14:15, 14:5 → 14:05, 9.30·9시30분도 받음. 잘못되면 '' 
+  const normTime = v => {
+    const d = String(v).replace(/[^0-9:.시]/g, '').replace(/[.시]/g, ':');
+    let h, m;
+    if (d.includes(':')) [h, m] = d.split(':').map(x => +x || 0);
+    else if (d.length <= 2) [h, m] = [+d, 0];
+    else [h, m] = [+d.slice(0, -2), +d.slice(-2)];
+    return d && h <= 24 && m < 60 && !(h === 24 && m) ? pad(h) + ':' + pad(m) : '';
+  };
+  console.assert(normTime('9') === '09:00' && normTime('930') === '09:30' && normTime('1415') === '14:15' && normTime('14:5') === '14:05' && normTime('9시30') === '09:30' && normTime('25') === '' && normTime('') === '', 'normTime');
+  ['beStart', 'beEnd'].forEach(id => {
+    $(id).onfocus = e => e.target.select(); // 들어가면 바로 덮어쓰기
+    $(id).onblur = e => {
+      const v = e.target.value.trim(); if (!v) return;
+      const t = normTime(v); if (!t) { toast('시각은 0930, 14 처럼 24시로 입력하세요'); return; }
+      e.target.value = t;
+      if (id === 'beStart' && (!normTime($('beEnd').value) || toMin(normTime($('beEnd').value)) <= toMin(t))) $('beEnd').value = toTime(Math.min(toMin(t) + 60, 24 * 60)); // 종료가 비었거나 앞이면 1시간 뒤로
+    };
+    $(id).onkeydown = e => { if (e.isComposing) return; if (e.key === 'Enter') { e.target.blur(); $('beSave').click(); } if (e.key === 'Escape') closeEditor(); };
+  });
   $('beTitle').onkeydown = e => { if (e.isComposing) return; if (e.key === 'Enter') $('beSave').click(); if (e.key === 'Escape') closeEditor(); };
 
   /* ---------- content calendar ---------- */
@@ -1430,7 +1451,7 @@
     document.body.append(dlg); dlg.showModal();
     let rows = [];
     try { rows = (await api.get({ action: 'trash' })).rows.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)); } catch (e) { list.textContent = '불러오지 못했습니다: ' + e.message; return; }
-    list.innerHTML = rows.length ? rows.map((r, i) => `<label class="tr-item"><input type="checkbox" data-i="${i}"><span><b>${esc(r.text) || '(내용 없음)'}</b><small>${esc(disp(r.who))} · ${esc(r.section)} · ${r.date.slice(5).replace('-', '.')} 업무 · ${new Date(r.deletedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 삭제</small></span></label>`).join('') : '<p class="tr-empty">휴지통이 비어 있습니다.</p>';
+    list.innerHTML = rows.length ? rows.map((r, i) => `<label class="tr-item"><input type="checkbox" data-i="${i}"><span><b>${esc(r.text) || '(내용 없음)'}</b><small>${esc(disp(r.who))} · ${esc(r.section)} · ${r.date.slice(5).replace('-', '.')} 업무 · ${new Date(r.deletedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })} 삭제</small></span></label>`).join('') : '<p class="tr-empty">휴지통이 비어 있습니다.</p>';
     list.onchange = () => { btn.disabled = !list.querySelector(':checked'); };
     btn.onclick = async () => {
       const keys = [...list.querySelectorAll(':checked')].map(c => rows[c.dataset.i].deletedAt + '|' + rows[c.dataset.i].id);

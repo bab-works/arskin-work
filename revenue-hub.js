@@ -67,7 +67,7 @@
       const result = window.RevenueModel.parse(rows, rows);
       if (requestGeneration !== generation) return;
       sourceMode = 'sheet';
-      result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium' }).format(new Date());
+      result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date());
       data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render(); loadMonths();
     } catch (error) {
       if (requestGeneration !== generation) return;

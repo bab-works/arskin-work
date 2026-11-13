@@ -850,3 +850,5 @@ html.printing .done-date{display:none}
 .tl-now i{position:absolute;left:-6px;top:-7.5px;width:12px;height:12px;border-radius:50%;background:#f04452;box-shadow:0 0 0 3px rgba(240,68,82,.2)}
 .tl-now b{position:absolute;right:0;top:-22px;font-size:11px;font-weight:700;color:#d22030;background:#fff;padding:1px 6px;border-radius:999px}
 html.printing .tl-now{display:none}
+.be-time{width:72px;text-align:center;font-variant-numeric:tabular-nums}
+.be-times{flex-wrap:wrap;align-items:center}.be-hint{flex-basis:100%;font-size:12px;color:var(--text-2)}
