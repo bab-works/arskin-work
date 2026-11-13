@@ -12,15 +12,15 @@
   const statusIcon = c => icon(c, 20, 'sti sti-' + c);
   const TASK_SECTIONS = [ // 예전 L/R 두 칸(진행/완료)은 한 목록으로 합침. 시트의 열 값은 그대로 둔다
     { key: '주간고정', L: '주간고정' },
-    { key: '데일리고정', L: '데일리 고정업무 (매일 반복)' },
+    { key: '데일리고정', L: '데일리 고정업무' },
     { key: '배치예정', L: '업무 배치 예정' },
-    { key: '팔로업', L: '진행중 작업 팔로업' },
+    { key: '팔로업', L: '팔로업 리스트' },
     { key: '변동업무', L: '변동업무' },
     { key: '릴스업무', L: '릴스 업무' },
   ];
   const TASK_KEYS = new Set(TASK_SECTIONS.map(s => s.key));
   const WD = ['일', '월', '화', '수', '목', '금', '토'];
-  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
+  const state = { sharedAnchor: null, sharedMode: localStorage.sharedMode === 'month' ? 'month' : 'week', sharedCollapsed: localStorage.sharedCollapsed === '1', shared: [], person: (C.PEOPLE.find(p => p.name === localStorage.person && !p.director) || C.PEOPLE.find(p => p.name === C.DEFAULT_PERSON) || C.PEOPLE[0]).name, rows: [], dates: [], sel: null, view: 'daily', collapse: localStorage.collapse === '1', expanded: new Set(), calendar: null, team: {}, tags: {}, leaves: [], leaveMode: '', selected: new Set(), sharedCat: '', sharedTab: (() => { try { return localStorage.sharedTab || '변동'; } catch { return '변동'; } })(), reelPlan: [], dir: { tasks: [], me: '' }, sharedTasksOpen: (() => { try { return localStorage.sharedTasksOpen !== '0'; } catch { return true; } })(), calWho: (() => { try { return localStorage.calWho || ''; } catch { return ''; } })(), doneLast: localStorage.doneSort !== 'keep' };
 
   /* ---------- utils ---------- */
   const pad = n => String(n).padStart(2, '0');
@@ -195,7 +195,7 @@
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
   const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section === '공통업무' || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`)?.classList.add('just-done'); };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -225,35 +225,36 @@
     } catch (e) { toast('하위 업무 저장 실패: ' + e.message); load(); }
     finally { changeSubtask.busy = false; }
   }
+  // 프로젝트(하위 업무가 있는 업무): 한 줄로 작게. 제목 · 작은 진행 막대 · n/m. 누르면 하위 업무가 펼쳐진다.
   function projectCard(r) {
-    const p = progressOf(r), card = el(`<div class="project-card" data-id="${esc(r.id)}"></div>`);
-    const head = el('<div class="project-card-head"><span class="project-badge">프로젝트</span></div>'); head.prepend(dragHandle(r));
-    const del = el('<button class="project-delete" title="프로젝트 삭제">삭제</button>'); del.onclick = () => { deleteRow(r); render(); }; head.append(del);
+    const p = progressOf(r), open = state.expanded.has('p:' + r.id);
+    const card = el(`<div class="project-card${open ? ' open' : ''}" data-id="${esc(r.id)}"></div>`);
+    const line = el('<div class="pc-line"></div>'); line.append(dragHandle(r));
     const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
     title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
     title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); title.blur(); } };
-    card.append(head, title, el(progressBar(r)));
+    const prog = el(`<span class="pc-prog" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><i style="width:${p.percent}%"></i></span>`);
+    const tog = el(`<button type="button" class="pc-toggle" aria-expanded="${open}" title="하위 업무 ${open ? '접기' : '펼치기'}">${p.done}/${p.total} · ${p.percent}% ${open ? '▴' : '▾'}</button>`);
+    tog.onclick = () => { open ? state.expanded.delete('p:' + r.id) : state.expanded.add('p:' + r.id); render(); };
+    const del = el(`<button class="del" title="프로젝트 삭제" aria-label="프로젝트 삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); };
+    line.append(title, prog, tog, del); card.append(line);
+    if (!open) return card;
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
-      const line = el('<div class="subtask"></div>');
+      const sub = el('<div class="subtask"></div>');
       const check = el('<input type="checkbox">'); check.checked = isDone(child); check.setAttribute('aria-label', child.text + ' 완료');
       check.onchange = () => { if (changeSubtask.busy) { check.checked = isDone(child); return; } check.disabled = true; changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' }); };
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
       const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
-      line.append(check, text, remove); list.append(line);
+      sub.append(check, text, remove); list.append(sub);
     });
     card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: 'todo', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
     return card;
   }
-  function projectSummary(d) {
-    const projects = state.rows.filter(r => r.date === d && SUBTASKABLE.has(r.section) && isProject(r));
-    if (!projects.length) return null;
-    const box = el('<div class="project-summary"></div>');
-    projects.forEach(r => { const entry = el('<div class="project-summary-entry"></div>'); const title = el('<b></b>'); title.textContent = r.text; entry.append(title, el(progressBar(r))); box.append(entry); });
-    return sec('프로젝트 진행도', box);
-  }
+
+
   function addInput(onAdd, ph = '+ 추가 (Enter)') {
     const w = el(`<div class="add"><input placeholder="${ph}"></div>`); const i = w.firstChild;
     i.onkeydown = e => {
@@ -396,6 +397,24 @@
     if (s.key === '릴스업무') { // 영상 기획에서 아직 촬영 안 한 항목: 오늘 행이 없으면 가상 행으로 보여주고 처음 누를 때 저장
       const have = new Set(all.map(r => r.col)), list = node.querySelector('.task-list'), add = list.querySelector(':scope > .add');
       state.reelPlan.filter(p => !have.has('plan:' + p.row)).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
+      // 정리: 영상 기획 연동 항목(단계 버튼) 묶음 → 직접 추가한 릴스 업무 묶음
+      const planRows = [...list.querySelectorAll(':scope > .row.reel')], manual = [...list.querySelectorAll(':scope > [data-id]:not(.reel)')];
+      if (planRows.length) { const h = el(`<h4 class="reel-head">영상 기획 연동 · ${planRows.length}</h4>`); list.prepend(h); [...planRows].reverse().forEach(n => h.after(n)); }
+      // 직접 추가한 'OO 촬영/편집/업로드' 행들은 제목별로 한 줄로 묶고 단계 버튼으로 보여준다(각 단계 = 원래 행)
+      const STEP_RE = /\s*(촬영|편집|업로드)\s*$/, groups = new Map();
+      manual.forEach(n => { const r = state.rows.find(x => x.id === n.dataset.id); if (!r || isProject(r)) return; const base = r.text.replace(CAT_RE, '').replace(STEP_RE, '').trim(), m = r.text.match(STEP_RE); if (!m) return; (groups.get(base) || groups.set(base, []).get(base)).push({ r, n, step: m[1] }); });
+      groups.forEach((items, base) => {
+        const tag = items[0].r.text.match(CAT_RE)?.[1], done = items.every(i => isDone(i.r));
+        const g = el(`<div class="row reel reel-group${done ? ' done' : ''}"><span class="pst">${statusIcon(done ? 'done' : items.some(i => isDone(i.r)) ? 'doing' : 'todo')}</span>${tag ? `<span class="cat" style="${tagStyle(tag)}">${esc(tagLabel(tag))}</span>` : ''}<span class="tx">${esc(base)}</span><small class="reel-print">${REEL_STEPS.filter(st => items.some(i => i.step === st && isDone(i.r))).join('·')}${items.some(i => isDone(i.r)) ? ' 완료' : ''}</small><div class="reel-steps" role="group" aria-label="${esc(base)} 단계"></div></div>`);
+        REEL_STEPS.forEach(st => {
+          const it = items.find(i => i.step === st), b = el(`<button type="button" aria-pressed="${!!it && isDone(it.r)}"${it ? '' : ' disabled title="이 단계 업무가 없습니다"'}>${st}</button>`);
+          if (it) b.onclick = () => setStatus(it.r, isDone(it.r) ? 'todo' : 'done');
+          g.querySelector('.reel-steps').append(b);
+        });
+        items[0].n.before(g); items.forEach(i => i.n.remove());
+      });
+      const rest = [...list.querySelectorAll(':scope > [data-id]:not(.reel), :scope > .reel-group')];
+      if (planRows.length && rest.length) { const h = el(`<h4 class="reel-head">직접 추가 · ${rest.length}</h4>`); add.before(h); rest.forEach(n => add.before(n)); }
     }
     return node;
   }
@@ -408,7 +427,17 @@
       b.onclick = () => $('sec-' + s.key)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
       nav.append(b);
     });
+    dragScroll(nav);
     return nav;
+  }
+  // 가로로 넘치는 칩 줄: 마우스로 잡아 좌우로 끌기 + 세로 휠로 가로 이동 (끌었으면 클릭 무시)
+  function dragScroll(n) {
+    let x0 = null, s0 = 0, moved = false;
+    n.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') return; x0 = e.clientX; s0 = n.scrollLeft; moved = false; });
+    addEventListener('pointermove', e => { if (x0 == null) return; const dx = e.clientX - x0; if (Math.abs(dx) > 4) { moved = true; n.classList.add('dragging-x'); } n.scrollLeft = s0 - dx; });
+    addEventListener('pointerup', () => { x0 = null; setTimeout(() => n.classList.remove('dragging-x'), 0); });
+    n.addEventListener('click', e => { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+    n.addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && n.scrollWidth > n.clientWidth) { n.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
   }
   /* ---------- 원장님 워크시트: 월~토 시트, 월~일 달력(휴일 색) ---------- */
   function cellGrid(d, section, keys, cls, mode) {
@@ -449,7 +478,6 @@
     box.append(el(`<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
-    const projects = projectSummary(d); if (projects) box.append(projects);
     TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
     const pub = publishingFor(d);
     if (pub) box.append(sec('오늘 발행 (콘텐츠 캘린더)', pub));
@@ -620,12 +648,26 @@
     text = text.replace(/^\s*-?\s*\d{1,2}\s*\([월화수목금토일]\)\s*/, '').replace(/^[\s\/·,\-]+|[\s\/·,\-]+$/g, '').replace(/\s*\/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim();
     return { start: toTime(s0), end: toTime(Math.min(e0 ?? s0 + 60, 23 * 60 + 59)), text: text || raw.trim() };
   }
+  const REPEAT = { w: 7, '2w': 14, m: 'm' };
+  const nextDate = (d, rule) => { if (rule !== 'm') return shiftDate(d, REPEAT[rule]); const t = new Date(d + 'T00:00:00'); t.setMonth(t.getMonth() + 1); return iso(t); };
+  // 반복 일정을 완료하면 다음 회차를 만든다(이미 있으면 만들지 않음)
+  function spawnNext(r) {
+    if (!REPEAT[r.order] || !isDone(r)) return;
+    const d = nextDate(r.date, r.order), key = r.origin || r.id;
+    if (state.shared.some(x => x.section === r.section && x.date === d && (x.origin || x.id) === key)) return;
+    const { id, ...rest } = r;
+    addRow({ ...rest, date: d, status: '', completed: '', origin: key });
+    toast(`다음 일정(${d.slice(5).replace('-', '/')})을 만들었습니다`);
+  }
   let editing = null;
   function openEditor(r, anchor, isNew) {
     editing = { r, isNew };
     const p = $('blockEditor'); p.classList.remove('hidden');
     $('beTitle').value = r.text; $('beStart').value = r.start; $('beEnd').value = r.end;
     $('beDelete').classList.toggle('hidden', !!isNew);
+    const isEv = ['일정', '원장님일정'].includes(r.section);
+    $('beRepeatWrap').hidden = !isEv; $('beRepeat').value = isEv ? (r.order && REPEAT[r.order] ? r.order : '') : '';
+    $('beCopyWrap').hidden = !!isNew; $('beCopyDate').value = shiftDate(r.date, 7);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
     p.style.left = Math.max(8, Math.min(innerWidth - 350, a.left - 350)) + 'px';
     p.style.top = Math.max(8, Math.min(innerHeight - 170, a.top)) + 'px';
@@ -634,6 +676,18 @@
   function closeEditor() { $('blockEditor').classList.add('hidden'); editing = null; }
   addEventListener('pointerdown', e => { if (editing && !$('blockEditor').contains(e.target) && !e.target.closest('.sc-add,.sc-ev,.tl-block,.tl-grid')) closeEditor(); }, true);
   $('beCancel').onclick = closeEditor;
+  // 복제: 날짜와 대상 캘린더(마케팅 공용 / 원장님 / 내 타임라인)를 골라 같은 내용으로 새로 만든다
+  $('beCopy').onclick = async () => {
+    if (!editing) return;
+    const r = editing.r, d = $('beCopyDate').value, to = $('beCopyTo').value;
+    if (!d) return toast('복제할 날짜를 고르세요');
+    const text = $('beTitle').value.trim() || r.text, start = $('beStart').value, end = $('beEnd').value;
+    if (to === 'me') { if (!start || !end) return toast('타임라인은 시작·종료 시각이 필요합니다'); const row = { id: newId(d), date: d, section: '타임라인', col: '', status: '', text, start, end }; if (d === state.sel) state.rows.push(row); await save([row]); }
+    else { const who = to, section = to === '원장님' ? '원장님일정' : '일정', row = { id: newId(d), date: d, section, col: to === '원장님' ? '' : state.person, status: '', text, start, end };
+      await api.post({ action: 'upsert', rows: [row], who }); if ((to === '원장님') === isDirector()) state.shared.push({ ...row, _who: who }); }
+    toast(`${d.slice(5).replace('-', '/')} ${to === 'me' ? '내 타임라인' : to === '원장님' ? '원장님 캘린더' : '마케팅 공용'}에 복제했습니다`);
+    closeEditor(); renderShared(); renderTimeline();
+  };
   $('beSave').onclick = () => {
     if (!editing) return;
     const text = $('beTitle').value.trim(), start = $('beStart').value, end = $('beEnd').value;
@@ -642,6 +696,7 @@
     if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
     let t = { text, start, end };
     if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
+    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = $('beRepeat').value; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
     if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
     closeEditor(); renderTimeline(); renderShared();
   };
@@ -855,7 +910,7 @@
     cal.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => switchCalMode(b.dataset.mode));
     const body = el('<div class="sc-body" id="sharedCalendarBody"></div>');
     // ‹ [2026년 11월] › 오늘 — 가운데 버튼을 누르면 달 고르기
-    const nav = el(`<div class="sc-navigation"><button type="button" class="sc-prev" aria-label="이전 ${monthly ? '달' : '주'}">‹</button><button type="button" class="sc-month-btn" aria-haspopup="dialog" aria-label="달 고르기">${+anchor.slice(0, 4)}년 ${+anchor.slice(5, 7)}월${monthly ? '' : ` <small>${ws.slice(5).replace('-', '.')}~${shiftDate(ws, N - 1).slice(5).replace('-', '.')}</small>`} ▾</button><button type="button" class="sc-next" aria-label="다음 ${monthly ? '달' : '주'}">›</button><button type="button" class="sc-today">오늘</button>${dir ? '' : `<span class="sc-leave-btns" role="group" aria-label="연차 등록">${LEAVE_KINDS.map(k => `<button type="button" data-leave="${k}" aria-pressed="${state.leaveMode === k}">${k}</button>`).join('')}</span>`}</div>`);
+    const nav = el(`<div class="sc-navigation"><span class="sc-nav-mid"><button type="button" class="sc-prev" aria-label="이전 ${monthly ? '달' : '주'}">‹</button><button type="button" class="sc-month-btn" aria-haspopup="dialog" aria-label="달 고르기">${+anchor.slice(0, 4)}년 ${+anchor.slice(5, 7)}월${monthly ? '' : ` <small>${ws.slice(5).replace('-', '.')}~${shiftDate(ws, N - 1).slice(5).replace('-', '.')}</small>`} ▾</button><button type="button" class="sc-next" aria-label="다음 ${monthly ? '달' : '주'}">›</button><button type="button" class="sc-today">오늘</button></span>${dir ? '' : `<span class="sc-leave-btns" role="group" aria-label="연차 등록">${LEAVE_KINDS.map(k => `<button type="button" data-leave="${k}" aria-pressed="${state.leaveMode === k}">${k}</button>`).join('')}</span>`}</div>`);
     const go = a => { state.sharedAnchor = a; renderShared(); loadShared(); };
     nav.querySelector('.sc-prev').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7) - 2, 1)) : shiftDate(ws, -7));
     nav.querySelector('.sc-next').onclick = () => go(monthly ? iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 1)) : shiftDate(ws, 7));
@@ -886,12 +941,12 @@
       if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
       if (!outside) {
         state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button></div>`);
+          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${REPEAT[r.order] ? ' <span class="rep" title="반복 일정">↻</span>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev');
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
           ev.onpointerdown = e => longPressMove(e, wrap, r);
-          wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); renderShared(); renderTimeline(); };
+          wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); spawnNext(r); renderShared(); renderTimeline(); };
           col.append(wrap);
         });
         const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
@@ -920,13 +975,21 @@
     tasks.innerHTML = `<h3><button type="button" class="sec-toggle" aria-expanded="${open}">공통 업무 <small class="sec-count"></small><span class="chev" aria-hidden="true">${open ? '접기' : '펼치기'}</span></button></h3>`;
     tasks.querySelector('.sec-toggle').onclick = () => { state.sharedTasksOpen = !open; try { localStorage.sharedTasksOpen = open ? '0' : '1'; } catch {} renderShared(); };
     tasks.classList.toggle('folded', !open);
+    // 탭: 변동 업무(공통업무) / 반복 업무(공통반복 — 끝내도 다음 날 다시 '시작 전'으로)
+    const SEC = state.sharedTab === '반복' ? '공통반복' : '공통업무';
+    const tabs = el(`<div class="seg shared-tabs" role="tablist">${[['변동', '공통업무', '변동 업무'], ['반복', '공통반복', '반복 업무']].map(([k, sec, l]) => `<button type="button" role="tab" data-st="${k}" aria-selected="${(state.sharedTab || '변동') === k}" class="${(state.sharedTab || '변동') === k ? 'active' : ''}">${l}</button>`).join('')}</div>`);
+    tabs.onclick = e => { const b = e.target.closest('[data-st]'); if (!b) return; state.sharedTab = b.dataset.st; state.sharedCat = ''; try { localStorage.sharedTab = state.sharedTab; } catch {} renderShared(); };
+    tasks.append(tabs);
     // 일일보고에 반복 기록된 업무는 가장 최근 상태를 표시하고 원본 이력은 시트에 보존한다.
     const latest = new Map();
     // 장식용 앞 기호와 공백만 무시한다. 내용이 다른 업무는 각각 유지한다.
     const taskKey = text => text.normalize('NFKC').replace(/^[^\p{L}\p{N}]+/u, '').replace(/\s+/g, '').toLocaleLowerCase('ko');
-    state.shared.filter(r => r.section === '공통업무' && r.date <= state.sel && taskKey(r.text))
+    state.shared.filter(r => r.section === SEC && r.date <= state.sel && taskKey(r.text))
       .sort((a, b) => a.date.localeCompare(b.date) || (a.updated || '').localeCompare(b.updated || '') || a.id.localeCompare(b.id))
       .forEach(r => latest.set(taskKey(r.text), r));
+    if (SEC === '공통반복') latest.forEach((r, k) => { // 지난날 끝낸 반복 업무는 오늘 '시작 전' 새 행으로 보여준다(누르기 전엔 저장 안 함)
+      if (r.date < state.sel && isDone(r)) { const v = { ...r, id: newId(state.sel), date: state.sel, status: 'todo', completed: '', origin: r.origin || r.id }; state.shared.push(v); latest.set(k, v); }
+    });
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
     const latestRows = [...latest.values()], lateS = r => state.doneLast && isDone(r) && !sortHold.has(r.id);
     const catOf = r => r.text.match(CAT_RE)?.[1] || '';
@@ -944,7 +1007,7 @@
     form.onsubmit = e => {
       e.preventDefault(); const [ci, ti] = form.querySelectorAll('input'); const t = ti.value.trim(); if (!t) return;
       const c = ci.value.trim().replace(/[)\s]/g, '');
-      addRow({ date: today, section: '공통업무', col: state.person, text: c ? `${c}) ${t}` : t, status: 'todo', _who: SHARED }); render();
+      addRow({ date: today, section: SEC, col: state.person, text: c ? `${c}) ${t}` : t, status: 'todo', _who: SHARED }); render();
       document.querySelector('.cat-add .txt-in')?.focus();
     };
     form.querySelector('.txt-in').onkeydown = e => { if (e.isComposing) e.stopPropagation(); if (e.key === 'Escape') e.target.value = ''; };
