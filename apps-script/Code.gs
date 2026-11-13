@@ -140,7 +140,7 @@ function upsertRow(who, o) {
   var prev = idx ? sh.getRange(idx, 10, 1, 4).getDisplayValues()[0] : ['', '', '', ''];
   var done = o.status === 'done' || o.status === '⭕';
   var vals = [o.id, o.date, o.section || '', o.col || '', o.status || '', o.text || '', o.start || '', o.end || '', new Date().toISOString(),
-    o.created || prev[0] || todayKst_(), done ? (prev[1] || todayKst_()) : '', o.origin || prev[2] || o.id, o.order != null && o.order !== '' ? String(o.order) : prev[3]];
+    o.created || prev[0] || todayKst_(), done ? (/^\d{4}-\d{2}-\d{2}$/.test(String(o.completed || '')) ? o.completed : prev[1] || todayKst_()) : '', o.origin || prev[2] || o.id, o.order != null && o.order !== '' ? String(o.order) : prev[3]];
   if (idx) sh.getRange(idx, 1, 1, NCOL).setValues([vals]);
   else sh.appendRow(vals);
 }

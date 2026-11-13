@@ -157,6 +157,11 @@
     const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
     del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); }, r.section === '공통업무' ? [{ label: '↻ 반복 업무로 옮기기', run: () => { updateRow(r, { section: '공통반복' }); toast('반복 업무로 옮겼습니다'); render(); } }] : r.section === '공통반복' ? [{ label: '→ 변동 업무로 옮기기', run: () => { updateRow(r, { section: '공통업무' }); toast('변동 업무로 옮겼습니다'); render(); } }] : []);
     row.append(chip, tx);
+    if (isDone(r) && !opts.noStatus && TASK_KEYS.has(r.section)) { // 완료일: 연한 회색, 눌러서 날짜 수정
+      const c = String(r.completed || r.date).slice(0, 10), dd = el(`<label class="done-date" title="완료일 수정">${c.slice(5).replace('-', '/')}<input type="date" value="${c}" max="${todayKst()}" aria-label="완료일 수정"></label>`);
+      dd.querySelector('input').onchange = e => { if (!e.target.value) return; updateRow(r, { completed: e.target.value }); toast(`완료일을 ${e.target.value.slice(5).replace('-', '/')}로 바꿨습니다`); render(); loadDone(); };
+      row.append(dd);
+    }
     if (NESTABLE.has(r.section)) { // 하위 업무 입력칸만 열고, 실제로 하나 입력해야 프로젝트가 된다 (Esc·빈칸으로 벗어나면 취소)
       const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>');
       project.onclick = () => {
@@ -222,7 +227,7 @@
       p.animate([{ transform: 'translate(-50%,-50%) scale(1) rotate(0)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy + 30}px)) scale(.6) rotate(${Math.random() * 540}deg)`, opacity: 0 }], { duration: 750 + Math.random() * 250, easing: 'cubic-bezier(.2,.7,.3,1)' }).onfinish = () => p.remove();
     }
   }
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code) }); if (TASK_KEYS.has(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') { const b = document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`); b?.classList.add('just-done'); confetti(b); } };
+  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code), completed: code === 'done' ? (isDone(r) && r.completed || todayKst()) : '' }); if (TASK_KEYS.has(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') { const b = document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`); b?.classList.add('just-done'); confetti(b); } };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -716,11 +721,19 @@
     const s = toMin(start), e = toMin(end);
     b.style.top = ((s - H0 * 60) / 60 * PX) + 'px'; b.style.height = Math.max(14, (e - s) / 60 * PX - 2) + 'px';
   }
+  // 현재 시각 선: 오늘 타임라인에만, 30초마다 따라 내려감
+  function moveNow(n = document.querySelector('.tl-now')) {
+    if (!n) return;
+    const k = new Date(Date.now() + 9 * 36e5), m = k.getUTCHours() * 60 + k.getUTCMinutes();
+    n.hidden = m < H0 * 60 || m > H1 * 60; n.style.top = ((m - H0 * 60) / 60 * PX) + 'px'; n.lastChild.textContent = toTime(m);
+  }
+  setInterval(() => moveNow(), 30000);
   function renderTimeline() {
     const box = $('timeline'); box.innerHTML = '';
     box.append(el(`<div class="tl-head"><span>타임라인 <small>${esc(state.sel.slice(5))}</small></span><button id="tlAdd" class="more">+ 블록</button></div>`));
     const grid = el('<div class="tl-grid"></div>'); grid.style.height = (H1 - H0) * PX + 'px';
     for (let h = H0; h < H1; h++) grid.append(el(`<div class="tl-hour"><span>${pad(h)}:00</span></div>`));
+    if (state.sel === todayKst()) { const n = el('<div class="tl-now" aria-hidden="true"><i></i><b></b></div>'); grid.append(n); moveNow(n); }
     // 공용 캘린더의 회의(시간 있는 일정)는 모두의 타임라인에 같은 색으로 표시, 수정은 공용 일정 편집기로
     if (isDirector()) {
       const sel = state.sel, team = C.PEOPLE.filter(p => !p.director && p.sheet);

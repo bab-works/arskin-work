@@ -836,3 +836,17 @@ a.pub-text{color:var(--text-1);text-decoration:underline;text-decoration-color:v
 /* 태그 칩 폭을 맞춰 내용 시작점을 왼쪽 정렬 */
 .task-list .row>.cat{min-width:5.2em;text-align:center}
 html.printing .task-list .row>.cat{min-width:0}
+/* 타임라인 열 스크롤바 숨김 (휠·터치 스크롤은 그대로) */
+.side-col{scrollbar-width:none}.side-col::-webkit-scrollbar{display:none}
+/* 완료일: 항목 오른쪽 연한 회색, 누르면 날짜 선택 */
+.done-date{position:relative;flex:none;align-self:center;margin-left:auto;font-size:12px;color:var(--text-2);padding:4px 6px;border-radius:6px;cursor:pointer;min-height:28px;display:inline-flex;align-items:center}
+.done-date:hover{background:var(--grey100);color:var(--text-2)}
+.done-date input{position:absolute;inset:-9px -4px;width:calc(100% + 8px)!important;opacity:0;cursor:pointer;width:100%;border:0;padding:0}
+.done-date input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+html.printing .done-date{display:none}
+/* 타임라인 현재 시각 선 */
+.tl-now{position:absolute;left:44px;right:0;height:0;border-top:3px solid #f04452;z-index:6;pointer-events:none;transition:top .6s ease}
+.tl-now[hidden]{display:none}
+.tl-now i{position:absolute;left:-6px;top:-7.5px;width:12px;height:12px;border-radius:50%;background:#f04452;box-shadow:0 0 0 3px rgba(240,68,82,.2)}
+.tl-now b{position:absolute;right:0;top:-22px;font-size:11px;font-weight:700;color:#d22030;background:#fff;padding:1px 6px;border-radius:999px}
+html.printing .tl-now{display:none}
