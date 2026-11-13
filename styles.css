@@ -1034,7 +1034,7 @@ dialog[open]{animation:popIn 180ms var(--ease)}
 .lv-table .cur{background:var(--blue-weak)}
 .lv-table td span{display:inline-grid;place-items:center;min-width:28px;height:24px;border-radius:6px;font-size:12px;font-weight:700;background:color-mix(in srgb,var(--pc) calc(var(--a)*100%),#fff);color:var(--text-1)}
 .lv-total{font-weight:700}
-.lv-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--pc);margin-right:6px;vertical-align:middle}
+.lv-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--pc,var(--blue));margin-right:6px;vertical-align:middle}
 .lv-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .lv-ul{list-style:none;margin:0;padding:0}
 .lv-item{display:grid;grid-template-columns:76px 88px auto 1fr 44px;align-items:center;gap:8px;min-height:44px;border-bottom:1px solid var(--line);font-size:14px}
@@ -1122,3 +1122,36 @@ details.fold[open]>summary{margin-bottom:8px}
 #revenueHub{margin-inline:auto}
 html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html.rev-only .jandi-link{display:none!important}
 .tl-block small{white-space:pre-line;line-height:1.35}
+/* 원장님 캘린더에 섞인 마케팅 공용 일정 */
+.sc-ev-wrap.from-mkt .sc-ev{background:#f0ebff;color:#5b3cc4}.sc-ev-wrap.from-mkt .sc-ev small::before{content:"공용 · ";font-weight:700}
+/* 연월차: 등록 줄 · 직원 명단 */
+.lv-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px}
+.lv-form select,.lv-form input{min-height:44px;border:none;border-radius:6px;background:var(--grey50);padding:0 10px;font:inherit;font-size:14px}
+.lv-form input[name=memo]{flex:1;min-width:140px}.lv-form .primary{min-height:44px;padding:0 18px}
+.lv-staff-btn{min-height:44px;padding:0 12px;font-size:14px;background:none;color:var(--text-2);margin-left:auto}
+.lv-staff[hidden]{display:none}.lv-staff-list{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 16px}
+.lv-staff-list li{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;border-bottom:1px solid var(--line)}.lv-staff-list li span{color:var(--text-2);font-size:12px;flex:1}
+.lv-staff-list .del{width:44px;height:44px;background:none;color:var(--text-2);display:grid;place-items:center;padding:0}
+.lv-staff-add{display:flex;gap:8px;flex-wrap:wrap}.lv-staff-add input{min-height:44px;border:none;border-radius:6px;background:var(--grey50);padding:0 10px;font:inherit;font-size:14px;flex:1;min-width:140px}.lv-staff-add .primary{min-height:44px;padding:0 18px}
+.lv-team{font-size:12px;color:var(--text-2);font-weight:500;margin-left:2px}
+/* 아르스킨 캘린더 */
+.hosp .hosp-cal{background:var(--card);border-radius:12px;padding:16px}
+.hosp .sc-who{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.hosp .sc-who button{min-height:36px;padding:0 12px;border-radius:999px;font-size:14px;background:var(--grey100);display:inline-flex;align-items:center;gap:4px}
+.hosp .sc-who button[aria-pressed=true]{background:var(--text-1);color:#fff}
+.hosp .sc-navigation{display:flex;justify-content:center;margin:6px 0 12px}.hosp .sc-nav-mid{display:flex;align-items:center;gap:8px}
+.hosp-month{font-size:17px;min-width:120px;text-align:center}
+.hosp .sc-nav-mid button{min-height:40px;min-width:40px;border-radius:6px;background:var(--grey100)}
+.hosp-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.hosp-wd{text-align:center;font-size:12px;font-weight:600;color:var(--text-2);padding:4px 0}
+.hosp-grid .sc-day{min-height:104px;max-height:none;position:relative}
+.hosp-grid .sc-day.sc-outside{opacity:.45}.hosp-grid .sc-day.wkend:not(.holiday){background:#f7f8fa}
+.hosp-grid .sc-date{display:flex;align-items:baseline;gap:6px;font-size:14px}.hosp-grid .sc-hol{font-style:normal;font-size:12px;color:#c92a2a;font-weight:600}
+.hosp-leave{display:flex;align-items:center;gap:4px;width:100%;min-height:28px;padding:2px 6px;border-radius:6px;font-size:12px;font-weight:600;text-align:left;background:color-mix(in srgb,var(--pc) 14%,#fff);color:var(--text-1)}
+.hosp-leave small{font-weight:500;color:var(--text-2)}
+.hosp-grid .sc-add{margin-top:auto;align-self:center}
+.hosp-pop{position:fixed;z-index:70;width:260px;display:flex;flex-direction:column;gap:8px;background:#fff;border-radius:12px;padding:14px;box-shadow:0 12px 32px rgba(0,27,55,.18);animation:popIn 160ms var(--ease)}
+.hosp-pop select,.hosp-pop input[name=memo]{min-height:40px;border:none;border-radius:6px;background:var(--grey50);padding:0 10px;font:inherit;font-size:14px}
+.hosp-kinds{display:flex;gap:6px;flex-wrap:wrap}.hosp-kinds label{display:flex;align-items:center;gap:4px;font-size:14px;min-height:36px;padding:0 8px;border-radius:6px;background:var(--grey50);cursor:pointer}
+.hosp-acts{display:flex;justify-content:flex-end;gap:6px}.hosp-acts button{min-height:40px;padding:0 14px}
+@media(max-width:700px){.hosp-grid .sc-day{min-height:72px;padding:4px}.hosp-leave{font-size:12px;padding:2px 4px}.hosp-leave small{display:none}}

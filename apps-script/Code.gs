@@ -31,8 +31,8 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (REVENUE_ONLY.indexOf(memberFor_(p.code)) >= 0) { // 매출표 전용 계정: 다른 데이터는 읽지 못함
-    if (p.action === 'boot') return json({ me: memberFor_(p.code), admin: false, revenueOnly: true, deny: PERM_KEYS.filter(function (k) { return k !== 'revenue'; }), holidays: holidays_(false), tags: [], deletedTags: [], leaves: [], tasks: [] });
+  if (revenueOnly_(memberFor_(p.code))) { // 매출표만 허용된 계정: 다른 데이터는 읽지 못함
+    if (p.action === 'boot') return json({ me: memberFor_(p.code), admin: false, revenueOnly: true, deny: denyFor_(memberFor_(p.code)), holidays: holidays_(false), tags: [], deletedTags: [], leaves: [], staff: [], tasks: [] });
     if (p.action !== 'ping') return json({ error: '매출표 전용 계정입니다' });
   }
   if (p.action === 'ping') return json({ v: 28, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
@@ -44,7 +44,7 @@ function doGet(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ me: me, admin: adm, deny: adm ? [] : permsAll_()[me] || [], perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -57,7 +57,7 @@ function doGet(e) {
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
-  if (REVENUE_ONLY.indexOf(memberFor_(body.code)) >= 0 && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
+  if (revenueOnly_(memberFor_(body.code)) && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
   if (body.action === 'revenueArchive') { try { return json(revenueArchive_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenue') { try { return json(revenueData_(body.viewKey)); } catch (err) { return json({ error: err.message }); } }
@@ -77,6 +77,7 @@ function doPost(e) {
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'staffSave') { try { if (denyFor_(memberFor_(body.code)).indexOf('leaves') >= 0 && memberFor_(body.code) !== ADMIN) throw new Error('연월차 권한이 없습니다'); return json({ staff: staffSave_(body.staff) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'permsSave') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('권한은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ perms: permsSave_(body.perms) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('휴일은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -915,15 +916,32 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'revenue'];
+var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'leaves', 'hospital', 'revenue'];
+// 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
+function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
+function revenueOnly_(me) { var d = denyFor_(me); return PERM_KEYS.every(function (k) { return k === 'revenue' || d.indexOf(k) >= 0; }); }
 function permsAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PERMS') || '{}'); } catch (e) { return {}; } }
 function memberNames_() {
   var map = {}; try { map = JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESS_CODES') || '{}'); } catch (e) {}
-  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n] || REVENUE_ONLY.indexOf(n) >= 0) return false; seen[n] = 1; return true; }).concat(Object.keys(map).some(function (k) { return String(map[k]) === DIRECTOR; }) ? [] : [DIRECTOR]).filter(function (n, i, a) { return a.indexOf(n) === i; }); // 코드는 내보내지 않고 이름만, 원장님은 항상 포함
+  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n]) return false; seen[n] = 1; return true; }).concat(Object.keys(map).some(function (k) { return String(map[k]) === DIRECTOR; }) ? [] : [DIRECTOR]).filter(function (n, i, a) { return a.indexOf(n) === i; }); // 코드는 내보내지 않고 이름만, 원장님은 항상 포함
 }
 function permsSave_(perms) {
   var names = memberNames_(), out = {};
-  Object.keys(perms || {}).forEach(function (n) { if (names.indexOf(n) < 0) return; var d = (perms[n] || []).filter(function (k) { return PERM_KEYS.indexOf(k) >= 0; }); if (d.length) out[n] = d; });
+  names.forEach(function (n) { out[n] = ((perms || {})[n] || []).filter(function (k) { return PERM_KEYS.indexOf(k) >= 0; }); }); // 모든 사람을 명시 저장(빈 배열 = 전부 허용)
   PropertiesService.getScriptProperties().setProperty('PERMS', JSON.stringify(out));
   return out;
+}
+
+// 병원 전 직원 명단(연월차·아르스킨 캘린더용): 공통 시트 'staff' 탭 [이름, 부서, 색]
+function staffSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('staff');
+  if (!sh) { sh = ss.insertSheet('staff'); sh.getRange('A:C').setNumberFormat('@'); sh.appendRow(['이름', '부서', '색']); sh.setFrozenRows(1); }
+  return sh;
+}
+function staffList_() { var sh = staffSheet_(); if (sh.getLastRow() < 2) return []; return sh.getRange(2, 1, sh.getLastRow() - 1, 3).getDisplayValues().filter(function (r) { return r[0]; }).map(function (r) { return { name: r[0], team: r[1], color: r[2] }; }); }
+function staffSave_(list) {
+  var rows = (list || []).filter(function (x) { return x && String(x.name || '').trim(); }).slice(0, 200).map(function (x) { return [String(x.name).trim().slice(0, 20), String(x.team || '').slice(0, 20), String(x.color || '').slice(0, 10)]; });
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try { var sh = staffSheet_(); if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 3).clearContent(); if (rows.length) sh.getRange(2, 1, rows.length, 3).setValues(rows); } finally { lock.releaseLock(); }
+  return staffList_();
 }

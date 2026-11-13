@@ -886,6 +886,7 @@
   // shortcut: 일정의 '순서' 칸에 "반복규칙 ext" 를 함께 저장 (예: "w ext"). 빈 값은 서버가 무시하므로 지울 때는 '-'
   const ruleOf = r => String(r.order || '').split(' ').find(t => REPEAT[t]) || '';
   const isExt = r => String(r.order || '').split(' ').includes('ext');
+  const evColor = r => String(r.order || '').split(' ').find(t => t.startsWith('c:'))?.slice(2) || ''; // 일정 색 (순서 칸에 c:색)
   const nextDate = (d, rule) => { if (rule !== 'm') return shiftDate(d, REPEAT[rule]); const t = new Date(d + 'T00:00:00'); t.setMonth(t.getMonth() + 1); return iso(t); };
   // 반복 일정을 완료하면 다음 회차를 만든다(이미 있으면 만들지 않음)
   function spawnNext(r) {
@@ -905,8 +906,8 @@
     $('beTitle').value = r.text; $('beStart').value = r.start; $('beEnd').value = r.end;
     $('beDelete').classList.toggle('hidden', !!isNew);
     const isEv = ['일정', '원장님일정'].includes(r.section), isTl = r.section === '타임라인';
-    $('beColorWrap').hidden = !isTl;
-    if (isTl) { const cur = String(r.col || '').replace('c:', '') || 'blue'; $('beColorWrap').innerHTML = '색 ' + Object.entries(TL_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="beColor" value="${k}"${k === cur ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join(''); }
+    $('beColorWrap').hidden = !isTl && !isEv;
+    if (isTl || isEv) { const cur = (isTl ? String(r.col || '').replace('c:', '') : evColor(r)) || 'blue'; $('beColorWrap').innerHTML = '색 ' + Object.entries(TL_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="beColor" value="${k}"${k === cur ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join(''); }
     $('beRepeatWrap').hidden = !isEv; $('beExtWrap').hidden = !isEv; $('beRepeat').value = isEv ? ruleOf(r) : ''; $('beExt').checked = isEv && isExt(r);
     $('beCopyWrap').hidden = !!isNew; $('beCopyDate').value = shiftDate(r.date, 7);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
@@ -938,8 +939,9 @@
     if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
     let t = { text, start, end };
     if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
-    if (editing.r.section === '타임라인') t.col = 'c:' + (document.querySelector('input[name=beColor]:checked')?.value || 'blue');
-    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = [$('beRepeat').value, $('beExt').checked && 'ext'].filter(Boolean).join(' ') || '-'; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
+    const pick = document.querySelector('input[name=beColor]:checked')?.value || 'blue';
+    if (editing.r.section === '타임라인') t.col = 'c:' + pick;
+    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = [$('beRepeat').value, $('beExt').checked && 'ext', pick !== 'blue' && 'c:' + pick].filter(Boolean).join(' ') || '-'; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
     if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
     state.ext = null; // 대시보드 외부 미팅 다시 받기
     closeEditor(); renderTimeline(); renderShared();
@@ -1056,6 +1058,8 @@
     $('viewHome').classList.toggle('hidden', v !== 'home');
     $('viewTeam').classList.toggle('hidden', v !== 'team');
     $('viewSettings').classList.toggle('hidden', v !== 'settings');
+    $('viewLeaves').classList.toggle('hidden', v !== 'leaves'); $('viewHospital').classList.toggle('hidden', v !== 'hospital');
+    if (v === 'leaves') { const b = $('leavesHub'); b.innerHTML = ''; renderLeaves(b); } if (v === 'hospital') renderHospital();
     if (v === 'settings') renderSettings();
     if (v === 'home') renderHome();
     if (v === 'team') { state.teamPage = state.teamPage || (isBoss() ? 'tags' : 'check'); renderTeam(); if (!isBoss() && can('team:check')) loadTeam(todayKst()).then(renderTeam); }
@@ -1148,6 +1152,7 @@
     if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); renderShared(); }
     try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; const rows = result.rows.filter(r => !dir || r.section === '원장님일정'); cacheSet(sk, rows); state.shared = rows.map(r => ({ ...r, _who: owner })); }
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
+    if (dir) api.get({ who: SHARED, from, to }).then(j => { if (!isDirector()) return; state.mktEvents = j.rows.filter(r => r.section === '일정').map(r => ({ ...r, _who: SHARED })); renderShared(); }).catch(() => {}); // 원장님 캘린더에 공용 일정도 (다른 색)
     renderShared();
   }
   // 캘린더 일정: 0.8초 꾹 누르면 들려서 다른 날짜 칸에 놓을 수 있다 (짧게 누르면 편집)
@@ -1195,7 +1200,7 @@
   // 연월차: 공통 시트 leaves 탭
   const LEAVE_KINDS = ['연차', '오전 반차', '오후 반차'];
   async function loadLeaves() { try { state.leaves = (await api.get({ action: 'leaves' })).leaves || []; renderShared(); if (state.view === 'team') renderTeam(); } catch {} }
-  async function leaveEdit(body) { try { state.leaves = (await api.post(body)).leaves || []; toast(body.action === 'leaveAdd' ? `${body.kind} 등록했습니다` : '취소했습니다'); } catch (e) { toast(e.message); } renderShared(); if (state.view === 'team') renderTeam(); }
+  async function leaveEdit(body) { try { state.leaves = (await api.post(body)).leaves || []; toast(body.action === 'leaveAdd' ? `${body.kind} 등록했습니다` : '취소했습니다'); } catch (e) { toast(e.message); } renderShared(); if (state.view === 'team') renderTeam(); if (state.view === 'leaves') setView('leaves'); if (state.view === 'hospital') renderHospital(); }
   // 주간↔월간: 높이를 이전 값에서 새 값으로 부드럽게 (모션 줄이기면 즉시)
   function switchCalMode(mode) {
     const cal = $('sharedcal'), h0 = cal.offsetHeight;
@@ -1253,9 +1258,10 @@
       };
       if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
       if (!outside) {
-        state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
+        [...state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)), ...(dir ? (state.mktEvents || []).filter(r => r.date === d) : [])].sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
           const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}${isExt(r) ? ' ext' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${ruleOf(r) ? ' <span class="rep" title="반복 일정">↻</span>' : ''}${isExt(r) ? ' <em class="ext-badge">외부</em>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
-          const ev = wrap.querySelector('.sc-ev');
+          const ev = wrap.querySelector('.sc-ev'), ec = TL_COLORS[evColor(r)];
+          if (dir && r._who === SHARED) wrap.classList.add('from-mkt'); else if (ec) Object.assign(ev.style, { background: ec[0], color: ec[1] });
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
           ev.onpointerdown = e => longPressMove(e, wrap, r);
@@ -1337,10 +1343,10 @@
   const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
   // 설정: 휴일 관리(관리자=미스타전 코드만 추가·삭제, 나머지는 보기)
   // 메뉴 권한 (관리자가 설정에서 사람별로 끔). 관리자는 항상 전부.
-  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['team:tags', '└ 태그 관리'], ['team:leaves', '└ 연월차'], ['revenue', '월간 매출표']];
+  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['team:tags', '└ 태그 관리'], ['hospital', '아르스킨 캘린더'], ['leaves', '연월차'], ['revenue', '월간 매출표']];
   const can = k => !(state.deny || []).includes(k);
   function applyPerms() {
-    ['calendar', 'daily', 'director', 'team', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
+    ['calendar', 'daily', 'director', 'team', 'leaves', 'hospital', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('perm-off', !can('team:' + b.dataset.team)));
     const goKey = { sheet: 'director' }; document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('perm-off', !can(goKey[b.dataset.go] || b.dataset.go)));
     if (state.revOnly) { if (state.view !== 'revenue') setView('revenue'); return; } // 매출표 전용 계정
@@ -1386,7 +1392,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.members = (j.members?.length ? j.members.filter(n => !['골져스차', '눈밑지수술한사람'].includes(n)) : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.staff = j.staff || []; state.members = (j.members?.length ? j.members : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   // 권한·휴일 등은 창으로 돌아올 때(5분마다 최대 1번) 다시 받아 새로고침 없이 반영
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
@@ -1639,12 +1645,11 @@
   /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
   function renderTeam() {
     if (isBoss() && (state.teamPage || 'check') === 'check') state.teamPage = 'tags'; // 원장님은 팀 업무 체크 접근 불가
-    { const ok = ['check', 'tags', 'leaves'].filter(k => can('team:' + k) && !(k === 'check' && isBoss())); if (!ok.includes(state.teamPage || 'check')) state.teamPage = ok[0]; if (!ok.length) { $('teamHub').innerHTML = '<div class="empty-note">마케팅 공용에서 볼 수 있는 메뉴가 없습니다. 관리자에게 권한을 요청하세요.</div>'; return; } }
+    { const ok = ['check', 'tags'].filter(k => can('team:' + k) && !(k === 'check' && isBoss())); if (!ok.includes(state.teamPage || 'check')) state.teamPage = ok[0]; if (!ok.length) { $('teamHub').innerHTML = '<div class="empty-note">마케팅 공용에서 볼 수 있는 메뉴가 없습니다. 관리자에게 권한을 요청하세요.</div>'; return; } }
     const box = $('teamHub'), page = state.teamPage || 'check';
-    box.innerHTML = `<div class="seg team-seg">${isBoss() || !can('team:check') ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}${can('team:tags') ? `<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button>` : ''}${can('team:leaves') ? `<button data-tp="leaves" class="${page === 'leaves' ? 'active' : ''}">연월차</button>` : ''}</div>`;
+    box.innerHTML = `<div class="seg team-seg">${isBoss() || !can('team:check') ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}${can('team:tags') ? `<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button>` : ''}</div>`;
     box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
     if (page === 'tags') return renderTagAdmin(box);
-    if (page === 'leaves') return renderLeaves(box);
     const d = todayKst();
     box.append(el(`<div class="dir-head"><h1>팀 업무 체크</h1><p>${fmtDate(d)} · 각자의 고정 업무와 변동 업무를 한 화면에서 확인하고 상태를 바꿀 수 있습니다.</p></div>`));
     if (state.team.date !== d) return box.append(el('<div class="empty-note">불러오는 중…</div>'));
@@ -1668,22 +1673,75 @@
     });
     box.append(grid);
   }
-  // 연월차: 사람별 요약 카드 · 월별 사용 표 · 예정/지난 내역
+  // 아르스킨 캘린더: 병원 전 직원 연월차만 (마케팅 공용 캘린더 월간 보기와 같은 모양)
+  function renderHospital() {
+    const box = $('hospitalHub'), today = todayKst(), anchor = state.hospAnchor || today, month = anchor.slice(0, 7);
+    const first = month + '-01', start = weekStart(first), ppl = staffAll(), who = state.hospWho || '';
+    const lastDay = new Date(+month.slice(0, 4), +month.slice(5, 7), 0).getDate();
+    const end = shiftDate(month + '-' + String(lastDay).padStart(2, '0'), 0), weeks = Math.ceil((Math.round((new Date(end) - new Date(start)) / 864e5) + 1) / 7);
+    box.innerHTML = `<section class="sharedcal hosp-cal"><div class="sc-header"><div><b>아르스킨 캘린더</b><small>${+month.slice(0, 4)}년 ${+month.slice(5)}월 · 병원 전 직원 연월차</small></div></div>
+      <div class="sc-who" role="group" aria-label="직원 필터">${[{ name: '', label: '전체' }, ...ppl].map(p => `<button type="button" data-who="${esc(p.name)}" aria-pressed="${who === p.name}"${p.name ? ` style="--pc:${esc(p.color)}"` : ''}>${p.name ? '<i class="lv-dot"></i>' : ''}${esc(p.label)}</button>`).join('')}</div>
+      <div class="sc-navigation"><span class="sc-nav-mid"><button type="button" class="sc-prev" aria-label="이전 달">‹</button><b class="hosp-month">${+month.slice(0, 4)}년 ${+month.slice(5)}월</b><button type="button" class="sc-next" aria-label="다음 달">›</button><button type="button" class="sc-today">오늘</button></span></div>
+      <div class="sc-week sc-month sc-7 hosp-grid" role="grid" aria-label="${+month.slice(5)}월 연월차"></div></section>`;
+    const grid = box.querySelector('.hosp-grid');
+    ['월', '화', '수', '목', '금', '토', '일'].forEach(w => grid.append(el(`<div class="hosp-wd" role="columnheader">${w}</div>`)));
+    for (let i = 0; i < weeks * 7; i++) {
+      const d = shiftDate(start, i), out = d.slice(0, 7) !== month, hol = state.holidays?.[d], wd = new Date(d + 'T00:00:00').getDay();
+      const ls = state.leaves.filter(l => l.date === d && (!who || l.who === who));
+      const cell = el(`<div class="sc-day${d === today ? ' today' : ''}${out ? ' sc-outside' : ''}${hol ? ' holiday' : ''}${wd === 0 || wd === 6 ? ' wkend' : ''}" data-date="${d}" role="gridcell"><div class="sc-date"><b>${+d.slice(8)}</b>${hol ? `<em class="sc-hol">${esc(hol.name || hol)}</em>` : ''}</div>${ls.map(l => { const p = staffOf(l.who); return `<button type="button" class="hosp-leave" data-id="${esc(l.id)}" style="--pc:${esc(p.color)}" title="${esc(p.label)} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''}"><i class="lv-dot"></i>${esc(p.label)} <small>${esc(l.kind)}</small></button>`; }).join('')}<button type="button" class="sc-add" aria-label="${+d.slice(5, 7)}월 ${+d.slice(8)}일 연월차 등록">+</button></div>`);
+      grid.append(cell);
+    }
+    const go = m => { state.hospAnchor = m; renderHospital(); };
+    const mv = n => { const t = new Date(month + '-01T00:00:00'); t.setMonth(t.getMonth() + n); go(iso(t)); };
+    box.querySelector('.sc-prev').onclick = () => mv(-1); box.querySelector('.sc-next').onclick = () => mv(1); box.querySelector('.sc-today').onclick = () => go(today);
+    box.querySelector('.sc-who').onclick = e => { const b = e.target.closest('[data-who]'); if (b) { state.hospWho = b.dataset.who; renderHospital(); } };
+    grid.onclick = e => {
+      const lv = e.target.closest('.hosp-leave'); if (lv) { const l = state.leaves.find(x => x.id === lv.dataset.id); if (l && confirm(`${staffOf(l.who).label} ${l.date} ${l.kind}를 취소할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); return; }
+      const add = e.target.closest('.sc-add'); if (add) hospAdd(add, add.closest('.sc-day').dataset.date);
+    };
+  }
+  function hospAdd(anchor, date) { // 날짜의 +: 직원·종류를 골라 등록
+    document.querySelector('.hosp-pop')?.remove();
+    const ppl = staffAll(), b = anchor.getBoundingClientRect();
+    const pop = el(`<form class="hosp-pop" role="dialog" aria-label="${date} 연월차 등록"><b>${+date.slice(5, 7)}/${+date.slice(8)} 연월차 등록</b><select name="who" aria-label="직원">${ppl.map(p => `<option value="${esc(p.name)}"${p.name === state.hospWho ? ' selected' : ''}>${esc(p.label)}${p.team ? ' · ' + esc(p.team) : ''}</option>`).join('')}</select><div class="hosp-kinds" role="radiogroup">${LEAVE_KINDS.map((k, i) => `<label><input type="radio" name="kind" value="${k}"${i ? '' : ' checked'}>${k}</label>`).join('')}</div><input name="memo" placeholder="메모 (선택)" maxlength="60"><div class="hosp-acts"><button type="button" data-x>취소</button><button class="primary">등록</button></div></form>`);
+    Object.assign(pop.style, { left: Math.min(innerWidth - 280, Math.max(8, b.left - 120)) + 'px', top: Math.min(innerHeight - 280, b.bottom + 4) + 'px' });
+    document.body.append(pop); pop.querySelector('select').focus();
+    pop.onsubmit = e => { e.preventDefault(); const f = e.target; pop.remove(); leaveEdit({ action: 'leaveAdd', who: f.who.value, date, kind: f.kind.value, memo: f.memo.value.trim() }); };
+    pop.querySelector('[data-x]').onclick = () => pop.remove();
+    pop.onkeydown = e => { if (e.key === 'Escape') pop.remove(); };
+  }
+  // 병원 전 직원: 마케터 + 설정한 직원 명단(이름이 같으면 한 명)
+  const PALETTE = ['#1b64da', '#0a8f55', '#e8590c', '#7048e8', '#d6336c', '#0c8599', '#5c940d', '#b35000', '#495057'];
+  function staffAll() {
+    const out = marketers().map(p => ({ name: p.name, label: disp(p.name), team: '마케팅', color: p.color }));
+    (state.staff || []).forEach((x, i) => { if (!out.some(o => o.name === x.name || o.label === x.name)) out.push({ name: x.name, label: x.name, team: x.team || '', color: x.color || PALETTE[(i + 3) % PALETTE.length] }); });
+    return out;
+  }
+  const staffOf = n => staffAll().find(p => p.name === n) || { name: n, label: disp(n), color: '#495057' };
+  // 연월차: 사람별 요약 카드 · 월별 사용 표 · 예정/지난 내역 (병원 전 직원)
   function renderLeaves(box) {
-    const y = todayKst().slice(0, 4), today = todayKst(), days = l => l.kind === '연차' ? 1 : 0.5, ppl = marketers();
+    const y = todayKst().slice(0, 4), today = todayKst(), days = l => l.kind === '연차' ? 1 : 0.5, ppl = staffAll();
     const list = state.leaves.filter(l => l.date.startsWith(y)).sort((a, b) => a.date.localeCompare(b.date));
-    const col = n => C.PEOPLE.find(p => p.name === n)?.color || '#3182f6', sum = a => a.reduce((t, l) => t + days(l), 0);
+    const col = n => staffOf(n).color, sum = a => a.reduce((t, l) => t + days(l), 0);
     const fmtD = d => `${+d.slice(5, 7)}/${+d.slice(8)} (${WD[new Date(d + 'T00:00:00').getDay()]})`;
-    box.append(el(`<header class="lv-head"><div><h1>연월차</h1><p>${y}년 · 등록은 마케팅 공용 캘린더의 <b>휴가 등록</b>에서 해요. 연차 1일, 반차 0.5일.</p></div></header>`));
+    box.append(el(`<header class="lv-head"><div><h1>연월차</h1><p>${y}년 병원 전 직원 · 아래에서 바로 등록하거나 아르스킨 캘린더 날짜를 눌러 등록해요. 연차 1일, 반차 0.5일.</p></div></header>`));
+    const form = el(`<form class="lv-form"><select name="who" aria-label="직원" required>${ppl.map(p => `<option value="${esc(p.name)}">${esc(p.label)}${p.team ? ' · ' + esc(p.team) : ''}</option>`).join('')}</select><input type="date" name="date" required aria-label="날짜" value="${today}"><select name="kind" aria-label="종류">${LEAVE_KINDS.map(k => `<option>${k}</option>`).join('')}</select><input name="memo" placeholder="메모 (선택)" maxlength="60" aria-label="메모"><button class="primary">등록</button><button type="button" class="lv-staff-btn" aria-expanded="false">직원 명단 관리</button></form>`);
+    form.onsubmit = e => { e.preventDefault(); const f = e.target; leaveEdit({ action: 'leaveAdd', who: f.who.value, date: f.date.value, kind: f.kind.value, memo: f.memo.value.trim() }); };
+    const mgr = el(`<section class="lv-panel lv-staff" hidden><h2>직원 명단 <small>마케터는 자동 포함</small></h2><ul class="lv-staff-list">${(state.staff || []).map((x, i) => `<li><i class="lv-dot" style="--pc:${esc(x.color || PALETTE[(i + 3) % PALETTE.length])}"></i><b>${esc(x.name)}</b><span>${esc(x.team || '')}</span><button type="button" class="del" data-i="${i}" aria-label="${esc(x.name)} 명단에서 빼기">${icon('x', 14)}</button></li>`).join('') || '<li class="lv-empty">아직 추가한 직원이 없어요</li>'}</ul><form class="lv-staff-add"><input name="name" placeholder="이름" required maxlength="20" aria-label="직원 이름"><input name="team" placeholder="부서 (예: 상담, 데스크, 간호)" maxlength="20" aria-label="부서"><button class="primary">추가</button></form></section>`);
+    const saveStaff = async list => { try { state.staff = (await api.post({ action: 'staffSave', staff: list })).staff || []; toast('직원 명단을 저장했습니다'); setView('leaves'); $('leavesHub').querySelector('.lv-staff').hidden = false; } catch (err) { toast(err.message); } };
+    mgr.querySelector('.lv-staff-add').onsubmit = e => { e.preventDefault(); const f = e.target; saveStaff([...(state.staff || []), { name: f.name.value.trim(), team: f.team.value.trim(), color: PALETTE[((state.staff || []).length + 3) % PALETTE.length] }]); };
+    mgr.querySelector('.lv-staff-list').onclick = e => { const b = e.target.closest('[data-i]'); if (b && confirm('명단에서 뺄까요? (지난 연월차 기록은 남아요)')) saveStaff(state.staff.filter((_, i) => i !== +b.dataset.i)); };
+    form.querySelector('.lv-staff-btn').onclick = e => { mgr.hidden = !mgr.hidden; e.currentTarget.setAttribute('aria-expanded', !mgr.hidden); };
+    box.append(form, mgr);
     box.append(el(`<div class="lv-people">${ppl.map(p => { const mine = list.filter(l => l.who === p.name), next = mine.find(l => l.date >= today);
-      return `<section class="lv-card" style="--pc:${col(p.name)}"><div class="lv-who"><span class="lv-av">${esc(disp(p.name).slice(0, 1))}</span><b>${esc(disp(p.name))}</b></div>
+      return `<section class="lv-card" style="--pc:${col(p.name)}"><div class="lv-who"><span class="lv-av">${esc(p.label.slice(0, 1))}</span><b>${esc(p.label)}</b>${p.team ? `<small class="lv-team">${esc(p.team)}</small>` : ''}</div>
         <div class="lv-big"><strong>${sum(mine)}</strong><span>일 사용</span></div>
         <div class="lv-split"><span>연차 <b>${mine.filter(l => l.kind === '연차').length}</b></span><span>반차 <b>${mine.filter(l => l.kind !== '연차').length}</b></span></div>
         <p class="lv-next">${next ? `다음 휴가 <b>${fmtD(next.date)}</b> ${esc(next.kind)}` : '예정된 휴가 없음'}</p></section>`; }).join('')}</div>`));
     const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), curM = today.slice(5, 7);
     box.append(el(`<section class="lv-panel"><h2>월별 사용</h2><div class="lv-table-wrap"><table class="lv-table"><thead><tr><th scope="col">이름</th>${months.map(m => `<th scope="col"${m === curM ? ' class="cur"' : ''}>${+m}월</th>`).join('')}<th scope="col">합계</th></tr></thead><tbody>${ppl.map(p => { const mine = list.filter(l => l.who === p.name);
-      return `<tr style="--pc:${col(p.name)}"><th scope="row"><i class="lv-dot"></i>${esc(disp(p.name))}</th>${months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<td class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}">${v ? `<span style="--a:${Math.min(1, .25 + v * .25)}">${v}</span>` : ''}</td>`; }).join('')}<td class="lv-total">${sum(mine)}</td></tr>`; }).join('')}</tbody></table></div></section>`));
-    const item = l => `<li class="lv-item" style="--pc:${col(l.who)}"><span class="lv-date">${fmtD(l.date)}</span><span class="lv-person"><i class="lv-dot"></i>${esc(disp(l.who))}</span><span class="lv-kind k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><span class="lv-memo">${esc(l.memo || '')}</span><button type="button" class="del" data-id="${esc(l.id)}" aria-label="${esc(disp(l.who))} ${l.date} ${esc(l.kind)} 삭제">${icon('x', 14)}</button></li>`;
+      return `<tr style="--pc:${col(p.name)}"><th scope="row"><i class="lv-dot"></i>${esc(p.label)}</th>${months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<td class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}">${v ? `<span style="--a:${Math.min(1, .25 + v * .25)}">${v}</span>` : ''}</td>`; }).join('')}<td class="lv-total">${sum(mine)}</td></tr>`; }).join('')}</tbody></table></div></section>`));
+    const item = l => `<li class="lv-item" style="--pc:${col(l.who)}"><span class="lv-date">${fmtD(l.date)}</span><span class="lv-person"><i class="lv-dot"></i>${esc(staffOf(l.who).label)}</span><span class="lv-kind k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><span class="lv-memo">${esc(l.memo || '')}</span><button type="button" class="del" data-id="${esc(l.id)}" aria-label="${esc(disp(l.who))} ${l.date} ${esc(l.kind)} 삭제">${icon('x', 14)}</button></li>`;
     const up = list.filter(l => l.date >= today), past = list.filter(l => l.date < today).reverse();
     const panel = el(`<div class="lv-lists"><section class="lv-panel"><h2>예정 <small>${up.length}</small></h2><ul class="lv-ul">${up.map(item).join('') || '<li class="lv-empty">예정된 휴가가 없어요</li>'}</ul></section><section class="lv-panel"><h2>지난 내역 <small>${past.length}</small></h2><ul class="lv-ul">${past.map(item).join('') || '<li class="lv-empty">아직 사용한 휴가가 없어요</li>'}</ul></section></div>`);
     panel.onclick = e => { const b = e.target.closest('.del'); if (!b) return; const l = list.find(x => x.id === b.dataset.id); if (l && confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
