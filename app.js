@@ -147,7 +147,7 @@
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
-    const paint = () => { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
+    const paint = () => { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; if (m) chip.dataset.tag = m[1]; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
     paint();
     tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
@@ -505,10 +505,10 @@
   // 보고서 카드 배치(사람별 브라우저 저장): 왼쪽·오른쪽 두 칸, 순서, 카드별 테두리·채우기 색
   const CARD_DEFAULT = { L: ['주간고정', '데일리고정', '배치예정', '팔로업'], R: ['변동업무', '릴스업무', 'pub', 'memo'] };
   function cardColumns(cards, def = CARD_DEFAULT) {
-    const lay = pref('cardLayout', def), colors = pref('cardColors', {}), placed = new Set([...lay.L, ...lay.R]);
+    const hid = new Set(pref('cardHidden', [])), lay = pref('cardLayout', def), colors = pref('cardColors', {}), placed = new Set([...lay.L, ...lay.R]);
     const L = [...lay.L], Rr = [...lay.R]; Object.keys(cards).forEach(k => { if (!placed.has(k)) (/memo|pub|dhw/.test(k) ? Rr : L).push(k); });
     const wrap = el(`<div class="card-cols${state.cardEdit ? ' editing' : ''}"><div class="card-col" data-c="L"></div><div class="card-col" data-c="R"></div></div>`);
-    [['L', L], ['R', Rr]].forEach(([c, keys]) => keys.forEach(k => { const n = cards[k]; if (!n) return; n.dataset.card = k;
+    [['L', L], ['R', Rr]].forEach(([c, keys]) => keys.forEach(k => { const n = cards[k]; if (!n) return; n.dataset.card = k; if (hid.has(k)) { if (!state.cardEdit) return; n.classList.add('card-off'); }
       const col = colors[k]; if (col) { n.style.borderColor = col.border || ''; n.style.background = col.fill || ''; n.classList.add('tinted'); }
       if (state.cardEdit) cardEditControls(n, k, colors[k] || {});
       wrap.querySelector(`[data-c="${c}"]`).append(n); }));
@@ -517,6 +517,8 @@
   const CARD_PASTELS = [['하늘', '#a8cbff', '#eef5ff'], ['민트', '#9be3c8', '#ecfaf4'], ['레몬', '#f5d97a', '#fffbea'], ['피치', '#ffc4a3', '#fff3ec'], ['로즈', '#f7b2c4', '#fff0f4'], ['라벤더', '#c9b8f5', '#f5f1ff'], ['세이지', '#b8d4a8', '#f3f8ef'], ['그레이', '#cfd6de', '#f6f7f9']];
   function cardEditControls(n, k, col) {
     const h = n.querySelector('h3'); if (!h) return;
+    { const hid = new Set(pref('cardHidden', [])), b = el(`<button type="button" class="card-hide" aria-pressed="${hid.has(k)}">${hid.has(k) ? '보이기' : '숨기기'}</button>`);
+      b.onclick = () => { hid.has(k) ? hid.delete(k) : hid.add(k); setPref('cardHidden', [...hid]); renderReport(); }; h.append(b); }
     const g = el(`<span class="card-grip" title="끌어서 옮기기">${icon('drag', 18)}</span>`); h.prepend(g);
     // 파스텔 팔레트(테두리·채우기 한 쌍) 먼저, 세밀하게 고르고 싶으면 옆의 직접 선택
     const pal = el(`<span class="card-palette" role="group" aria-label="파스텔 색">${CARD_PASTELS.map(([name, b, f]) => `<button type="button" title="${name}" aria-label="${name}" style="background:${f};border-color:${b}" data-b="${b}" data-f="${f}"></button>`).join('')}</span>`);
@@ -565,7 +567,7 @@
       manual.forEach(n => { const r = state.rows.find(x => x.id === n.dataset.id); if (!r || isProject(r)) return; const base = r.text.replace(CAT_RE, '').replace(STEP_RE, '').trim(), m = r.text.match(STEP_RE); if (!m) return; (groups.get(base) || groups.set(base, []).get(base)).push({ r, n, step: m[1] }); });
       groups.forEach((items, base) => {
         const tag = items[0].r.text.match(CAT_RE)?.[1], done = items.every(i => isDone(i.r));
-        const g = el(`<div class="row reel reel-group${done ? ' done' : ''}"><span class="drag-spacer" aria-hidden="true"></span><span class="pst">${statusIcon(done ? 'done' : items.some(i => isDone(i.r)) ? 'doing' : 'todo')}</span>${tag ? `<span class="cat" style="${tagStyle(tag)}">${esc(tagLabel(tag))}</span>` : ''}<span class="tx">${esc(base)}</span><small class="reel-print">${REEL_STEPS.filter(st => items.some(i => i.step === st && isDone(i.r))).join('·')}${items.some(i => isDone(i.r)) ? ' 완료' : ''}</small><div class="reel-steps" role="group" aria-label="${esc(base)} 단계"></div></div>`);
+        const g = el(`<div class="row reel reel-group${done ? ' done' : ''}"><span class="drag-spacer" aria-hidden="true"></span><span class="pst">${statusIcon(done ? 'done' : items.some(i => isDone(i.r)) ? 'doing' : 'todo')}</span>${tag ? `<span class="cat" data-tag="${esc(tag)}" style="${tagStyle(tag)}">${esc(tagLabel(tag))}</span>` : ''}<span class="tx">${esc(base)}</span><small class="reel-print">${REEL_STEPS.filter(st => items.some(i => i.step === st && isDone(i.r))).join('·')}${items.some(i => isDone(i.r)) ? ' 완료' : ''}</small><div class="reel-steps" role="group" aria-label="${esc(base)} 단계"></div></div>`);
         REEL_STEPS.forEach(st => {
           const it = items.find(i => i.step === st), b = el(`<button type="button" aria-pressed="${!!it && isDone(it.r)}"${it ? '' : ' disabled title="이 단계 업무가 없습니다"'}>${st}</button>`);
           if (it) b.onclick = () => setStatus(it.r, isDone(it.r) ? 'todo' : 'done');
@@ -580,6 +582,27 @@
     return node;
   }
   // 말풍선 메모: 누르면 바로 커서, 입력하는 대로 저장, 바깥 클릭·Esc로 닫힘
+  // 태그 칩을 누르면 바로 편집 (표시 이름·색·설명·삭제). 태그 관리 탭 대신
+  document.addEventListener('click', e => {
+    const c = e.target.closest('.cat[data-tag]'); if (!c || c.closest('.tag-card,.tag-pop,.print-shared') || isBoss()) return;
+    e.preventDefault(); e.stopPropagation(); tagPop(c, c.dataset.tag);
+  }, true);
+  function tagPop(anchor, t) {
+    document.querySelector('.tag-pop')?.remove();
+    const cur = state.tags[t] || {}, b = anchor.getBoundingClientRect();
+    const pop = el(`<form class="tag-pop" role="dialog" aria-label="${esc(t)} 태그 편집"><div class="tp-head"><span class="cat" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code></div>
+      <input name="label" placeholder="표시 이름" value="${esc(cur.label || '')}" maxlength="20" aria-label="표시 이름">
+      <div class="swatches" role="radiogroup" aria-label="색">${Object.entries(TAG_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="color" value="${k}"${cur.color === k ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join('')}</div>
+      <input name="desc" placeholder="설명" value="${esc(cur.desc || '')}" maxlength="60" aria-label="설명">
+      <div class="tp-acts"><button type="button" class="tp-del">태그 삭제</button><button class="primary">저장</button></div></form>`);
+    Object.assign(pop.style, { left: Math.max(8, Math.min(innerWidth - 300, b.left)) + 'px', top: Math.min(innerHeight - 260, b.bottom + 6) + 'px' });
+    document.body.append(pop); pop.label.focus();
+    const close = () => { pop.remove(); removeEventListener('pointerdown', off, true); }, off = e => { if (!pop.contains(e.target)) close(); };
+    setTimeout(() => addEventListener('pointerdown', off, true), 0);
+    pop.onkeydown = e => { if (e.key === 'Escape') close(); };
+    pop.onsubmit = async e => { e.preventDefault(); try { const j = await api.post({ action: 'tagSave', tag: t, label: pop.label.value.trim(), color: pop.color.value || '', desc: pop.desc.value.trim() }); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); toast(`${t} 태그를 저장했습니다`); close(); render(); } catch (err) { toast(err.message); } };
+    pop.querySelector('.tp-del').onclick = () => { close(); tagTrash('tagDelete', t); };
+  }
   function memoBubble(anchor, r) {
     document.querySelector('.memo-bubble')?.remove();
     const b = anchor.getBoundingClientRect(), pop = el(`<div class="memo-bubble" role="dialog" aria-label="${esc(r.text)} 메모"><textarea rows="4" placeholder="이 항목 메모 (자동 저장)"></textarea><small>자동 저장 · Esc로 닫기</small></div>`);
@@ -593,6 +616,14 @@
     const left = Math.max(8, Math.min(innerWidth - 300, b.left + b.width / 2 - 140)); pop.style.left = left + 'px'; pop.style.top = b.bottom + 10 + 'px'; pop.style.setProperty('--tail', (b.left + b.width / 2 - left) + 'px');
     setTimeout(() => addEventListener('pointerdown', off, true), 0); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
   }
+  function openDayMemo() {
+    const d = state.sel, dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="dmT"><h2 id="dmT">메모 · 회의록 <small class="muted">${fmtDate(d)}</small></h2><textarea rows="14" placeholder="오늘 메모와 회의 내용을 적어 두세요. 자동 저장되고 인쇄에도 들어가요."></textarea><div class="tr-acts"><small class="muted">자동 저장</small><button type="button" class="primary">닫기</button></div></dialog>`);
+    const ta = dlg.querySelector('textarea'); ta.value = cellText(d, '메모', ''); let t;
+    const flush = () => { clearTimeout(t); if (ta.value !== cellText(d, '메모', '')) setCellText(d, '메모', '', ta.value); };
+    ta.oninput = () => { clearTimeout(t); t = setTimeout(flush, 800); };
+    dlg.querySelector('.primary').onclick = () => dlg.close(); dlg.onclose = () => { flush(); dlg.remove(); render(); };
+    document.body.append(dlg); dlg.showModal(); ta.focus();
+  }
   function openFollowMemo(d) {
     const dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="fuMemoT"><h2 id="fuMemoT">팔로업 메모</h2><textarea rows="10" placeholder="팔로업 진행 상황, 연락할 사람, 다음 액션 등을 적어 두세요. 자동 저장됩니다."></textarea><div class="tr-acts"><small class="muted">자동 저장 · 다음 근무일로 이어집니다</small><button type="button" class="primary">닫기</button></div></dialog>`);
     const ta = dlg.querySelector('textarea'); ta.value = cellText(d, '팔로업메모', ''); let t;
@@ -604,7 +635,8 @@
   }
   function sectionChips(d) { // 섹션 바로가기 칩: 남은 개수 표시
     const nav = el('<nav class="sec-chips" aria-label="섹션 바로가기"></nav>');
-    mySections().forEach(s => {
+    const hidC = new Set(pref('cardHidden', []));
+    mySections().filter(s => !hidC.has(s.key)).forEach(s => {
       const left = rowsFor(d, s.key).filter(r => !isDone(r)).length;
       const b = el(`<button type="button">${esc(s.L)}<b>${left}</b></button>`);
       b.setAttribute('aria-label', `${s.L} 남은 업무 ${left}건으로 이동`);
@@ -711,8 +743,9 @@
     box.append(sectionChips(d));
     const cards = {};
     mySections().forEach(s => { cards[s.key] = taskSection(d, s); });
-    const pub = publishingFor(d);
-    if (pub) { cards.pub = sec('이번 주 발행', pub); cards.pub.id = 'sec-pub'; }
+    const pub = publishingFor(d) || el(`<div class="pub-wait">${loadCalendar.err ? `콘텐츠 캘린더를 불러오지 못했어요 <small>${esc(loadCalendar.err)}</small> <button type="button" class="more">다시 불러오기</button>` : '콘텐츠 캘린더 불러오는 중…'}</div>`);
+    pub.querySelector?.('.pub-wait .more, .more')?.addEventListener('click', () => { loadCalendar.err = ''; loadCalendar(); renderReport(); });
+    cards.pub = sec('이번 주 발행', pub); cards.pub.id = 'sec-pub';
     const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); memo.id = 'sec-memo'; cards.memo = memo;
     box.append(cardColumns(cards));
     box.querySelectorAll('textarea').forEach(autosize);
@@ -749,7 +782,7 @@
     const byDay = {}; [...latest.values()].forEach(r => (byDay[r._c] = byDay[r._c] || []).push(r));
     const days = Object.keys(byDay).sort().reverse();
     box.innerHTML = `<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>완료 업무</span><span class="meta">${esc(disp(state.person))}</span></div>
-      <div class="done-bar"><button type="button" class="done-range" aria-haspopup="dialog">📅 ${fmtDate(from)} ~ ${fmtDate(to)}</button><span class="sec-count">${latest.size}건</span>
+      <div class="done-bar"><button type="button" class="done-range" aria-haspopup="dialog" aria-label="완료일 범위 ${fmtDate(from)} ~ ${fmtDate(to)}">📅 ${+from.slice(5, 7)}.${+from.slice(8)} ~ ${+to.slice(5, 7)}.${+to.slice(8)}</button><span class="sec-count">${latest.size}건</span>
       <label class="print-pick" title="인쇄 버튼을 누를 때 이 페이지도 함께 출력"><input type="checkbox"${printOn ? ' checked' : ''}><span class="dot-check" aria-hidden="true"></span>인쇄에 포함</label></div>`;
     box.querySelector('.print-pick input').onchange = e => { setPref('printDone', e.target.checked); box.classList.toggle('print-on', e.target.checked); };
     box.classList.toggle('print-on', printOn);
@@ -759,7 +792,7 @@
     days.forEach(d => {
       const g = el(`<section class="sec done-day"><h3>${fmtDate(d)} <small class="sec-count">${byDay[d].length}건</small></h3></section>`);
       byDay[d].forEach(r => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
-        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
+        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
       box.append(g);
     });
   }
@@ -836,6 +869,7 @@
     (isDirector() ? state.teamTL : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
       const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정 ${esc(r.start)}~${esc(r.end)}">${esc(r.text)}<small>공통 · ${esc(r.start)}
 ~${esc(r.end)}</small></div>`);
+      { const ec = TL_COLORS[evColor(r)]; if (ec) Object.assign(b.style, { background: ec[0], color: ec[1], borderLeftColor: ec[1] }); } // 캘린더에서 고른 색 그대로
       place(b, r.start, r.end); b.onclick = () => isDirector() || readOnly() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
@@ -1092,7 +1126,7 @@
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
-  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
+  function render() { { const has = !!(state.sel && cellText(state.sel, '메모', '').trim()); $('memoBtn').classList.toggle('has', has); $('memoBtn').hidden = isDirector(); } renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
@@ -1141,6 +1175,7 @@
   $('widthEdit').onclick = () => { const box = $('widthBox'); box.hidden = !box.hidden; $('widthEdit').setAttribute('aria-pressed', !box.hidden); if (!box.hidden) $('mainW').focus(); };
   $('mainW').oninput = e => setMainW(+e.target.value);
   $('mainWreset').onclick = () => setMainW(800);
+  $('memoBtn').onclick = openDayMemo;
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); print(); };
@@ -1269,7 +1304,7 @@
     dates.forEach(d => {
       const dt = new Date(d + 'T00:00:00'), outside = monthly && !d.startsWith(month);
       const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><button type="button" class="sc-date" aria-label="${d} 보고서 보기"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b>${state.holidays[d] ? `<em class="sc-hol">${esc(state.holidays[d].name)}</em>` : ''}</button></div>`);
-      if (!dir) state.leaves.filter(l => l.date === d).forEach(l => {
+      if (!dir) state.leaves.filter(l => l.date === d && marketers().some(p => p.name === l.who)).forEach(l => {
         const chip = el(`<button type="button" class="sc-leave k-${LEAVE_KINDS.indexOf(l.kind)}" title="${esc(disp(l.who))} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''} (누르면 취소)">${esc(disp(l.who))} ${esc(l.kind.replace(' 반차', '반차'))}</button>`);
         chip.onclick = e => { e.stopPropagation(); if (confirm(`${disp(l.who)} ${d} ${l.kind}를 취소할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
         col.append(chip);
@@ -1284,7 +1319,7 @@
         [...state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)), ...(dir ? (state.mktEvents || []).filter(r => r.date === d) : [])].sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
           const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}${isExt(r) ? ' ext' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${ruleOf(r) ? ' <span class="rep" title="반복 일정">↻</span>' : ''}${isExt(r) ? ' <em class="ext-badge">외부</em>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev'), ec = TL_COLORS[evColor(r)];
-          if (dir && r._who === SHARED) wrap.classList.add('from-mkt'); else if (ec) Object.assign(ev.style, { background: ec[0], color: ec[1] });
+          if (dir && r._who === SHARED) wrap.classList.add('from-mkt'); if (ec) Object.assign(ev.style, { background: ec[0], color: ec[1] });
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
           ev.onpointerdown = e => longPressMove(e, wrap, r);
@@ -1366,7 +1401,7 @@
   const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
   // 설정: 휴일 관리(관리자=미스타전 코드만 추가·삭제, 나머지는 보기)
   // 메뉴 권한 (관리자가 설정에서 사람별로 끔). 관리자는 항상 전부.
-  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['team:tags', '└ 태그 관리'], ['hospital', '아르스킨 캘린더'], ['leaves', '연월차'], ['revenue', '월간 매출표']];
+  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['hospital', '아르스킨 캘린더'], ['leaves', '연월차'], ['revenue', '월간 매출표']];
   const can = k => !(state.deny || []).includes(k);
   function applyPerms() {
     ['calendar', 'daily', 'director', 'team', 'leaves', 'hospital', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
@@ -1386,8 +1421,10 @@
         <div class="perm-wrap"><table class="perm-table"><thead><tr><th scope="col">메뉴</th>${state.members.map(n => `<th scope="col">${esc(n === DIRECTOR_WHO ? '원장님' : disp(n))}</th>`).join('')}</tr></thead><tbody>${PERMS.map(([k, label]) => `<tr${k.includes(':') ? ' class="perm-sub"' : ''}><th scope="row">${label}</th>${state.members.map(n => `<td><label class="perm-cell"><input type="checkbox" data-who="${esc(n)}" data-k="${k}"${(state.perms[n] || []).includes(k) ? '' : ' checked'} aria-label="${esc(disp(n))} ${label.replace('└ ', '')} 보기"></label></td>`).join('')}</tr>`).join('')}</tbody></table></div>
         <div class="perm-actions"><button type="button" class="primary" id="permSave">권한 저장</button></div></details>` : ''}
       <p class="ver-line">화면 버전 <b>${esc((document.querySelector('script[src*="app.js"]')?.src.match(/v=(\d+)/) || [])[1] || '?')}</b> · 서버 버전 <b>${esc(state.sv || '예전 버전(재배포 필요)')}</b></p>
+      <details class="sec fold" data-fold="tagtrash"><summary><h3>태그 휴지통 <small class="sec-count">${state.deletedTags.length}개</small></h3></summary><p class="muted">업무에 붙은 태그 칩을 누르면 이름·색을 고치거나 지울 수 있어요. 지운 태그는 여기서 복원해요.</p><ul class="hol-list tag-trash-set">${state.deletedTags.map(t => `<li><span>${esc(t.tag)})</span><b>${esc(t.label || t.tag)}</b><button type="button" data-restore="${esc(t.tag)}">복원</button></li>`).join('') || '<li class="muted">비어 있어요</li>'}</ul></details>
       <details class="sec fold" data-fold="menu"><summary><h3>메뉴</h3></summary><p class="muted">사이드바 아래 '메뉴 순서 편집'으로 대메뉴 순서를 바꿀 수 있습니다(브라우저마다 저장).</p></details>`;
     box.querySelectorAll('details.fold').forEach(d => { d.open = pref('fold:' + d.dataset.fold, false); d.ontoggle = () => setPref('fold:' + d.dataset.fold, d.open); }); // 노션 토글처럼 접기, 열림 상태 기억
+    box.querySelector('.tag-trash-set').onclick = e => { const b = e.target.closest('[data-restore]'); if (b) tagTrash('tagRestore', b.dataset.restore).then(() => renderSettings()); };
     const ps = box.querySelector('#permSave');
     if (ps) ps.onclick = async () => {
       const perms = {}; box.querySelectorAll('.perm-table input:not(:checked)').forEach(i => (perms[i.dataset.who] ||= []).push(i.dataset.k));
@@ -1453,13 +1490,18 @@
     catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL 과 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
     render(); afterLoad(asked);
   }
+  function loadCalendar() { // 이번 주 발행용 콘텐츠 캘린더 (실패 이유를 카드에 보여주고 다시 시도 가능)
+    if (loadCalendar.busy) return; loadCalendar.busy = true;
+    api.get({ action: 'calendar' }).then(j => { if (!j.grid) throw new Error(j.error || '빈 응답'); state.calendar = parseCalendar(j.grid); loadCalendar.err = ''; })
+      .catch(e => { loadCalendar.err = e.message || '알 수 없는 오류'; }).finally(() => { loadCalendar.busy = false; renderReport(); });
+  }
   function afterLoad(asked) {
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
     api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
     loadContentLinks();
-    api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); renderReport(); }).catch(() => {}); // 홈에 있을 때 도착해도 보고서에 반영
+    loadCalendar();
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
   const DIR_ST = { pending: '대기', approved: '승인', rejected: '거절', done: '완료' };
@@ -1669,11 +1711,10 @@
   /* ---------- 마케팅 공용: 업무 체크(3명 고정·변동) / 태그 관리 ---------- */
   function renderTeam() {
     if (isBoss() && (state.teamPage || 'check') === 'check') state.teamPage = 'tags'; // 원장님은 팀 업무 체크 접근 불가
-    { const ok = ['check', 'tags'].filter(k => can('team:' + k) && !(k === 'check' && isBoss())); if (!ok.includes(state.teamPage || 'check')) state.teamPage = ok[0]; if (!ok.length) { $('teamHub').innerHTML = '<div class="empty-note">마케팅 공용에서 볼 수 있는 메뉴가 없습니다. 관리자에게 권한을 요청하세요.</div>'; return; } }
+    { const ok = ['check'].filter(k => can('team:' + k) && !(k === 'check' && isBoss())); if (!ok.includes(state.teamPage || 'check')) state.teamPage = ok[0]; if (!ok.length) { $('teamHub').innerHTML = '<div class="empty-note">마케팅 공용에서 볼 수 있는 메뉴가 없습니다. 관리자에게 권한을 요청하세요.</div>'; return; } }
     const box = $('teamHub'), page = state.teamPage || 'check';
-    box.innerHTML = `<div class="seg team-seg">${isBoss() || !can('team:check') ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}${can('team:tags') ? `<button data-tp="tags" class="${page === 'tags' ? 'active' : ''}">태그 관리</button>` : ''}</div>`;
+    box.innerHTML = `<div class="seg team-seg">${isBoss() || !can('team:check') ? '' : `<button data-tp="check" class="${page === 'check' ? 'active' : ''}">업무 체크</button>`}</div>`;
     box.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.tp; setView('team'); });
-    if (page === 'tags') return renderTagAdmin(box);
     const d = todayKst();
     box.append(el(`<div class="dir-head"><h1>팀 업무 체크</h1><p>${fmtDate(d)} · 각자의 고정 업무와 변동 업무를 한 화면에서 확인하고 상태를 바꿀 수 있습니다.</p></div>`));
     if (state.team.date !== d) return box.append(el('<div class="empty-note">불러오는 중…</div>'));
@@ -1689,7 +1730,7 @@
           const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
           row.append(p.name === state.dir.me ? statusButton(r, code => { r.status = code; save([r], p.name); renderTeam(); }) : el(`<span class="pst" title="${esc(disp(p.name))}님만 바꿀 수 있어요">${statusIcon(statusCode(r.status))}</span>`));
           const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
-          row.append(el(`<div class="tx">${rest ? `<span class="cat" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div>`));
+          row.append(el(`<div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div>`));
           col.append(row);
         });
       });
@@ -1816,7 +1857,7 @@
     const grid = el('<div class="tag-grid"></div>');
     tags.forEach(t => {
       const cur = state.tags[t] || {};
-      const card = el(`<form class="tag-card"><div class="tag-card-head"><span class="cat" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code><button type="button" class="tag-del" title="태그 휴지통으로" aria-label="${esc(t)} 태그 삭제">${icon('trash', 16)}</button></div>
+      const card = el(`<form class="tag-card"><div class="tag-card-head"><span class="cat" data-tag="${esc(t)}" style="${tagStyle(t)}">${esc(tagLabel(t))}</span><code>${esc(t)})</code><button type="button" class="tag-del" title="태그 휴지통으로" aria-label="${esc(t)} 태그 삭제">${icon('trash', 16)}</button></div>
         <input name="label" placeholder="표시 이름" aria-label="${esc(t)} 표시 이름" value="${esc(cur.label || '')}" maxlength="20">
         <div class="swatches" role="radiogroup" aria-label="${esc(t)} 색">${Object.entries(TAG_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="color" value="${k}"${cur.color === k ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join('')}</div>
         <input name="desc" placeholder="설명" aria-label="${esc(t)} 설명" value="${esc(cur.desc || '')}" maxlength="60">
@@ -1930,7 +1971,7 @@
     });
   };
   applyNavOrder();
-  $('jandiLink').href = C.JANDI_URL || 'https://www.jandi.com/';
+  // 잔디 링크는 사이드바에서 제거됨
 
   load();
   setView('home');

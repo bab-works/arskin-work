@@ -1218,3 +1218,35 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .org-off::before{content:"";width:6px;height:6px;border-radius:50%;background:#f76707}
 @media(max-width:700px){.org-teams{flex-direction:column;align-items:stretch;padding-top:16px}.org-team{flex:auto}.org-team::after{display:none}.org-team::before{top:-16px;height:16px}}
 @media print{.org-card{box-shadow:none;border:1px solid #ddd}}
+/* 캘린더 + 버튼: 칸 오른쪽 위, 연한 회색 */
+.sc-day{position:relative}
+.sc-day>.sc-add{position:absolute;top:4px;right:4px;margin:0;width:28px;height:28px;min-height:0;padding:0;display:grid;place-items:center;background:none;border-radius:6px;color:#848e99;font-size:17px;font-weight:400;line-height:1}
+.sc-day>.sc-add::after{content:"";position:absolute;inset:-8px}
+.sc-day>.sc-add:hover{background:var(--grey100);color:var(--text-2)}
+.sc-day .sc-date{padding-right:26px}
+/* 완료 업무: 날짜 버튼 작게, 인쇄 포함은 바로 옆 */
+.done-bar{flex-wrap:nowrap;gap:8px;padding:8px 12px}
+.done-range{min-height:36px;padding:0 12px;font-size:14px;white-space:nowrap}
+.done-bar .sec-count{white-space:nowrap}.print-pick{margin-left:auto;white-space:nowrap;font-size:14px}
+/* 메모·회의록: 날짜 줄 옆 */
+.tb-sep{width:1px;height:28px;background:var(--grey200);margin:0 6px;flex:none;align-self:center}
+.memo-btn{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:0 14px;border-radius:12px;background:var(--card);font-size:14px;font-weight:600;color:var(--text-1);flex:none;position:relative}
+.memo-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.memo-btn.has::after{content:"";position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%;background:#f76707}
+.memo-btn[hidden]{display:none}
+@media(max-width:600px){.memo-btn span{display:none}.memo-btn{padding:0 12px}.tb-sep{display:none}}
+.memo-sec{display:none!important}html.printing .memo-sec{display:block!important}
+/* 태그 편집 말풍선 */
+.cat[data-tag]{cursor:pointer}
+.tag-pop{position:fixed;z-index:75;width:280px;background:#fff;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 12px 32px rgba(0,27,55,.18);animation:popIn 160ms var(--ease)}
+.tp-head{display:flex;align-items:center;gap:8px}.tp-head code{font-size:12px;color:var(--text-2)}
+.tag-pop input:not([type=radio]){min-height:40px;border:none;border-radius:6px;background:var(--grey50);padding:0 10px;font:inherit;font-size:14px}
+.tag-pop .swatches{flex-wrap:wrap}
+.tp-acts{display:flex;justify-content:space-between}.tp-acts button{min-height:40px;padding:0 14px}.tp-del{background:none;color:#c92a2a}
+/* 카드 숨기기 */
+.card-hide{min-height:32px;padding:0 10px;font-size:12px;border-radius:6px;background:var(--grey100)}
+.card-hide[aria-pressed=true]{background:#fff0f0;color:#c92a2a}
+.card-off{opacity:.45}
+.pub-wait{font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(min-width:601px){.topbar .datestrip{flex:none}.topbar .actions{margin-left:auto}}
+.done-range{position:relative}.done-range::after{content:"";position:absolute;inset:-4px 0}
