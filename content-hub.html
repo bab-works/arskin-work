@@ -149,6 +149,8 @@ svg text{fill:var(--muted);font-size:12px;font-family:var(--font)}
 .trash-list{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin:10px 0}
 .trash-list label{display:flex;gap:10px;align-items:flex-start;padding:8px;border-bottom:1px solid var(--line)}
 dialog.plan-dlg{border:0;border-radius:18px;padding:22px;width:min(480px,calc(100vw - 32px))}dialog.plan-dlg::backdrop{background:rgba(25,31,40,.45)}
+.chip.chk .box{display:inline-grid;place-items:center;width:16px;height:16px;border:1.5px solid var(--muted);border-radius:4px;margin-right:6px;font-size:11px;font-style:normal;font-weight:800;vertical-align:-3px}
+.chip.chk[aria-pressed=true] .box{background:#1b64da;border-color:#1b64da;color:#fff}
 </style>
 <div class="wrap">
   <header>

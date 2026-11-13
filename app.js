@@ -154,7 +154,7 @@
       if (e.key === 'Escape') { tx.textContent = r.text; tx.blur(); } // 편집 취소
     };
     const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
-    del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); });
+    del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); }, r.section === '공통업무' ? [{ label: '↻ 반복 업무로 옮기기', run: () => { updateRow(r, { section: '공통반복' }); toast('반복 업무로 옮겼습니다'); render(); } }] : r.section === '공통반복' ? [{ label: '→ 변동 업무로 옮기기', run: () => { updateRow(r, { section: '공통업무' }); toast('변동 업무로 옮겼습니다'); render(); } }] : []);
     row.append(chip, tx);
     if (SUBTASKABLE.has(r.section)) { // 하위 업무 입력칸만 열고, 실제로 하나 입력해야 프로젝트가 된다 (Esc·빈칸으로 벗어나면 취소)
       const project = el('<button class="project-start" title="하위 업무를 추가해 프로젝트로 관리">+ 하위 업무</button>');
@@ -183,9 +183,9 @@
     b.onpointerup = b.onpointercancel = b.onpointerleave = () => clearTimeout(timer);
     return b;
   }
-  function statusMenu(anchor, current, set, onDelete) {
+  function statusMenu(anchor, current, set, onDelete, extras = []) {
     document.querySelector('.st-menu')?.remove();
-    const m = el(`<div class="st-menu" role="menu" aria-label="${onDelete ? '업무 메뉴' : '상태 선택'}">${Object.keys(STAT).map(k => `<button type="button" role="menuitemradio" aria-checked="${k === current}" data-k="${k}">${statusIcon(k)}<span>${STAT[k].label}</span></button>`).join('')}${onDelete ? `<button type="button" role="menuitem" class="st-del" data-del>${icon('x', 20)}<span>삭제</span></button>` : ''}</div>`);
+    const m = el(`<div class="st-menu" role="menu" aria-label="${onDelete ? '업무 메뉴' : '상태 선택'}">${Object.keys(STAT).map(k => `<button type="button" role="menuitemradio" aria-checked="${k === current}" data-k="${k}">${statusIcon(k)}<span>${STAT[k].label}</span></button>`).join('')}${extras.map((x, i) => `<button type="button" role="menuitem" class="st-extra" data-ex="${i}"><span>${esc(x.label)}</span></button>`).join('')}${onDelete ? `<button type="button" role="menuitem" class="st-del" data-del>${icon('x', 20)}<span>삭제</span></button>` : ''}</div>`);
     document.body.append(m);
     const a = anchor.getBoundingClientRect(), h = m.offsetHeight;
     m.style.left = Math.min(innerWidth - m.offsetWidth - 8, a.left) + 'px';
@@ -195,7 +195,7 @@
     const outside = e => { if (!m.contains(e.target)) close(false); };
     addEventListener('pointerdown', outside, true);
     items.forEach((it, i) => {
-      it.onclick = () => { close(false); if ('del' in it.dataset) onDelete(); else if (it.dataset.k !== current) set(it.dataset.k); };
+      it.onclick = () => { close(false); if ('ex' in it.dataset) return extras[it.dataset.ex].run(); if ('del' in it.dataset) onDelete(); else if (it.dataset.k !== current) set(it.dataset.k); };
       it.onkeydown = e => {
         if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); close(); }
         else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus(); }
@@ -282,7 +282,7 @@
   function itemList(date, section, col, opts = {}) {
     const box = document.createElement('div'); if (opts.doneLast) { box.className = 'task-list'; box.dataset.section = section; if (col !== undefined) box.dataset.col = col; }
     let rows = rowsFor(date, section, col);
-    if (opts.doneLast && state.doneLast) { const late = r => isDone(r) && !sortHold.has(r.id); rows = [...rows.filter(r => !late(r)), ...rows.filter(late)]; }
+    if (opts.doneLast && state.doneLast) rows = rankSort(rows);
     const key = date + section + (col ?? '');
     const hide = state.collapse && TASK_KEYS.has(section) && !state.expanded.has(key);
     let hidden = 0;
@@ -293,6 +293,9 @@
   }
   // 완료 정렬: 방금 바꾼 행은 400ms 제자리에 두었다가 220ms 동안 새 위치로 이동(FLIP)
   const sortHold = new Set();
+  // 진행 중 → 시작 전·확인 필요 → 완료 순 (방금 바꾼 행은 잠시 제자리)
+  const rankOf = r => sortHold.has(r.id) ? 1 : isDone(r) ? 2 : statusCode(r.status) === 'doing' ? 0 : 1;
+  const rankSort = rows => rows.map((r, i) => [r, i]).sort((a, b) => rankOf(a[0]) - rankOf(b[0]) || a[1] - b[1]).map(x => x[0]);
   function holdSort(id) {
     if (!state.doneLast) return;
     sortHold.add(id); clearTimeout(holdSort.t);
@@ -404,6 +407,37 @@
     row.append(box);
     if (!virtual) { const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del); }
     return row;
+  }
+  // 보고서 카드 배치(사람별 브라우저 저장): 왼쪽·오른쪽 두 칸, 순서, 카드별 테두리·채우기 색
+  const CARD_DEFAULT = { L: ['주간고정', '데일리고정', '배치예정', '팔로업'], R: ['변동업무', '릴스업무', 'pub', 'memo'] };
+  function cardColumns(cards) {
+    const lay = pref('cardLayout', CARD_DEFAULT), colors = pref('cardColors', {}), placed = new Set([...lay.L, ...lay.R]);
+    const L = [...lay.L], Rr = [...lay.R]; Object.keys(cards).forEach(k => { if (!placed.has(k)) (k === 'memo' || k === 'pub' ? Rr : L).push(k); });
+    const wrap = el(`<div class="card-cols${state.cardEdit ? ' editing' : ''}"><div class="card-col" data-c="L"></div><div class="card-col" data-c="R"></div></div>`);
+    [['L', L], ['R', Rr]].forEach(([c, keys]) => keys.forEach(k => { const n = cards[k]; if (!n) return; n.dataset.card = k;
+      const col = colors[k]; if (col) { n.style.borderColor = col.border || ''; n.style.background = col.fill || ''; n.classList.add('tinted'); }
+      if (state.cardEdit) cardEditControls(n, k, colors[k] || {});
+      wrap.querySelector(`[data-c="${c}"]`).append(n); }));
+    return wrap;
+  }
+  function cardEditControls(n, k, col) {
+    const h = n.querySelector('h3'); if (!h) return;
+    const g = el(`<span class="card-grip" title="끌어서 옮기기">${icon('drag', 18)}</span>`); h.prepend(g);
+    const pick = el(`<span class="card-colors"><label title="테두리 색">테두리 <input type="color" value="${col.border || '#e5e8eb'}"></label><label title="채우기 색">채우기 <input type="color" value="${col.fill || '#ffffff'}"></label><button type="button" class="card-reset">기본</button></span>`);
+    const [bi, fi] = pick.querySelectorAll('input'), saveC = v => { const all = pref('cardColors', {}); if (v) all[k] = v; else delete all[k]; setPref('cardColors', all); };
+    bi.oninput = () => { n.style.borderColor = bi.value; n.classList.add('tinted'); }; fi.oninput = () => { n.style.background = fi.value; n.classList.add('tinted'); };
+    bi.onchange = fi.onchange = () => saveC({ border: bi.value, fill: fi.value });
+    pick.querySelector('.card-reset').onclick = () => { saveC(null); renderReport(); };
+    h.append(pick);
+    g.onpointerdown = e => { // 카드 끌어서 순서·칸 바꾸기
+      e.preventDefault(); const ph = el('<div class="card-ph"></div>'); ph.style.height = n.offsetHeight + 'px'; n.after(ph); n.classList.add('card-lift');
+      const move = ev => { n.style.transform = `translateY(${ev.clientY - e.clientY}px)`; n.hidden = true; const t = document.elementFromPoint(ev.clientX, ev.clientY); n.hidden = false;
+        const over = t?.closest('[data-card]'), col = t?.closest('.card-col');
+        if (over && over !== n) { const r = over.getBoundingClientRect(); over[ev.clientY < r.top + r.height / 2 ? 'before' : 'after'](ph); } else if (col && !over) col.append(ph); };
+      const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); n.style.transform = ''; n.classList.remove('card-lift'); ph.replaceWith(n);
+        const cols = n.closest('.card-cols'); setPref('cardLayout', { L: [...cols.querySelectorAll('[data-c="L"] > [data-card]')].map(x => x.dataset.card), R: [...cols.querySelectorAll('[data-c="R"] > [data-card]')].map(x => x.dataset.card) }); };
+      addEventListener('pointermove', move); addEventListener('pointerup', up);
+    };
   }
   function taskSection(d, s) {
     const all = rowsFor(d, s.key), done = all.filter(isDone).length;
@@ -529,21 +563,26 @@
   }
 
 
+  const readOnly = () => !!state.dir.me && !isDirector() && state.person !== state.dir.me; // 원장님 워크시트·공통은 모두 편집
   function renderReport() {
     const d = state.sel, box = $('report'); box.innerHTML = '';
+    box.classList.toggle('readonly', readOnly()); $('timeline').classList.toggle('readonly', readOnly());
     if (!state.rows.some(r => r.date === d)) {
       box.append(el(`<div class="empty-note">${fmtDate(d)} 보고서가 비어 있습니다.<br><button id="emptyCarry" class="primary">직전 근무일 항목 가져오기</button> <button id="emptyNew">빈 보고서 시작</button></div>`));
       $('emptyCarry').onclick = carryForward;
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
     }
+    if (readOnly()) box.append(el(`<div class="ro-banner">${esc(disp(state.person))}님 보고서 · 보기 전용 (각자 자기 보고서만 고칠 수 있어요)</div>`));
     box.append(el(`<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
-    TASK_SECTIONS.forEach(s => box.append(taskSection(d, s)));
+    const cards = {};
+    TASK_SECTIONS.forEach(s => { cards[s.key] = taskSection(d, s); });
     const pub = publishingFor(d);
-    if (pub) box.append(sec('오늘 발행 (콘텐츠 캘린더)', pub));
-    const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); box.append(memo);
+    if (pub) { cards.pub = sec('오늘 발행 (콘텐츠 캘린더)', pub); cards.pub.id = 'sec-pub'; }
+    const memo = sec('메모 · 회의록', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); memo.id = 'sec-memo'; cards.memo = memo;
+    box.append(cardColumns(cards));
     box.querySelectorAll('textarea').forEach(autosize);
   }
 
@@ -627,6 +666,7 @@
   /* ---------- timeline ---------- */
   const PX = 48; // 1시간 높이
   const STEP = 30; // 타임라인 기본 단위(분)
+  const TL_COLORS = { blue: ['#e8f3ff', '#1b64da'], green: ['#e6f6ee', '#0a7a4a'], orange: ['#fff3e6', '#b35300'], purple: ['#f0ebff', '#5b3cc4'], pink: ['#ffeef6', '#b0236a'], grey: ['#f2f4f6', '#4e5968'] };
   const [H0, H1] = C.TIMELINE;
   const yToMin = (y, g) => Math.max(H0 * 60, Math.min(H1 * 60, Math.floor((H0 * 60 + (y / g.clientHeight) * (H1 - H0) * 60) / STEP) * STEP));
   function place(b, start, end) {
@@ -658,12 +698,14 @@
       place(b, r.start, r.end); b.onclick = () => openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
-      const b = el(`<div class="tl-block"><small>${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
-      place(b, r.start, r.end);
+      const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}"><small>${esc(r.start)}~${esc(r.end)}</small>${esc(r.text)}</div>`);
+      if (c) Object.assign(b.style, { background: c[0], color: c[1], borderLeft: `3px solid ${c[1]}` });
+      place(b, r.start, r.end); b._r = r;
       b.onpointerdown = e => startMove(e, r, b, grid);
       b.onclick = () => { if (!b.moved) openEditor(r, b); };
       grid.append(b);
     });
+    layoutLanes(grid);
     grid.onpointerdown = e => { // 빈 곳에서 드래그 → 새 블록 (마우스만; 터치는 + 블록 버튼)
       if (e.pointerType !== 'mouse' || e.target.closest('.tl-block')) return;
       const rect = grid.getBoundingClientRect(); const m0 = yToMin(e.clientY - rect.top, grid);
@@ -681,6 +723,18 @@
     };
     box.append(grid);
     $('tlAdd').onclick = () => openEditor({ date: state.sel, section: '타임라인', start: '09:00', end: '10:00', text: '' }, null, true);
+  }
+  // 시간이 겹치는 블록(내 블록·공통 일정)은 최대 3칸으로 나란히. 넓은 블록이 좁은 블록을 덮지 않게.
+  function layoutLanes(grid) {
+    const blocks = [...grid.querySelectorAll('.tl-block:not(.tl-team):not(.ghost)')].map(b => ({ b, s: parseFloat(b.style.top), e: parseFloat(b.style.top) + parseFloat(b.style.height) })).sort((x, y) => x.s - y.s || y.e - x.e);
+    let group = [], end = -1;
+    const flush = () => { const n = Math.min(3, Math.max(1, ...group.map(g => g.lane + 1))); group.forEach(g => Object.assign(g.b.style, { left: `calc(44px + ${Math.min(g.lane, 2)} * (100% - 46px) / ${n})`, width: `calc((100% - 46px) / ${n} - 2px)`, right: 'auto' })); group = []; };
+    blocks.forEach(x => {
+      if (x.s >= end) { flush(); end = -1; }
+      const used = group.filter(g => g.e > x.s).map(g => g.lane); let lane = 0; while (used.includes(lane)) lane++;
+      x.lane = lane; group.push(x); end = Math.max(end, x.e);
+    });
+    flush();
   }
   function startMove(e, r, b, grid) {
     if (e.pointerType !== 'mouse') return;
@@ -727,7 +781,9 @@
     const p = $('blockEditor'); p.classList.remove('hidden');
     $('beTitle').value = r.text; $('beStart').value = r.start; $('beEnd').value = r.end;
     $('beDelete').classList.toggle('hidden', !!isNew);
-    const isEv = ['일정', '원장님일정'].includes(r.section);
+    const isEv = ['일정', '원장님일정'].includes(r.section), isTl = r.section === '타임라인';
+    $('beColorWrap').hidden = !isTl;
+    if (isTl) { const cur = String(r.col || '').replace('c:', '') || 'blue'; $('beColorWrap').innerHTML = '색 ' + Object.entries(TL_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="beColor" value="${k}"${k === cur ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join(''); }
     $('beRepeatWrap').hidden = !isEv; $('beRepeat').value = isEv ? (r.order && REPEAT[r.order] ? r.order : '') : '';
     $('beCopyWrap').hidden = !!isNew; $('beCopyDate').value = shiftDate(r.date, 7);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
@@ -758,6 +814,7 @@
     if ((end && !start) || (start && end && toMin(end) <= toMin(start))) return toast('종료 시각이 시작보다 뒤여야 합니다');
     let t = { text, start, end };
     if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
+    if (editing.r.section === '타임라인') t.col = 'c:' + (document.querySelector('input[name=beColor]:checked')?.value || 'blue');
     if (['일정', '원장님일정'].includes(editing.r.section)) t.order = $('beRepeat').value; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
     if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
     closeEditor(); renderTimeline(); renderShared();
@@ -831,6 +888,8 @@
     $('viewDirector').classList.toggle('hidden', v !== 'director');
     $('viewHome').classList.toggle('hidden', v !== 'home');
     $('viewTeam').classList.toggle('hidden', v !== 'team');
+    $('viewSettings').classList.toggle('hidden', v !== 'settings');
+    if (v === 'settings') renderSettings();
     if (v === 'home') renderHome();
     if (v === 'team') { state.teamPage = state.teamPage || 'check'; renderTeam(); loadTeam(todayKst()).then(renderTeam); }
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('active', v === 'team' && b.dataset.team === state.teamPage));
@@ -844,6 +903,7 @@
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
     if (b.dataset.view === 'daily' && isDirector()) { setView('daily'); return leaveDirSheet(); }
+    if (b.dataset.view === 'director') return openDirSheet(); // 숙제 목록 페이지는 숨김(코드는 보관)
     setView(b.dataset.view);
   });
   $('brandHome').onclick = () => setView('home');
@@ -868,6 +928,7 @@
   document.querySelectorAll('[data-icon]').forEach(n => { n.outerHTML = icon(n.dataset.icon, 18); });
   $('btnCarry').onclick = carryForward;
   $('btnKeys').onclick = () => openShortcuts();
+  $('cardEdit').onclick = () => { state.cardEdit = !state.cardEdit; $('cardEdit').textContent = state.cardEdit ? '편집 완료' : '카드 배치 편집'; $('cardEdit').setAttribute('aria-pressed', state.cardEdit); renderReport(); if (state.cardEdit) $('report').scrollIntoView({ block: 'start' }); };
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); print(); };
@@ -888,14 +949,15 @@
   let backendOk = null;
   const checkBackend = async () => backendOk ??= await api.get({ action: 'ping' }).then(j => j.v >= 2).catch(() => false);
   async function loadShared() {
-    if (!(await checkBackend())) { state.shared = []; return renderShared(); }
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor);
     const monthEnd = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
     const dir = isDirector(), owner = dir ? DIRECTOR_WHO : SHARED;
     const from = ['2026-10-01', ws].sort()[0], to = [monthEnd, shiftDate(ws, 6), todayKst()].sort().pop();
     const requested = anchor;
 
-    try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; state.shared = result.rows.filter(r => !dir || r.section === '원장님일정').map(r => ({ ...r, _who: owner })); }
+    const sk = `shared:${owner}:${from}:${to}`, sc = cacheGet(sk);
+    if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); renderShared(); }
+    try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; const rows = result.rows.filter(r => !dir || r.section === '원장님일정'); cacheSet(sk, rows); state.shared = rows.map(r => ({ ...r, _who: owner })); }
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
@@ -964,8 +1026,7 @@
     const monthly = state.sharedMode === 'month', month = anchor.slice(0, 7);
     cal.classList.toggle('sc-collapsed', state.sharedCollapsed);
     cal.classList.toggle('sc-month-view', monthly);
-    cal.innerHTML = `<div class="sc-header"><div><b>${dir ? '원장님 캘린더' : '마케팅 공용 캘린더'}</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, N - 1).slice(5).replace('-', '.')} · ${dir ? '월~일' : '월~금'}</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div><button type="button" class="more sc-holbtn">휴일 관리</button></div>`;
-    cal.querySelector('.sc-holbtn').onclick = openHolidays;
+    cal.innerHTML = `<div class="sc-header"><div><b>${dir ? '원장님 캘린더' : '마케팅 공용 캘린더'}</b><small>${monthly ? month.replace('-', '년 ') + '월' : ws.slice(5).replace('-', '.') + ' ~ ' + shiftDate(ws, N - 1).slice(5).replace('-', '.')} · ${dir ? '월~일' : '월~금'}</small></div><div class="sc-mode" role="group" aria-label="캘린더 보기"><button data-mode="week" aria-pressed="${!monthly}">주간</button><button data-mode="month" aria-pressed="${monthly}">월간</button></div></div>`;
     const who = el(`<div class="sc-who" role="group" aria-label="담당자 필터">${['', ...C.PEOPLE.filter(p => !p.director).map(p => p.name)].map(n => `<button type="button" data-who="${esc(n)}" aria-pressed="${state.calWho === n}">${n ? esc(disp(n)) : '전체'}</button>`).join('')}</div>`);
     who.onclick = e => { const b = e.target.closest('[data-who]'); if (!b) return; state.calWho = b.dataset.who; try { localStorage.calWho = state.calWho; } catch {} renderShared(); };
     if (!dir) cal.querySelector('.sc-header').after(who);
@@ -1061,7 +1122,7 @@
     bar.onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; state.sharedCat = b.dataset.cat; renderShared(); };
     if (cats.length) tasks.append(bar);
     const shown = latestRows.filter(r => !state.sharedCat || catOf(r) === state.sharedCat).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
-    [...shown.filter(r => !lateS(r)), ...shown.filter(lateS)].forEach(r => list.append(itemRow(r)));
+    (state.doneLast ? rankSort(shown) : shown).forEach(r => list.append(itemRow(r)));
     tasks.querySelector('.sec-count').textContent = `${[...latest.values()].filter(r => !isDone(r)).length}건 진행`;
     tasks.append(list);
     // 등록할 때 카테고리를 고르거나 새로 입력 → '분류) 내용' 형식으로 저장
@@ -1079,6 +1140,19 @@
   addEventListener('focus', () => loadShared());
 
   const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
+  // 설정: 휴일 관리(관리자=미스타전 코드만 추가·삭제, 나머지는 보기)
+  function renderSettings() {
+    const box = $('settingsHub'), adm = state.admin, y = todayKst().slice(0, 4);
+    const list = Object.values(state.holidays).filter(h => h.date >= y).sort((a, b) => a.date < b.date ? -1 : 1);
+    box.innerHTML = `<div class="dir-head"><h1>설정</h1><p>${adm ? '관리자(미스타전)로 접속했습니다. 휴일을 추가·삭제할 수 있습니다.' : '휴일 추가·삭제는 관리자(미스타전)만 할 수 있습니다. 여기서는 볼 수만 있습니다.'}</p></div>
+      <section class="sec"><h3>휴일 관리 <small class="sec-count">${list.length}일</small></h3><p class="muted">공휴일은 Google 캘린더에서 자동으로 가져옵니다(노동절 제외). 회사 휴무일만 직접 추가하세요.</p>
+      ${adm ? '<form class="hol-add"><input type="date" required aria-label="날짜"><input placeholder="이름 (예: 창립기념일)" aria-label="휴일 이름" maxlength="40"><button class="primary">추가</button></form>' : ''}
+      <ul class="hol-list">${list.map(h => `<li><span>${h.date.slice(2).replace(/-/g, '.')} (${WD[new Date(h.date + 'T00:00:00').getDay()]})</span><b>${esc(h.name)}</b>${h.source === 'manual' && adm ? `<button type="button" data-date="${h.date}" aria-label="${esc(h.name)} 삭제">${icon('x', 14)}</button>` : `<small>${h.source === 'manual' ? '회사 휴무' : '공휴일'}</small>`}</li>`).join('')}</ul></section>
+      <section class="sec"><h3>메뉴</h3><p class="muted">사이드바 아래 '메뉴 순서 편집'으로 대메뉴 순서를 바꿀 수 있습니다(브라우저마다 저장).</p></section>`;
+    const edit = async body => { try { setHolidays((await api.post(body)).holidays); state.dates = workDates(C.DAYS); renderSettings(); render(); } catch (e) { toast(e.message); } };
+    const f = box.querySelector('.hol-add'); if (f) f.onsubmit = e => { e.preventDefault(); const [d, n] = f.querySelectorAll('input'); edit({ action: 'holidayAdd', date: d.value, name: n.value }); };
+    box.querySelector('.hol-list').onclick = e => { const b = e.target.closest('[data-date]'); if (b) edit({ action: 'holidayDelete', date: b.dataset.date }); };
+  }
   function openHolidays() {
     const dlg = el(`<dialog class="code-dlg hol-dlg" aria-labelledby="holTitle"><h2 id="holTitle">휴일 관리</h2><p>공휴일은 Google 캘린더에서 자동으로 가져옵니다. 회사 휴무일만 직접 추가하세요.</p>
       <form class="hol-add"><input type="date" required aria-label="날짜"><input placeholder="이름 (예: 창립기념일)" aria-label="휴일 이름" maxlength="40"><button class="primary">추가</button></form><ul class="hol-list"></ul><button type="button" class="hol-close">닫기</button></dialog>`);
@@ -1092,12 +1166,26 @@
     dlg.onclose = () => dlg.remove();
     document.body.append(dlg); paint(); dlg.showModal();
   }
+  // 빠르게 보이기: 마지막으로 받은 데이터를 브라우저에 두고 먼저 그린 뒤, 서버 응답이 오면 바뀐 것만 다시 그린다
+  const cacheGet = k => { try { return JSON.parse(localStorage['c:' + k] || 'null'); } catch { return null; } };
+  const cacheSet = (k, v) => { try { localStorage['c:' + k] = JSON.stringify(v); } catch {} };
+  function applyBoot(j) {
+    setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.leaves = j.leaves || [];
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin;
+  }
+  async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
+    const c = cacheGet('boot'); if (c) applyBoot(c);
+    try { const j = await api.get({ action: 'boot' }); applyBoot(j); cacheSet('boot', j); }
+    catch { if (!c) await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); loadDirector(); loadTags(); loadLeaves(); } // 옛 서버
+    paintDirBadge(); if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
+    if (state.view === 'home') renderHome(); if (state.view === 'team') renderTeam();
+  }
   async function load() {
-    if (!state.holidays) { state.holidays = {}; await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); } // 옛 서버면 빈 목록
+    if (!state.holidays) { state.holidays = {}; await boot(); }
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
     renderPeople(); loadShared();
     $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;
-    if (state.person !== C.DEFAULT_PERSON && !(await checkBackend())) {
+    if (false) { // 옛 서버(v1) 확인은 더 이상 필요 없음
       state.rows = []; renderDatestrip(); $('timeline').innerHTML = '';
       $('report').innerHTML = `<div class="empty-note"><b>${esc(disp(state.person))}</b>님 시트는 연결됐지만 Apps Script가 옛 버전입니다.<br><small>apps-script/Code.gs 를 붙여넣고 새 버전으로 재배포하면 열립니다.</small></div>`;
       return;
@@ -1108,13 +1196,18 @@
       return;
     }
     const asked = state.person;
-    $('report').innerHTML = '<div class="empty-note">불러오는 중…</div>';
-    try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return; state.rows = rows; }
+    const ck = `rows:${state.person}:${state.dates[0]}`, cached = cacheGet(ck);
+    if (cached) { state.rows = cached; render(); } else $('report').innerHTML = '<div class="empty-note">불러오는 중…</div>';
+    try { const rows = (await api.get({ from: state.dates[0], to: state.dates[state.dates.length - 1] })).rows; if (asked !== state.person) return;
+      cacheSet(ck, rows); if (cached && JSON.stringify(cached) === JSON.stringify(rows)) { afterLoad(asked); return; } state.rows = rows; }
     catch (e) { $('report').innerHTML = `<div class="empty-note">데이터를 불러오지 못했습니다.<br><small>${esc(e.message)}</small><br><small>config.js 의 API_URL 과 Apps Script 배포(액세스: 모든 사용자)를 확인하세요.</small></div>`; return; }
-    render();
+    render(); afterLoad(asked);
+  }
+  function afterLoad(asked) {
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
-    api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; if (asked === state.person) renderReport(); }).catch(() => {});
+    const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
+    api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
     api.get({ action: 'calendar' }).then(j => { state.calendar = parseCalendar(j.grid); if (state.view === 'daily') renderReport(); }).catch(() => {});
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
@@ -1280,7 +1373,7 @@
         ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
       </section>
       <div class="home-cards">
-        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="director">숙제 보기 →</button></section>
+        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="sheet">원장님 워크시트 →</button></section>
         <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="team">마케팅 공용</button></div></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
@@ -1317,7 +1410,7 @@
         col.append(el(`<h4>${label} <small class="sec-count">${list.filter(isDone).length}/${list.length}</small></h4>`));
         list.forEach(r => {
           const row = el(`<div class="row${isDone(r) ? ' done' : ''}"></div>`);
-          row.append(statusButton(r, code => { r.status = code; save([r], p.name); renderTeam(); }));
+          row.append(p.name === state.dir.me ? statusButton(r, code => { r.status = code; save([r], p.name); renderTeam(); }) : el(`<span class="pst" title="${esc(disp(p.name))}님만 바꿀 수 있어요">${statusIcon(statusCode(r.status))}</span>`));
           const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
           row.append(el(`<div class="tx">${rest ? `<span class="cat" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div>`));
           col.append(row);
@@ -1455,8 +1548,5 @@
   $('jandiLink').href = C.JANDI_URL || 'https://www.jandi.com/';
 
   load();
-  loadDirector();
-  loadTags();
-  loadLeaves();
   setView('home');
 })();

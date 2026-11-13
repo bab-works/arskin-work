@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 26, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 27, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -39,6 +39,9 @@ function doGet(e) {
   if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
+  if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
+    try { var me = memberFor_(p.code); return json({ me: me, admin: me === ADMIN, holidays: holidays_(false), tags: tagList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+  }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
@@ -68,9 +71,12 @@ function doPost(e) {
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
-  if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('휴일은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
   if (!sheetIdFor(who)) return json({ error: 'no sheet for ' + who });
+  var writer = memberFor_(body.code);
+  var reelsSync = writer === DIRECTOR && body.action === 'upsert' && (body.rows || []).every(function (o) { return o.section === '릴스업무'; });
+  if (who !== writer && who !== '공통' && who !== DIRECTOR && !reelsSync) return json({ error: '다른 사람의 일일보고는 볼 수만 있습니다' });
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -631,6 +637,7 @@ function testJandi() { var r = jandiSend_('✅ 아르스킨 대시보드 잔디 
 
 /* ---------- 원장님 숙제: 마케터가 원장님께 드리는 숙제. 마케터 모두 읽기·쓰기, 승인·거절은 원장님만 ---------- */
 var DIRECTOR = '원장님';
+var ADMIN = '전성환'; // 관리자(미스타전) 접속 코드: 설정(휴일 관리) 편집
 var DIR_HEADER = ['id', '생성일', '작성자', '내용', '상태', '마감', '결정일', '완료일', '메모', '수정시각']; // 상태: pending|approved|rejected|done
 var DIR_STATUS = ['pending', 'approved', 'rejected', 'done'];
 function directorSheet_() {
@@ -676,7 +683,7 @@ function directorEdit_(body, me) {
 /* ---------- 릴스업무 ↔ 영상 기획: 아직 촬영 안 한 기획을 가져오고, 촬영하면 기획 시트에 ⭕ 표시 ---------- */
 // 기획 시트 열: J 타겟팅, K 방식, L 영상 리스트(제목), M 촬영 여부, N 업로드완료, O 레퍼런스, P 업로드 영상
 function reelsPlan_() { // 기각·업로드 끝난 것 제외. shot: 촬영 표시(⭕) 여부, type: 방식(숙제/내부촬영)
-  try { fillUploadLinks_(); } catch (e) {}
+  try { var ch = CacheService.getScriptCache(); if (!ch.get('fill-links')) { ch.put('fill-links', '1', 600); fillUploadLinks_(); } } catch (e) {} // 10분에 한 번만(느려지지 않게)
   return contentPlanRead(SpreadsheetApp.openById(CALENDAR_SS_ID)).filter(function (r) {
     var v = r.v.map(function (x) { return String(x).trim(); });
     return /[\p{L}\p{N}]/u.test(v[2]) && v[1] !== '기각' && v[3] !== '기각' && !v[4];

@@ -175,6 +175,7 @@ function showPost(id){
 }
 
 // ── 영상 기획 (시트 J:P 열) ──
+var planSel = (function(){ try { return new Set(JSON.parse(localStorage.planSel || '[]')); } catch (e) { return new Set(); } })(); // 노션식: 체크한 상태만 보기, 비면 전체
 var plan = [], planFilter = 'all', live = false, adding = false, planSort = { k: '', dir: '' };
 var PST = { wait:'촬영 대기', shot:'촬영 완료', up:'업로드 완료', rej:'기각' };
 function pstat(v){ return v[1].trim()==='기각' || v[3].trim()==='기각' ? 'rej' : v[4].trim() ? 'up' : v[3].trim()==='⭕' ? 'shot' : 'wait'; }
@@ -202,11 +203,12 @@ function planRow(r){
 function renderPlan(){
   var cnt = {all:plan.length, wait:0, shot:0, up:0, rej:0}; plan.forEach(function(r){ cnt[pstat(r.v)]++; });
   $('planChips').innerHTML = [['all','전체'],['wait',PST.wait],['shot',PST.shot],['up',PST.up],['rej',PST.rej]].map(function(d){
-    return '<button class="chip" data-pf="'+d[0]+'" aria-pressed="'+(planFilter===d[0])+'">'+d[1]+' <b>'+cnt[d[0]]+'</b></button>'; }).join('');
+    var on = d[0]==='all' ? !planSel.size : planSel.has(d[0]);
+    return '<button class="chip'+(d[0]==='all'?'':' chk')+'" data-pf="'+d[0]+'" aria-pressed="'+on+'">'+(d[0]==='all'?'':'<i class="box" aria-hidden="true">'+(on?'✓':'')+'</i>')+d[1]+' <b>'+cnt[d[0]]+'</b></button>'; }).join('');
   // 필터: 상태 칩 + 타겟팅 + 방식 + 검색어, 정렬: 머리글 클릭
   var ft = $('pfTarget').value, fy = $('pfType').value, q = $('pfQ').value.trim().toLowerCase();
   var match = function(val, f){ val = String(val).trim(); return !f || (f === '-' ? !val : val === f); };
-  var rows = plan.filter(function(r){ return (planFilter==='all' || pstat(r.v)===planFilter) && match(r.v[0], ft) && match(r.v[1], fy) && (!q || r.v.join(' ').toLowerCase().indexOf(q) >= 0); });
+  var rows = plan.filter(function(r){ return (!planSel.size || planSel.has(pstat(r.v))) && match(r.v[0], ft) && match(r.v[1], fy) && (!q || r.v.join(' ').toLowerCase().indexOf(q) >= 0); });
   if (planSort.k) {
     var ORD = { wait:0, shot:1, up:2, rej:3 }, key = function(r){ return planSort.k === 'st' ? ORD[pstat(r.v)] : planSort.k === '4' ? toISO(r.v[4]) || '9999' : String(r.v[+planSort.k]).trim() || '\uffff'; };
     rows = rows.slice().sort(function(a, b){ var x = key(a), y = key(b), c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'ko'); return planSort.dir === 'desc' ? -c : c; });
@@ -240,7 +242,7 @@ $('planBody').addEventListener('click', function(e){
 // 정렬·필터
 root.querySelectorAll('.th-sort').forEach(function(b){ b.onclick = function(){ var k = b.dataset.sort; planSort = planSort.k !== k ? { k: k, dir: 'asc' } : planSort.dir === 'asc' ? { k: k, dir: 'desc' } : { k: '', dir: '' }; renderPlan(); }; });
 ['pfTarget','pfType'].forEach(function(id){ $(id).onchange = renderPlan; }); $('pfQ').oninput = renderPlan;
-$('pfReset').onclick = function(){ $('pfTarget').value = ''; $('pfType').value = ''; $('pfQ').value = ''; planFilter = 'all'; planSort = { k: '', dir: '' }; renderPlan(); };
+$('pfReset').onclick = function(){ $('pfTarget').value = ''; $('pfType').value = ''; $('pfQ').value = ''; planFilter = 'all'; planSel.clear(); try { localStorage.planSel = '[]'; } catch (er) {} planSort = { k: '', dir: '' }; renderPlan(); };
 // 삭제 → 휴지통
 $('planBody').addEventListener('click', function(e){
   var d = e.target.closest('[data-del]'); if (!d || saving) return;
@@ -291,7 +293,7 @@ function render(){ if (view==='plan') return renderPlan(); $('month').textConten
 root.addEventListener('click', function(e){
   const preview = e.target.closest('[data-preview]'); if (preview) { const frame = window.document.createElement('iframe'); frame.className = 'embed'; frame.title = 'Instagram 게시물 미리보기'; frame.loading = 'lazy'; frame.referrerPolicy = 'strict-origin-when-cross-origin'; frame.src = 'https://www.instagram.com/p/' + encodeURIComponent(preview.dataset.preview) + '/embed/captioned/'; preview.parentElement.replaceWith(frame); return; }
   var t = e.target.closest('[data-id]'); if (t && t.dataset.id!=='') { e.preventDefault(); return showPost(+t.dataset.id); }
-  var pf = e.target.closest('[data-pf]'); if (pf) { planFilter = pf.dataset.pf; return renderPlan(); }
+  var pf = e.target.closest('[data-pf]'); if (pf) { var k = pf.dataset.pf; if (k === 'all') planSel.clear(); else if (planSel.has(k)) planSel.delete(k); else planSel.add(k); try { localStorage.planSel = JSON.stringify([...planSel]); } catch (er) {} return renderPlan(); }
   var f = e.target.closest('[data-f]'); if (f) { filter = f.dataset.f; render(); }
 });
 $('prev').onclick = function(){ var d=new Date(cur.y,cur.m-1,1); cur={y:d.getFullYear(),m:d.getMonth()}; render(); };
