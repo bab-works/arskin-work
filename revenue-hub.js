@@ -46,7 +46,7 @@
     const parsed = await fileParse(file), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
     parsed.updated = file.name;
     // 먼저 화면에 보여주고(저장 실패해도 볼 수 있게), 그다음 보관 저장
-    generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; hist[month] = parsed; render();
+    generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; hist[month] = parsed; render(); try { localStorage.rvLast = JSON.stringify({ m: month, d: parsed }); } catch {}
     let adminKey = ''; try { adminKey = localStorage.revenueAdminKey || ''; } catch {}
     if (!adminKey) adminKey = (prompt(`${parsed.month}월 매출을 보관하려면 업로드 토큰을 입력하세요 (관리자에게 받은 값)\n취소하면 지금 화면에서만 보입니다.`) || '').trim();
     if (!adminKey) return rvAlert(`${parsed.month}월 매출을 화면에만 띄웠어요`, '업로드 토큰을 넣지 않아 보관하지 않았어요. 새로고침하면 사라집니다. 토큰은 스크립트 속성 REVENUE_ADMIN_KEYS 에 넣은 값이에요.');
@@ -59,7 +59,21 @@
     if (btn) { const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', open); return; }
     if (!e.target.closest('.rv-menu') || e.target.closest('button,a')) { menu.hidden = true; document.querySelector('.rv-menu-btn')?.setAttribute('aria-expanded', 'false'); }
   });
-  window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) load(); } }, refresh() { if (sourceMode) load(); } };
+  // 가장 최신 보관 달을 바로 보여준다(이 기기에 마지막으로 본 달은 즉시, 서버 목록은 뒤에서 확인)
+  async function openNewest() {
+    try {
+      months = (await archive('list')).months || []; const newest = months.slice().sort().pop(); if (!newest) return;
+      const cur = data ? `${data.year}-${String(data.month).padStart(2, '0')}` : '';
+      if (cur && newest <= cur && shownMonth === cur) { render(); return; }
+      if (cur && newest < cur) return;
+      const r = hist[newest] || (await archive('get', { month: newest })).data; hist[newest] = r;
+      generation++; sourceMode = ''; data = r; shownMonth = newest; selectedDay = r.daily.at(-1)?.day; render();
+      try { localStorage.rvLast = JSON.stringify({ m: newest, d: r }); } catch {}
+    } catch {}
+  }
+  window.RevenueHub = { open() { host = $('revenueHub'); if (!host.innerHTML) { renderLocked(); if (savedKey()) {
+    try { const c = JSON.parse(localStorage.rvLast || 'null'); if (c?.d) { data = c.d; shownMonth = c.m; hist[c.m] = c.d; selectedDay = data.daily.at(-1)?.day; render(); } } catch {}
+    load(); openNewest(); } } }, refresh() { if (sourceMode) load(); } };
   function renderLocked(message = '') {
     data = null; host.innerHTML = header() + `<section class="rv-unlock"><div class="rv-lock-icon" aria-hidden="true">▤</div><h2>월간 매출 요약</h2><p>연결된 Google 시트의 월간요약을 불러옵니다.</p><form class="rv-pass" id="rvPassForm"><label for="rvPass">매출 비밀번호</label><input type="password" id="rvPass" autocomplete="current-password" required><button class="primary" id="rvConnect">불러오기</button></form><p class="rv-message" id="rvMessage" role="status">${esc(message)}</p><details class="rv-import"><summary>월간요약 CSV 파일로 보기</summary><p>원본 월간요약 탭에서 다운로드한 CSV를 이 기기에서 분석합니다.</p><label for="rvFile">월간요약 CSV 선택</label><input id="rvFile" type="file" accept=".xlsx,.xls,.csv"></details></section>`;
     $('rvFile').onchange = async e => {
@@ -87,6 +101,8 @@
       if (requestGeneration !== generation) return;
       sourceMode = 'sheet';
       result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date());
+      const liveM = `${result.year}-${String(result.month).padStart(2, '0')}`;
+      if (shownMonth && shownMonth > liveM) { loadMonths(); return; } // 더 최신 보관 달을 보고 있으면 시트(지난달)로 덮지 않음
       data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render();
       loadMonths().then(async () => { const live = `${result.year}-${String(result.month).padStart(2, '0')}`, newest = months.slice().sort().pop(); if (newest && newest > live && !shownMonth && requestGeneration === generation) { try { const r = hist[newest] || (await archive('get', { month: newest })).data; hist[newest] = r; generation++; sourceMode = ''; data = r; shownMonth = newest; selectedDay = r.daily.at(-1)?.day; render(); } catch {} } });
     } catch (error) {
