@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 18, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 19, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -55,6 +55,7 @@ function doPost(e) {
   }
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
+  if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
@@ -626,15 +627,15 @@ function reelsPlan_() {
     return v[2] && v[1] !== '기각' && v[3] !== '기각' && v[3] !== '⭕' && !v[4];
   }).map(function (r) { return { row: r.row, title: String(r.v[2]).trim(), kind: String(r.v[0]).trim(), ref: String(r.v[5]).trim() }; });
 }
-function reelsShot_(row) {
+function reelsShot_(row, mark) { // mark: '⭕'(촬영, 기본) 또는 '기각'
   row = Number(row);
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     var sh = contentPlanSheet(SpreadsheetApp.openById(CALENDAR_SS_ID));
     if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('기획 행 번호가 올바르지 않습니다');
     var cell = sh.getRange(row, 13);
-    if (String(cell.getDisplayValue()).trim()) return false; // 이미 표시돼 있으면 건드리지 않음
-    cell.setValue('⭕'); SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    if (String(cell.getDisplayValue()).trim() && mark !== '기각') return false; // 촬영 표시는 비어 있을 때만
+    cell.setValue(mark || '⭕'); SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
     return true;
   } finally { lock.releaseLock(); }
 }

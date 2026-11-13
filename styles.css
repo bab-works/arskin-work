@@ -566,3 +566,10 @@ html.printing .memo-sec{display:none!important}
 .dir-head .nudge-btn,.dir-head .nag-perm{margin-top:4px}
 .home-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .nag-dlg{width:min(460px,calc(100vw - 32px))}.nag-dlg h2{font-size:19px;line-height:1.45}
+.reel-steps .reel-rej{background:none;color:#c92a2a;border:1px solid #f3c2c2}
+.reel-steps .reel-rej:hover{background:#fff0f0}
+/* K2: 타임라인 30분 단위, 끌어 놓을 때 시간 표시 */
+.tl-hour::after{content:"";position:absolute;left:44px;right:0;top:50%;border-top:1px dashed #edf0f3}
+.tl-block.ghost{background:rgba(49,130,246,.14);border:2px dashed var(--blue);color:var(--blue-dark);z-index:5}
+.tl-block.ghost small{display:block;font-weight:700;color:var(--blue-dark)}
+.tl-block.tl-drop{left:44px;right:2px}

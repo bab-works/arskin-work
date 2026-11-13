@@ -315,9 +315,18 @@
     ghost.classList.add('drag-ghost'); Object.assign(ghost.style, { width: box.width + 'px', left: box.left + 'px', top: box.top + 'px' });
     ph.style.height = box.height + 'px'; node.after(ph); node.classList.add('dragging'); document.body.append(ghost);
     const dy = e.clientY - box.top, dx = e.clientX - box.left;
+    let tlAt = null; const tlGhost = el('<div class="tl-block ghost tl-drop"><small></small></div>');
     const move = ev => {
       ghost.style.top = ev.clientY - dy + 'px'; ghost.style.left = ev.clientX - dx + 'px';
       ghost.hidden = true; const under = document.elementFromPoint(ev.clientX, ev.clientY); ghost.hidden = false;
+      // 타임라인 위: 1시간 블록 미리보기 (원래 업무는 제자리에 남음)
+      const tl = under?.closest('.tl-grid');
+      if (tl) {
+        const rc = tl.getBoundingClientRect(), s = Math.min(yToMin(ev.clientY - rc.top, tl), H1 * 60 - 60);
+        tlAt = s; if (!tlGhost.isConnected) tl.append(tlGhost); place(tlGhost, toTime(s), toTime(s + 60));
+        tlGhost.firstChild.textContent = `${toTime(s)} ~ ${toTime(s + 60)} · ${r.text}`; return;
+      }
+      tlAt = null; tlGhost.remove();
       const target = under?.closest('.task-list .row[data-id], .task-list .project-card[data-id]');
       const list = under?.closest('.task-list');
       if (target && target !== node) { const t = target.getBoundingClientRect(); target[ev.clientY < t.top + t.height / 2 ? 'before' : 'after'](ph); }
@@ -327,6 +336,11 @@
     const up = () => {
       removeEventListener('pointermove', move); removeEventListener('pointerup', up);
       ghost.remove(); node.classList.remove('dragging');
+      if (tlAt != null) { // 타임라인에 놓음: 업무 이름으로 1시간 블록 추가, 목록은 그대로
+        tlGhost.remove(); ph.remove();
+        addRow({ date: state.sel, section: '타임라인', start: toTime(tlAt), end: toTime(tlAt + 60), text: r.text.replace(CAT_RE, '') || r.text });
+        toast(`${toTime(tlAt)}~${toTime(tlAt + 60)} 타임라인에 넣었습니다`); return render();
+      }
       const list = ph.closest('.task-list[data-section]'); if (!list) { ph.remove(); return; }
       ph.replaceWith(node);
       const key = list.dataset.section, col = list.dataset.col, ids = [...list.querySelectorAll(':scope > [data-id]')].map(n => n.dataset.id);
@@ -362,6 +376,14 @@
       };
       box.append(b);
     });
+    const rej = el('<button type="button" class="reel-rej" title="기각: 내 목록에서 빼고 영상 기획에 기각 표시">기각</button>');
+    rej.onclick = () => {
+      if (!confirm(`"${r.text}"을(를) 기각할까요? 영상 기획 시트에도 기각으로 표시됩니다.`)) return;
+      api.post({ action: 'reelsReject', row: String(r.col).slice(5) }).then(() => toast('기각했습니다')).catch(e => toast('기각 표시 실패: ' + e.message));
+      state.reelPlan = state.reelPlan.filter(p => 'plan:' + p.row !== r.col);
+      if (virtual) render(); else { deleteRows([r]); render(); }
+    };
+    box.append(rej);
     row.append(box);
     if (!virtual) { const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del); }
     return row;
@@ -443,8 +465,9 @@
 
   /* ---------- timeline ---------- */
   const PX = 48; // 1시간 높이
+  const STEP = 30; // 타임라인 기본 단위(분)
   const [H0, H1] = C.TIMELINE;
-  const yToMin = (y, g) => Math.max(H0 * 60, Math.min(H1 * 60, Math.round((H0 * 60 + (y / g.clientHeight) * (H1 - H0) * 60) / 15) * 15));
+  const yToMin = (y, g) => Math.max(H0 * 60, Math.min(H1 * 60, Math.floor((H0 * 60 + (y / g.clientHeight) * (H1 - H0) * 60) / STEP) * STEP));
   function place(b, start, end) {
     const s = toMin(start), e = toMin(end);
     b.style.top = ((s - H0 * 60) / 60 * PX) + 'px'; b.style.height = Math.max(14, (e - s) / 60 * PX - 2) + 'px';
@@ -483,15 +506,16 @@
     grid.onpointerdown = e => { // 빈 곳에서 드래그 → 새 블록 (마우스만; 터치는 + 블록 버튼)
       if (e.pointerType !== 'mouse' || e.target.closest('.tl-block')) return;
       const rect = grid.getBoundingClientRect(); const m0 = yToMin(e.clientY - rect.top, grid);
-      const ghost = el('<div class="tl-block ghost"></div>'); grid.append(ghost); grid.setPointerCapture(e.pointerId);
+      const ghost = el('<div class="tl-block ghost"><small></small></div>'); grid.append(ghost); grid.setPointerCapture(e.pointerId);
       let m1 = m0;
-      const upd = ev => { m1 = yToMin(ev.clientY - rect.top, grid); place(ghost, toTime(Math.min(m0, m1)), toTime(Math.max(m0, m1, Math.min(m0, m1) + 15))); };
+      const span = () => { const s = Math.min(m0, m1), en = Math.min(H1 * 60, Math.max(m0, m1) + STEP); return [s, en]; }; // 누른 칸부터 끝 칸까지(30분 단위)
+      const upd = ev => { m1 = yToMin(ev.clientY - rect.top, grid); const [s, en] = span(); place(ghost, toTime(s), toTime(en)); ghost.firstChild.textContent = `${toTime(s)} ~ ${toTime(en)} · ${(en - s) / 60}시간`; };
       upd(e);
       grid.onpointermove = upd;
       grid.onpointerup = () => {
-        grid.onpointermove = grid.onpointerup = null; ghost.remove();
-        const s = Math.min(m0, m1), en = Math.max(m0, m1) > s ? Math.max(m0, m1) : s + 30;
-        openEditor({ date: state.sel, section: '타임라인', start: toTime(s), end: toTime(Math.min(en, H1 * 60)), text: '' }, null, true);
+        grid.onpointermove = grid.onpointerup = null;
+        const [s, en] = span(), at = ghost.getBoundingClientRect(); ghost.remove();
+        openEditor({ date: state.sel, section: '타임라인', start: toTime(s), end: toTime(en), text: '' }, { getBoundingClientRect: () => at }, true);
       };
     };
     box.append(grid);
@@ -503,9 +527,9 @@
     const y0 = e.clientY, s0 = toMin(r.start), dur = toMin(r.end) - s0;
     b.setPointerCapture(e.pointerId);
     b.onpointermove = ev => {
-      const dm = Math.round(((ev.clientY - y0) / PX * 60) / 15) * 15;
+      const dm = Math.round(((ev.clientY - y0) / PX * 60) / STEP) * STEP;
       if (Math.abs(ev.clientY - y0) > 3) b.moved = true;
-      const s = Math.max(H0 * 60, Math.min(H1 * 60 - dur, s0 + dm)); b.dataset.s = s; place(b, toTime(s), toTime(s + dur));
+      const s = Math.max(H0 * 60, Math.min(H1 * 60 - dur, s0 + dm)); b.dataset.s = s; place(b, toTime(s), toTime(s + dur)); b.querySelector('small').textContent = `${toTime(s)}~${toTime(s + dur)}`;
     };
     b.onpointerup = () => {
       b.onpointermove = b.onpointerup = null;
