@@ -132,13 +132,18 @@
   const prevMonth = () => { const d = new Date(Date.UTC(data.year, data.month - 2, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
   function kpi(label, value, note, sp, dl = '') { return `<article class="rv-tile"><div class="rv-tile-top"><span>${label}</span>${dl}</div><strong>${value}</strong>${sp || ''}<small>${note}</small></article>`; }
   // 진행 중인 달(마지막 기록일이 말일보다 3일 이상 앞): 합계 대신 기록일 평균으로 전월과 비교
+  // 전월 같은 기간(1~N일) 합계: 진행 중인 달 비교용
+  const samePeriod = () => { const N = Math.max(0, ...data.daily.filter(d => d.count > 0).map(d => d.day)), pd = hist[prevMonth()]?.daily; if (!N || !pd) return null;
+    const until = pd.filter(d => d.day <= N); if (!until.length || until.some(d => d.total == null)) return null;
+    return { N, total: until.reduce((a, d) => a + d.total, 0), count: until.reduce((a, d) => a + (d.count || 0), 0) }; };
   const partial = () => { const last = Math.max(0, ...data.daily.filter(d => d.count > 0).map(d => d.day)); return last && last < data.daily.length - 2; };
   function tilesHTML(top, top5, abroad) {
     const m = data.metric, P = hist[prevMonth()]?.metric, days = data.daily, part = partial();
     const cum = days.map(d => d.cumulative), dayTot = days.map(d => d.total), dayCnt = days.map(d => d.count), avgPer = days.map(d => d.count ? d.total / d.count : null);
-    const dTot = part ? delta(m.averageRecordedDay, P?.averageRecordedDay) : delta(m.total, P?.total), dCnt = part ? delta(m.count / (m.recordedDays || 1), P && P.count / (P.recordedDays || 1)) : delta(m.count, P?.count);
+    const sp = part ? samePeriod() : null;
+    const dTot = sp ? delta(m.total, sp.total) : part ? delta(m.averageRecordedDay, P?.averageRecordedDay) : delta(m.total, P?.total), dCnt = sp ? delta(m.count, sp.count) : part ? delta(m.count / (m.recordedDays || 1), P && P.count / (P.recordedDays || 1)) : delta(m.count, P?.count);
     return `<section class="rv-tiles">
-        ${kpi('총매출', short(m.total) + '원', `보고 ${fmt(m.count)}건 · ${m.recordedDays}일 기록${part ? ' · 진행 중(일평균 비교)' : ''}`, spark(cum), dTot)}
+        ${kpi('총매출', short(m.total) + '원', `보고 ${fmt(m.count)}건 · ${m.recordedDays}일 기록${sp ? ` · 전월 1~${sp.N}일 대비` : part ? ' · 진행 중(일평균 비교)' : ''}`, spark(cum), dTot)}
         ${kpi('보고 건수', fmt(m.count) + '건', '월간 누적', spark(dayCnt, colors[2]), dCnt)}
         ${kpi('객단가', short(m.averageRecord) + '원', '총매출 ÷ 보고 건수', spark(avgPer, colors[5]), delta(m.averageRecord, P?.averageRecord))}
         ${kpi('기록일 평균', short(m.averageRecordedDay) + '원', '총매출 ÷ 기록일', spark(dayTot, colors[1]), delta(m.averageRecordedDay, P?.averageRecordedDay))}
@@ -187,7 +192,9 @@
     const m = data.metric, out = [], P = hist[prevMonth()]?.metric;
     const wd = Array.from({ length: 7 }, () => ({ t: 0, n: 0 })); data.daily.forEach(d => { if (d.count > 0 && d.total != null) { wd[d.weekday].t += d.total; wd[d.weekday].n++; } });
     const avgs = wd.map((w, i) => ({ i, a: w.n ? w.t / w.n : 0 })).filter(x => x.a), best = avgs.slice().sort((a, b) => b.a - a.a)[0], worst = avgs.slice().sort((a, b) => a.a - b.a)[0];
-    if (P?.total && partial()) out.push(`진행 중인 달이라 <b>기록일 평균</b>으로 비교하면 전월 대비 <b>${m.averageRecordedDay >= P.averageRecordedDay ? '+' : ''}${((m.averageRecordedDay / P.averageRecordedDay - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b>예요.`);
+    const sp = partial() ? samePeriod() : null;
+    if (sp) out.push(`전월 같은 기간(1~${sp.N}일) 매출 <b>${short(sp.total)}원</b> 대비 이번 달 <b>${short(m.total)}원</b> — <b>${m.total >= sp.total ? '+' : ''}${((m.total / sp.total - 1) * 100).toFixed(1)}%</b>, 건수는 ${fmt(sp.count)}건 → ${fmt(m.count)}건이에요.`);
+    else if (P?.total && partial()) out.push(`진행 중인 달이라 <b>기록일 평균</b>으로 비교하면 전월 대비 <b>${m.averageRecordedDay >= P.averageRecordedDay ? '+' : ''}${((m.averageRecordedDay / P.averageRecordedDay - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b>예요.`);
     else if (P?.total) out.push(`전월 대비 총매출 <b>${m.total >= P.total ? '+' : ''}${((m.total / P.total - 1) * 100).toFixed(1)}%</b>, 객단가 <b>${m.averageRecord >= P.averageRecord ? '+' : ''}${((m.averageRecord / P.averageRecord - 1) * 100).toFixed(1)}%</b> — ${m.count >= P.count ? '방문(보고) 건수' : '객단가'} 쪽이 성장을 이끌었어요.`);
     if (best && worst && best.i !== worst.i) out.push(`<b>${'일월화수목금토'[best.i]}요일</b> 일평균 매출이 가장 높고(${won(best.a)}), <b>${'일월화수목금토'[worst.i]}요일</b>이 가장 낮아요(${won(worst.a)}). 약한 요일에 이벤트·리마인드 발송을 배치해 보세요.`);
     if (m.total) out.push(`상위 5일이 매출의 <b>${pct(top5 / m.total)}</b>를 차지해요. ${top5 / m.total > .4 ? '특정 날 쏠림이 커서 예약 분산이 필요해요.' : '매출이 고르게 분포돼 있어요.'}`);

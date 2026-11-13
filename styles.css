@@ -1120,3 +1120,5 @@ details.fold[open]>summary{margin-bottom:8px}
 /* 넓은 화면 정렬: 위쪽 날짜·도구 줄을 본문 폭에 맞추고, 매출표도 가운데 */
 @media(min-width:901px){.topbar{width:100%;max-width:calc(var(--main-w,800px) + clamp(340px,24vw,420px) + 16px);margin-inline:auto;box-sizing:border-box}}
 #revenueHub{margin-inline:auto}
+html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html.rev-only .jandi-link{display:none!important}
+.tl-block small{white-space:pre-line;line-height:1.35}

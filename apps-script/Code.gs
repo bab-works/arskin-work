@@ -31,6 +31,10 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
+  if (REVENUE_ONLY.indexOf(memberFor_(p.code)) >= 0) { // 매출표 전용 계정: 다른 데이터는 읽지 못함
+    if (p.action === 'boot') return json({ me: memberFor_(p.code), admin: false, revenueOnly: true, deny: PERM_KEYS.filter(function (k) { return k !== 'revenue'; }), holidays: holidays_(false), tags: [], deletedTags: [], leaves: [], tasks: [] });
+    if (p.action !== 'ping') return json({ error: '매출표 전용 계정입니다' });
+  }
   if (p.action === 'ping') return json({ v: 28, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
@@ -53,6 +57,7 @@ function doGet(e) {
 function doPost(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
+  if (REVENUE_ONLY.indexOf(memberFor_(body.code)) >= 0 && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
   if (body.action === 'revenueArchive') { try { return json(revenueArchive_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenue') { try { return json(revenueData_(body.viewKey)); } catch (err) { return json({ error: err.message }); } }
@@ -908,11 +913,13 @@ function tagTrash_(action, tag, me) {
 
 // 메뉴 권한: 관리자가 사람별로 숨길 메뉴를 고른다. 스크립트 속성 PERMS = {"이름":["revenue","team:check",...]}
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
+// 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
+var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'revenue'];
 function permsAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('PERMS') || '{}'); } catch (e) { return {}; } }
 function memberNames_() {
   var map = {}; try { map = JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESS_CODES') || '{}'); } catch (e) {}
-  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n]) return false; seen[n] = 1; return true; }).concat(Object.keys(map).some(function (k) { return String(map[k]) === DIRECTOR; }) ? [] : [DIRECTOR]).filter(function (n, i, a) { return a.indexOf(n) === i; }); // 코드는 내보내지 않고 이름만, 원장님은 항상 포함
+  var seen = {}; return Object.keys(map).map(function (k) { return String(map[k]); }).filter(function (n) { if (n === ADMIN || seen[n] || REVENUE_ONLY.indexOf(n) >= 0) return false; seen[n] = 1; return true; }).concat(Object.keys(map).some(function (k) { return String(map[k]) === DIRECTOR; }) ? [] : [DIRECTOR]).filter(function (n, i, a) { return a.indexOf(n) === i; }); // 코드는 내보내지 않고 이름만, 원장님은 항상 포함
 }
 function permsSave_(perms) {
   var names = memberNames_(), out = {};

@@ -810,11 +810,13 @@
       }
     }
     (isDirector() ? state.teamTL : state.shared).filter(r => r.section === '일정' && r.date === state.sel && r.start && r.end).forEach(r => {
-      const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정 ${esc(r.start)}~${esc(r.end)}">${esc(r.text)}<small>공통 · ${esc(r.start)}~${esc(r.end)}</small></div>`);
+      const b = el(`<div class="tl-block tl-shared${isDone(r) ? ' done' : ''}" title="공통 일정 ${esc(r.start)}~${esc(r.end)}">${esc(r.text)}<small>공통 · ${esc(r.start)}
+~${esc(r.end)}</small></div>`);
       place(b, r.start, r.end); b.onclick = () => isDirector() ? bigPeek(`공통 · ${r.start}~${r.end}`, r.text) : openEditor(r, b); grid.append(b);
     });
     rowsFor(state.sel, '타임라인').forEach(r => {
-      const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}">${esc(r.text)}<small>${esc(r.start)}~${esc(r.end)}</small></div>`);
+      const c = TL_COLORS[String(r.col).replace('c:', '')], b = el(`<div class="tl-block" title="${esc(r.start)}~${esc(r.end)} ${esc(r.text)}">${esc(r.text)}<small>${esc(r.start)}
+~${esc(r.end)}</small></div>`);
       if (c) Object.assign(b.style, { background: c[0], color: c[1], borderLeft: `3px solid ${c[1]}` });
       place(b, r.start, r.end); b._r = r;
       b.onpointerdown = e => startMove(e, r, b, grid);
@@ -860,7 +862,7 @@
     b.onpointermove = ev => {
       const dm = Math.round(((ev.clientY - y0) / PX * 60) / STEP) * STEP;
       if (Math.abs(ev.clientY - y0) > 3) b.moved = true;
-      const s = Math.max(H0 * 60, Math.min(H1 * 60 - dur, s0 + dm)); b.dataset.s = s; place(b, toTime(s), toTime(s + dur)); b.querySelector('small').textContent = `${toTime(s)}~${toTime(s + dur)}`;
+      const s = Math.max(H0 * 60, Math.min(H1 * 60 - dur, s0 + dm)); b.dataset.s = s; place(b, toTime(s), toTime(s + dur)); b.querySelector('small').textContent = `${toTime(s)}\n~${toTime(s + dur)}`;
     };
     b.onpointerup = () => {
       b.onpointermove = b.onpointerup = null;
@@ -1042,6 +1044,7 @@
   function leaveDirSheet() { state.person = state.prevPerson || C.DEFAULT_PERSON; state.rows = []; state.sel = null; state.sharedAnchor = null; load(); }
 
   function setView(v) {
+    if (state.revOnly && v !== 'revenue') v = 'revenue';
     state.view = v;
     const navV = v === 'daily' && isDirector() ? 'director' : v;
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === navV));
@@ -1310,7 +1313,7 @@
     if (cats.length) tasks.append(bar);
     const shown = latestRows.filter(r => (DONE_TAB ? isDone(r) : !isDone(r) || sortHold.has(r.id)) && (!state.sharedCat || catOf(r) === state.sharedCat)).sort((a, b) => (catOf(a) || '\uffff').localeCompare(catOf(b) || '\uffff', 'ko')); // 분류 없는 업무는 뒤로
     // '완료 업무 접기'도 공통 업무에 적용: 완료한 줄은 숨기고 '완료 N건 보기'
-    const fold = state.collapse && !DONE_TAB && !state.expanded.has('shared:' + SEC); // 완료 탭은 항상 펼쳐서 let hiddenN = 0;
+    const fold = state.collapse && !DONE_TAB && !state.expanded.has('shared:' + SEC); let hiddenN = 0; // 완료 탭은 항상 펼쳐서
     (state.doneLast ? rankSort(shown) : shown).forEach(r => { const n = itemRow(r); if (fold && isDone(r) && !sortHold.has(r.id)) { n.classList.add('collapsed'); hiddenN++; } list.append(n); });
     if (hiddenN) { const m = el(`<button class="more shared-more">… 완료 ${hiddenN}건 보기</button>`); m.onclick = () => { state.expanded.add('shared:' + SEC); renderShared(); }; list.append(m); }
     else if (state.collapse && state.expanded.has('shared:' + SEC) && shown.some(isDone)) { const m = el('<button class="more shared-more">▲ 완료 접기</button>'); m.onclick = () => { state.expanded.delete('shared:' + SEC); renderShared(); }; list.append(m); }
@@ -1340,6 +1343,7 @@
     ['calendar', 'daily', 'director', 'team', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('perm-off', !can('team:' + b.dataset.team)));
     const goKey = { sheet: 'director' }; document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('perm-off', !can(goKey[b.dataset.go] || b.dataset.go)));
+    if (state.revOnly) { if (state.view !== 'revenue') setView('revenue'); return; } // 매출표 전용 계정
     if (state.view && state.view !== 'home' && state.view !== 'settings' && !can(state.view === 'daily' && isDirector() ? 'director' : state.view)) setView('home');
   }
   function renderSettings() {
@@ -1382,7 +1386,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members?.length ? j.members : C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.members = j.members?.length ? j.members : C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
@@ -1395,6 +1399,7 @@
   }
   async function load() {
     if (!state.holidays) { state.holidays = {}; await boot(); }
+    if (state.revOnly) return; // 매출표 전용 계정은 보고서 데이터를 부르지 않음
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
     renderPeople(); loadShared();
     $('sheetLink').href = `https://docs.google.com/spreadsheets/d/${personInfo().sheet}/edit`;
