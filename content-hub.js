@@ -19,12 +19,12 @@
     controller = createController();
     function createController() {
 var CH = {
-  hongzz:{name:'@dr.hongzz', short:'홍크크', type:'ig'},
-  global:{name:'@dr.hongzz_global', short:'글로벌', type:'ig'},
-  figo:{name:'@figo_seoul', short:'Figo', type:'ig'},
-  arskin:{name:'@arskin_hongdae', short:'아르스킨', type:'ig'},
-  won:{name:'원장 블로그', short:'원개블', type:'blog'},
-  jasa:{name:'병원 블로그', short:'자사블', type:'blog'}
+  hongzz:{name:'@dr.hongzz', short:'홍크크', m:'Hongzz', type:'ig'},
+  global:{name:'@dr.hongzz_global', short:'글로벌', m:'Global', type:'ig'},
+  figo:{name:'@figo_seoul', short:'Figo', m:'Figo', type:'ig'},
+  arskin:{name:'@arskin_hongdae', short:'아르스킨', m:'Arskin', type:'ig'},
+  won:{name:'원장 블로그', short:'원개블', m:'원개블', type:'blog'},
+  jasa:{name:'병원 블로그', short:'자사블', m:'자사블', type:'blog'}
 };
 var ORDER = Object.keys(CH);
 var posts = [], filter = 'all', view = 'cal', cur, selId = null;
@@ -82,7 +82,7 @@ function renderCal(){
     var d = new Date(start); d.setDate(start.getDate()+i);
     var list = byDay[key(d)] || [], out = d.getMonth()!==m, shown = list.slice(0,4);
     html += '<div class="day'+(out?' out':'')+(key(d)===todayK?' today':'')+'"><div class="n">'+d.getDate()+'</div><div class="items">'+
-      shown.map(function(p){ return '<button class="item'+(p.id===selId?' sel':'')+'" data-id="'+p.id+'" title="'+esc(CH[p.ch].name+' · '+p.title)+'"><i class="dot" style="background:var(--c-'+p.ch+')"></i><span style="min-width:0"><span class="acc">'+esc(CH[p.ch].short)+' · '+p.kind+'</span><span class="t">'+esc(p.title)+'</span></span></button>'; }).join('')+
+      shown.map(function(p){ return '<button class="item'+(p.id===selId?' sel':'')+'" data-id="'+p.id+'" title="'+esc(CH[p.ch].name+' · '+p.title)+'"><i class="dot" style="background:var(--c-'+p.ch+')"></i><span class="mlab" style="--mc:var(--c-'+p.ch+')">'+esc(CH[p.ch].m)+'</span><span style="min-width:0"><span class="acc">'+esc(CH[p.ch].short)+' · '+p.kind+'</span><span class="t">'+esc(p.title)+'</span></span></button>'; }).join('')+
       (list.length>4 ? '<button class="more" data-id="'+list[4].id+'">+'+(list.length-4)+'건 더보기</button>' : '')+'</div></div>';
   }
   $('grid').innerHTML = html;
