@@ -852,3 +852,23 @@ html.printing .done-date{display:none}
 html.printing .tl-now{display:none}
 .be-time{width:72px;text-align:center;font-variant-numeric:tabular-nums}
 .be-times{flex-wrap:wrap;align-items:center}.be-hint{flex-basis:100%;font-size:12px;color:var(--text-2)}
+/* 외부 미팅 표시 */
+.be-ext{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;font-weight:600;min-height:44px;cursor:pointer}
+.be-ext[hidden]{display:none}.be-ext input{width:20px;height:20px;accent-color:#e8590c}.be-ext small{flex-basis:100%;font-weight:400;font-size:12px;color:var(--text-2);margin-top:-8px}
+.ext-badge{font-style:normal;font-size:12px;font-weight:700;color:#fff;background:#d9480f;border-radius:4px;padding:0 4px;margin-left:2px}
+.sc-ev-wrap.ext .sc-ev{box-shadow:inset 3px 0 0 #e8590c}
+.ext-meet{text-align:left;max-width:560px;margin:0 auto 20px;background:var(--card);border-radius:var(--r-lg);padding:18px 20px;box-shadow:0 1px 3px rgba(0,27,55,.06)}
+.ext-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.ext-label{font-size:13px;font-weight:700;color:#c2410c}
+.ext-left{font-size:24px;font-variant-numeric:tabular-nums;color:var(--text)}
+.ext-title{margin:6px 0 2px;font-size:17px;font-weight:700}.ext-when{margin:0 0 12px;font-size:13px;color:var(--text-2)}
+.ext-track{height:10px;border-radius:999px;background:var(--grey100);overflow:hidden}
+.ext-track span{display:block;height:100%;border-radius:inherit;background:#3182f6;transition:width .6s ease}
+.ext-meet.near .ext-track span{background:#f59f00}.ext-meet.soon .ext-track span,.ext-meet.live .ext-track span{background:#e03131}
+.ext-meet.soon .ext-left,.ext-meet.live .ext-left{color:#c92a2a}
+.ext-meet.soon{animation:extPulse 1.6s ease-in-out infinite}
+@keyframes extPulse{50%{box-shadow:0 0 0 4px rgba(224,49,49,.18)}}
+@media(prefers-reduced-motion:reduce){.ext-meet.soon{animation:none}}
+.ext-more{margin:12px 0 0;padding:0;list-style:none;font-size:13px;color:var(--text-2);display:grid;gap:4px}
+.ext-none{margin:0;text-align:center;font-size:14px;color:var(--text-2)}
+.ext-meet:has(.ext-none){background:none;box-shadow:none;padding:4px}

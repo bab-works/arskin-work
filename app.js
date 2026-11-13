@@ -778,7 +778,7 @@
       };
     };
     box.append(grid);
-    $('tlAdd').onclick = () => openEditor({ date: state.sel, section: '타임라인', start: '09:00', end: '10:00', text: '' }, null, true);
+    $('tlAdd').onclick = () => openEditor({ date: state.sel, section: '타임라인', ...nearSlot(), text: '' }, null, true);
   }
   // 시간이 겹치는 블록(내 블록·공통 일정)은 최대 3칸으로 나란히. 넓은 블록이 좁은 블록을 덮지 않게.
   function layoutLanes(grid) {
@@ -821,16 +821,21 @@
     return { start: toTime(s0), end: toTime(Math.min(e0 ?? s0 + 60, 23 * 60 + 59)), text: text || raw.trim() };
   }
   const REPEAT = { w: 7, '2w': 14, m: 'm' };
+  // shortcut: 일정의 '순서' 칸에 "반복규칙 ext" 를 함께 저장 (예: "w ext"). 빈 값은 서버가 무시하므로 지울 때는 '-'
+  const ruleOf = r => String(r.order || '').split(' ').find(t => REPEAT[t]) || '';
+  const isExt = r => String(r.order || '').split(' ').includes('ext');
   const nextDate = (d, rule) => { if (rule !== 'm') return shiftDate(d, REPEAT[rule]); const t = new Date(d + 'T00:00:00'); t.setMonth(t.getMonth() + 1); return iso(t); };
   // 반복 일정을 완료하면 다음 회차를 만든다(이미 있으면 만들지 않음)
   function spawnNext(r) {
-    if (!REPEAT[r.order] || !isDone(r)) return;
-    const d = nextDate(r.date, r.order), key = r.origin || r.id;
+    if (!ruleOf(r) || !isDone(r)) return;
+    const d = nextDate(r.date, ruleOf(r)), key = r.origin || r.id;
     if (state.shared.some(x => x.section === r.section && x.date === d && (x.origin || x.id) === key)) return;
     const { id, ...rest } = r;
     addRow({ ...rest, date: d, status: '', completed: '', origin: key });
     toast(`다음 일정(${d.slice(5).replace('-', '/')})을 만들었습니다`);
   }
+  // 새 일정 기본 시각: 지금과 가장 가까운 30분 단위부터 1시간
+  const nearSlot = () => { const k = new Date(Date.now() + 9 * 36e5), m = Math.min(23 * 60, Math.round((k.getUTCHours() * 60 + k.getUTCMinutes()) / 30) * 30); return { start: toTime(m), end: toTime(m + 60) }; };
   let editing = null;
   function openEditor(r, anchor, isNew) {
     editing = { r, isNew };
@@ -840,7 +845,7 @@
     const isEv = ['일정', '원장님일정'].includes(r.section), isTl = r.section === '타임라인';
     $('beColorWrap').hidden = !isTl;
     if (isTl) { const cur = String(r.col || '').replace('c:', '') || 'blue'; $('beColorWrap').innerHTML = '색 ' + Object.entries(TL_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="beColor" value="${k}"${k === cur ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join(''); }
-    $('beRepeatWrap').hidden = !isEv; $('beRepeat').value = isEv ? (r.order && REPEAT[r.order] ? r.order : '') : '';
+    $('beRepeatWrap').hidden = !isEv; $('beExtWrap').hidden = !isEv; $('beRepeat').value = isEv ? ruleOf(r) : ''; $('beExt').checked = isEv && isExt(r);
     $('beCopyWrap').hidden = !!isNew; $('beCopyDate').value = shiftDate(r.date, 7);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
     p.style.left = Math.max(8, Math.min(innerWidth - 350, a.left - 350)) + 'px';
@@ -872,8 +877,9 @@
     let t = { text, start, end };
     if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
     if (editing.r.section === '타임라인') t.col = 'c:' + (document.querySelector('input[name=beColor]:checked')?.value || 'blue');
-    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = $('beRepeat').value; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
+    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = [$('beRepeat').value, $('beExt').checked && 'ext'].filter(Boolean).join(' ') || '-'; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
     if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
+    state.ext = null; // 대시보드 외부 미팅 다시 받기
     closeEditor(); renderTimeline(); renderShared();
   };
   $('beDelete').onclick = () => { if (editing && !editing.isNew) deleteRow(editing.r); closeEditor(); renderTimeline(); renderShared(); };
@@ -889,6 +895,7 @@
   console.assert(normTime('9') === '09:00' && normTime('930') === '09:30' && normTime('1415') === '14:15' && normTime('14:5') === '14:05' && normTime('9시30') === '09:30' && normTime('25') === '' && normTime('') === '', 'normTime');
   ['beStart', 'beEnd'].forEach(id => {
     $(id).onfocus = e => e.target.select(); // 들어가면 바로 덮어쓰기
+    $(id).oninput = e => { const v = e.target.value; if (/^\d{4}$/.test(v) && normTime(v)) { e.target.value = normTime(v); if (id === 'beStart') { e.target.blur(); $('beEnd').focus(); } } }; // 1330 → 13:30, 시작이면 종료로
     $(id).onblur = e => {
       const v = e.target.value.trim(); if (!v) return;
       const t = normTime(v); if (!t) { toast('시각은 0930, 14 처럼 24시로 입력하세요'); return; }
@@ -1178,7 +1185,7 @@
       if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
       if (!outside) {
         state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)).sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${REPEAT[r.order] ? ' <span class="rep" title="반복 일정">↻</span>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
+          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}${isExt(r) ? ' ext' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${ruleOf(r) ? ' <span class="rep" title="반복 일정">↻</span>' : ''}${isExt(r) ? ' <em class="ext-badge">외부</em>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev');
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
           ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
@@ -1187,7 +1194,7 @@
           col.append(wrap);
         });
         const add = el(`<button class="sc-add" title="${d} 일정 추가" aria-label="${d} 일정 추가">+</button>`);
-        add.onclick = () => openEditor({ date: d, section: EV, col: dir ? '' : state.person, start: dir ? '' : '10:00', end: dir ? '' : '11:00', text: '', _who: OWNER }, add, true);
+        add.onclick = () => openEditor({ date: d, section: EV, col: dir ? '' : state.person, ...nearSlot(), text: '', _who: OWNER }, add, true);
         col.append(add);
       }
       grid.append(col);
@@ -1477,6 +1484,29 @@
   const FIXED = ['데일리고정', '주간고정'], FLEX = ['배치예정', '변동업무', '팔로업'];
 
   /* ---------- 홈: 음각 로고 + 오늘 요약 ---------- */
+  // 외부 미팅: 공용·원장님 캘린더에서 '외부' 표시한 일정 중 앞으로 14일. 5분마다 새로 받음
+  async function loadExtMeets() {
+    if (state.ext && Date.now() - state.ext.at < 3e5) return;
+    const from = todayKst(), to = shiftDate(from, 14);
+    const lists = await Promise.all([SHARED, DIRECTOR_WHO].map(who => api.get({ who, from, to }).then(j => j.rows.filter(r => ['일정', '원장님일정'].includes(r.section) && isExt(r) && r.start && !isDone(r)).map(r => ({ ...r, _who: who }))).catch(() => [])));
+    state.ext = { at: Date.now(), rows: lists.flat() };
+  }
+  const kstMs = (d, t) => Date.parse(`${d}T${t}:00+09:00`);
+  function paintExt(box) {
+    const host = box.querySelector('.ext-meet'); if (!host) return;
+    const now = Date.now(), list = (state.ext?.rows || []).map(r => ({ r, s: kstMs(r.date, r.start), e: kstMs(r.date, r.end || r.start) || kstMs(r.date, r.start) + 36e5 })).filter(x => x.e > now).sort((a, b) => a.s - b.s);
+    if (!list.length) { host.innerHTML = '<p class="ext-none">앞으로 2주간 예정된 외부 미팅이 없습니다</p>'; return; }
+    const { r, s, e } = list[0], left = s - now, live = left <= 0;
+    const mins = Math.max(0, Math.ceil(left / 6e4)), dd = Math.floor(mins / 1440), hh = Math.floor(mins % 1440 / 60), mm = mins % 60;
+    const txt = live ? '진행 중' : dd ? `${dd}일 ${hh}시간 남음` : hh ? `${hh}시간 ${mm}분 남음` : `${mm}분 남음`;
+    const pct = live ? 100 : Math.max(2, Math.min(100, 100 - left / (24 * 36e5) * 100)); // 24시간 전부터 차오름
+    const tone = live ? 'live' : left <= 30 * 6e4 ? 'soon' : left <= 2 * 36e5 ? 'near' : '';
+    host.className = 'ext-meet ' + tone;
+    host.innerHTML = `<div class="ext-top"><span class="ext-label">다음 외부 미팅</span><b class="ext-left">${txt}</b></div>
+      <p class="ext-title">${esc(r.text)}</p><p class="ext-when">${fmtDate(r.date)} ${esc(r.start)}${r.end ? '–' + esc(r.end) : ''}${r._who === DIRECTOR_WHO ? ' · 원장님 캘린더' : ''}</p>
+      <div class="ext-track" role="progressbar" aria-label="외부 미팅까지 남은 시간" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><span style="width:${pct}%"></span></div>
+      ${list.length > 1 ? `<ul class="ext-more">${list.slice(1, 4).map(x => `<li>${esc(x.r.date.slice(5).replace('-', '/'))} ${esc(x.r.start)} · ${esc(x.r.text)}</li>`).join('')}</ul>` : ''}`;
+  }
   function renderHome() {
     const box = $('homeHub'), dir = state.dir.tasks, cnt = k => dir.filter(x => x.status === k).length;
     // 가운데: 파란 자명종 + 초 단위로 흐르는 시계 (마케터는 그 아래 큰 재촉 버튼)
@@ -1496,16 +1526,19 @@
         <p class="clock-time" aria-live="off"></p>
         ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
       </section>
+      <section class="ext-meet" aria-live="polite"></section>
       <div class="home-cards">
         <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="sheet">원장님 워크시트 →</button></section>
         <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="team">마케팅 공용</button></div></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
     box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
+    loadExtMeets().then(() => paintExt(box));
     const tick = () => {
       if (!box.isConnected || state.view !== 'home') return clearInterval(renderHome.t);
       const k = new Date(Date.now() + 9 * 36e5), h = k.getUTCHours(), m = k.getUTCMinutes(), sec = k.getUTCSeconds(), p2 = n => String(n).padStart(2, '0');
       box.querySelector('.clock-date').textContent = fmtDate(k.toISOString().slice(0, 10));
+      if (sec % 30 === 0) { paintExt(box); if (Date.now() - (state.ext?.at || 0) > 3e5) loadExtMeets().then(() => paintExt(box)); }
       box.querySelector('.clock-time').innerHTML = `${p2(h)}<i>:</i>${p2(m)}<i>:</i><b>${p2(sec)}</b>`;
       const rot = (cls, deg) => box.querySelector(cls).setAttribute('transform', `rotate(${deg} 60 64)`);
       rot('.h-h', (h % 12) * 30 + m / 2); rot('.h-m', m * 6 + sec / 10); rot('.h-s', sec * 6);
