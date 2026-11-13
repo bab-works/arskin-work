@@ -3,7 +3,7 @@
   window.ContentHub = { open() { if (controller) { controller.refresh(false, true); return; } if (opening) return opening; opening = mount().catch(() => { opening = null; const h = window.document.getElementById('contentHub'); h.textContent = '콘텐츠 화면을 불러오지 못했습니다. 페이지를 새로고침해 주세요.'; }); return opening; }, refresh() { return controller && controller.refresh(true); }, async select(view) { await this.open(); if (controller) controller.select(view); } };
   async function mount() {
     const host = window.document.getElementById('contentHub');
-    const response = await fetch('content-hub.html'); if (!response.ok) throw new Error('화면을 불러오지 못했습니다');
+    const response = await fetch('content-hub.html', { cache: 'no-cache' }); if (!response.ok) throw new Error('화면을 불러오지 못했습니다');
     const html = await response.text();
     const root = host.shadowRoot || host.attachShadow({ mode: 'open' }); root.innerHTML = html;
     const sheetURL = 'https://docs.google.com/spreadsheets/d/1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo/edit';

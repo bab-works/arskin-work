@@ -668,3 +668,6 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 @media(prefers-reduced-motion:reduce){.alarm,.alarm .bells,.clock-time i,.nudge-hero{animation:none}}
 .sc-month-btn small{font-size:12px}
 .sc-leave{position:relative}.sc-leave::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+/* 넓은 화면: 캘린더·업무 칸이 끝없이 늘어나지 않게 폭 제한(가운데 정렬) */
+.daily{grid-template-columns:minmax(0,1240px) var(--tl);justify-content:center}
+.report-pair>.report,.report-pair>.done-page{flex:1 1 480px}
