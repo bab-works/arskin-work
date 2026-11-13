@@ -443,7 +443,7 @@
       $('emptyNew').onclick = () => { addRow({ date: d, section: '메모', text: ' ' }); render(); };
       return;
     }
-    box.append(el(`<div class="titlebar"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
+    box.append(el(`<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>${isDirector() ? '원장님 워크시트' : '업무보고 및 회의록'}</span><span class="meta">${fmtDate(d)} · ${esc(disp(state.person))}</span></div>`));
     if (isDirector()) return renderDirectorReport(d, box);
     box.append(sectionChips(d));
     const projects = projectSummary(d); if (projects) box.append(projects);
@@ -484,7 +484,7 @@
     const latest = new Map(); all.forEach(r => { const k = r.origin || r.id, c = r.completed || r.date; if (c >= from && c <= to && (!latest.has(k) || latest.get(k).date < r.date)) latest.set(k, { ...r, _c: c }); });
     const byDay = {}; [...latest.values()].forEach(r => (byDay[r._c] = byDay[r._c] || []).push(r));
     const days = Object.keys(byDay).sort().reverse();
-    box.innerHTML = `<div class="titlebar"><span>완료 업무</span><span class="meta">${esc(disp(state.person))}</span></div>
+    box.innerHTML = `<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>완료 업무</span><span class="meta">${esc(disp(state.person))}</span></div>
       <div class="done-bar"><button type="button" class="done-range" aria-haspopup="dialog">📅 ${fmtDate(from)} ~ ${fmtDate(to)}</button><span class="sec-count">${latest.size}건</span>
       <label class="print-pick" title="인쇄 버튼을 누를 때 이 페이지도 함께 출력"><input type="checkbox"${printOn ? ' checked' : ''}><span class="dot-check" aria-hidden="true"></span>인쇄에 포함</label></div>`;
     box.querySelector('.print-pick input').onchange = e => { setPref('printDone', e.target.checked); box.classList.toggle('print-on', e.target.checked); };

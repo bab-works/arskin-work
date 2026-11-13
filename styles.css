@@ -613,3 +613,6 @@ html.printing .report-pair{display:block}
 /* K5: 매출 달 선택·파일 올리기 */
 .rv-actions select,.rv-upload{min-height:40px;padding:0 12px;background:white;border-radius:12px;font-size:12px;color:var(--sub);border:none;display:inline-flex;align-items:center;cursor:pointer;font-weight:600}
 .rv-upload:focus-within{outline:2px solid var(--blue)}
+/* 인쇄 제목줄: 사람별 색(써니 차콜, 미스타전 블루, 쩡이 그린, 원장님 퍼플) + 흰 글자 */
+html.printing .titlebar{background:var(--tb-bg,#191f28)!important;border-color:var(--tb-bg,#191f28)!important;color:#fff}
+html.printing .titlebar .meta,html.printing .titlebar span{color:#fff!important}
