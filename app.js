@@ -695,6 +695,36 @@
     catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
     renderShared();
   }
+  // 캘린더 일정: 0.8초 꾹 누르면 들려서 다른 날짜 칸에 놓을 수 있다 (짧게 누르면 편집)
+  function longPressMove(e, wrap, r) {
+    if (e.button !== 0) return;
+    const x0 = e.clientX, y0 = e.clientY; let ghost = null, over = null;
+    const cancel = () => { clearTimeout(timer); removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
+    const timer = setTimeout(() => {
+      wrap.dragged = true; wrap.classList.add('lifting'); navigator.vibrate?.(15);
+      ghost = wrap.cloneNode(true); ghost.className = 'sc-ev-wrap sc-drag-ghost'; const b = wrap.getBoundingClientRect();
+      Object.assign(ghost.style, { width: b.width + 'px', left: b.left + 'px', top: b.top + 'px' }); document.body.append(ghost);
+    }, 800);
+    const move = ev => {
+      if (!ghost) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) cancel(); return; } // 누르는 중 움직이면 취소(스크롤)
+      ev.preventDefault();
+      ghost.style.left = ev.clientX - 20 + 'px'; ghost.style.top = ev.clientY - 14 + 'px';
+      ghost.hidden = true; const day = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.sc-day[data-date]:not(.sc-outside)'); ghost.hidden = false;
+      if (over !== day) { over?.classList.remove('drop-on'); over = day; over?.classList.add('drop-on'); }
+    };
+    const up = () => {
+      cancel(); if (!ghost) return;
+      ghost.remove(); wrap.classList.remove('lifting'); over?.classList.remove('drop-on');
+      const to = over?.dataset.date;
+      if (to && to !== r.date) {
+        const from = r.date;
+        if (from.slice(0, 7) !== to.slice(0, 7)) removeIds([from + '|' + r.id], r._who); // 월 탭이 바뀌면 옛 탭에서 지우고 새 탭에 저장
+        updateRow(r, { date: to }); toast(`${to.slice(5).replace('-', '/')}로 옮겼습니다`);
+      }
+      renderShared(); renderTimeline();
+    };
+    addEventListener('pointermove', move, { passive: false }); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  }
   // 주간↔월간: 높이를 이전 값에서 새 값으로 부드럽게 (모션 줄이기면 즉시)
   function switchCalMode(mode) {
     const cal = $('sharedcal'), h0 = cal.offsetHeight;
@@ -744,7 +774,8 @@
           const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev');
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
-          ev.onclick = () => openEditor(r, ev);
+          ev.onclick = () => { if (!wrap.dragged) openEditor(r, ev); wrap.dragged = false; };
+          ev.onpointerdown = e => longPressMove(e, wrap, r);
           wrap.querySelector('input').onchange = e => { updateRow(r, { status: e.target.checked ? 'done' : '' }); renderShared(); renderTimeline(); };
           col.append(wrap);
         });

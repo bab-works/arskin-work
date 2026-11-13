@@ -573,3 +573,8 @@ html.printing .memo-sec{display:none!important}
 .tl-block.ghost{background:rgba(49,130,246,.14);border:2px dashed var(--blue);color:var(--blue-dark);z-index:5}
 .tl-block.ghost small{display:block;font-weight:700;color:var(--blue-dark)}
 .tl-block.tl-drop{left:44px;right:2px}
+/* K3: 캘린더 일정 꾹 눌러 옮기기 */
+.sc-ev{-webkit-touch-callout:none;user-select:none}
+.sc-ev-wrap.lifting{opacity:.35}
+.sc-drag-ghost{position:fixed;z-index:90;pointer-events:none;box-shadow:0 12px 28px rgba(0,27,55,.22);border-radius:8px;background:var(--card);transform:rotate(-2deg)}
+.sc-day.drop-on{box-shadow:inset 0 0 0 2px var(--blue);background:var(--blue-weak)}
