@@ -31,13 +31,14 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 16, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 17, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'trash') { try { return json({ rows: trashList_(p.who) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'reelsPlan') { try { return json({ items: reelsPlan_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'holidays') { try { return json({ holidays: holidays_(p.fresh === '1') }); } catch (err) { return json({ error: err.message }); } }
   if (!sheetIdFor(p.who)) return json({ error: 'no sheet for ' + p.who });
   return json({ rows: listRows(p.who, p.from, p.to) });
@@ -55,6 +56,7 @@ function doPost(e) {
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'holidayAdd' || body.action === 'holidayDelete') { try { return json({ holidays: holidayEdit_(body) }); } catch (err) { return json({ error: err.message }); } }
   var who = body.who;
@@ -658,4 +660,17 @@ function tagSave_(b) {
     if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row);
   } finally { lock.releaseLock(); }
   return tagList_();
+}
+
+/* ---------- 원장님 재촉: 마케터가 누르면 기록, 원장님 접속 코드로 연 창만 받아 간다 ---------- */
+function nudgeSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('nudges');
+  if (!sh) { sh = ss.insertSheet('nudges'); sh.getRange('A:B').setNumberFormat('@'); sh.appendRow(['시각', '보낸 사람']); sh.setFrozenRows(1); }
+  return sh;
+}
+function nudgeList_(since) {
+  var sh = nudgeSheet_(), last = sh.getLastRow(); if (last < 2) return [];
+  var from = Math.max(2, last - 49); // 최근 50건만 본다
+  return sh.getRange(from, 1, last - from + 1, 2).getDisplayValues().filter(function (r) { return r[0] && (!since || r[0] > since); })
+    .map(function (r) { return { at: r[0], from: r[1] }; });
 }

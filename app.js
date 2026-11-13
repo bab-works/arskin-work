@@ -834,6 +834,7 @@
   }
   async function loadDirector() {
     try { const j = await api.get({ action: 'director' }); state.dir = { tasks: j.tasks || [], me: j.me || '' }; } catch { return; }
+    if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
     if (state.view === 'director') renderDirector(); else paintDirBadge();
   }
   async function saveDirector(body) {
@@ -847,6 +848,10 @@
       <div class="dir-sum">${Object.keys(DIR_ST).map(k => `<span class="dir-pill d-${k}">${DIR_ST[k]} <b>${count(k)}</b></span>`).join('')}</div>
       <form class="dir-add"><input name="text" placeholder="원장님께 드릴 숙제" aria-label="숙제 내용" maxlength="500" required><input name="due" type="date" aria-label="마감일"><button class="primary">추가</button></form>`;
     box.querySelector('[data-open-sheet]').onclick = openDirSheet;
+    const head = box.querySelector('.dir-head');
+    if (isDir) {
+      if ('Notification' in window && Notification.permission === 'default') { const b = el('<button type="button" class="primary nag-perm">🔔 알림 켜기</button>'); b.onclick = () => Notification.requestPermission().then(() => renderDirector()); head.append(b); }
+    } else if (me) { const b = el('<button type="button" class="nudge-btn">🔥 원장님 재촉하기</button>'); b.onclick = nudgeBoss; head.append(b); }
     box.querySelector('form').onsubmit = e => { e.preventDefault(); const f = e.target; saveDirector({ action: 'directorSave', task: { text: f.text.value, due: f.due.value } }); };
     [['pending', '대기 중'], ['approved', '승인됨'], ['done', '완료'], ['rejected', '거절됨']].forEach(([k, label]) => {
       const list = tasks.filter(t => t.status === k).sort((a, b) => (b.updated > a.updated ? 1 : -1));
@@ -968,10 +973,11 @@
       <p class="home-date">${fmtDate(d)}</p>
       <div class="home-cards">
         <section class="home-card"><h2>오늘 팀 진행률</h2>${t ? marketers().map(p => { const g = prog(t[p.name]); return `<div class="dir-prog"><div class="project-progress-label"><span>${esc(disp(p.name))} · ${g.n}/${g.t}</span><b>${g.p}%</b></div><div class="project-track" role="progressbar" aria-label="${esc(disp(p.name))} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${g.p}"><span style="width:${g.p}%"></span></div></div>`; }).join('') : '<p class="muted">불러오는 중…</p>'}<button type="button" class="more" data-go="team">업무 체크로 →</button></section>
-        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><button type="button" class="more" data-go="director">숙제 보기 →</button></section>
+        <section class="home-card"><h2>원장님 숙제</h2><div class="home-nums"><div><b>${cnt('pending')}</b><span>대기</span></div><div><b>${cnt('approved')}</b><span>승인</span></div><div><b>${cnt('done')}</b><span>완료</span></div></div><div class="home-acts"><button type="button" class="more" data-go="director">숙제 보기 →</button>${state.dir.me && !isBoss() ? '<button type="button" class="nudge-btn" data-nudge>🔥 원장님 재촉하기</button>' : ''}</div></section>
         <section class="home-card"><h2>바로가기</h2><div class="home-links"><button type="button" data-go="daily">일간보고서</button><button type="button" data-go="calendar">콘텐츠 스튜디오</button><button type="button" data-go="sheet">원장님 워크시트</button><button type="button" data-go="revenue">월간 매출표</button></div></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
+    box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
     if (!t) loadTeam(d).then(() => { if (state.view === 'home') renderHome(); });
   }
 
@@ -1027,6 +1033,36 @@
     });
     if (!tags.length) list.append(el('<p class="muted">아직 태그가 없습니다. 업무 앞에 "분류)" 를 붙여 쓰면 여기에 나타납니다.</p>'));
     box.append(list);
+  }
+
+  /* ---------- 원장님 알림: 원장님 접속 코드로 연 창에서만. 재촉(마케터 버튼)과 미달성 경고 ---------- */
+  const NAG = '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥';
+  const isBoss = () => state.dir.me === DIRECTOR_WHO;
+  function nag(reason) {
+    try { if ('Notification' in window && Notification.permission === 'granted') new Notification('아르스킨 대시보드', { body: NAG, icon: 'assets/arskin-icon.png', tag: 'arskin-nag' }); } catch {}
+    if (document.querySelector('.nag-dlg')) return;
+    const dlg = el(`<dialog class="code-dlg nag-dlg" role="alertdialog" aria-labelledby="nagT"><h2 id="nagT">${esc(NAG)}</h2><p>${esc(reason)}</p><div class="tr-acts"><button type="button" class="nag-later">나중에</button><button type="button" class="primary nag-go">워크시트 열기</button></div></dialog>`);
+    dlg.querySelector('.nag-later').onclick = () => dlg.close(); dlg.querySelector('.nag-go').onclick = () => { dlg.close(); openDirSheet(); };
+    dlg.onclose = () => dlg.remove(); document.body.append(dlg); dlg.showModal();
+  }
+  const once = key => { try { if (localStorage[key] === todayKst()) return false; localStorage[key] = todayKst(); } catch {} return true; };
+  async function bossCheck() {
+    if (!isBoss()) return;
+    try { // 1) 재촉 받은 것
+      const since = localStorage.nudgeSeen || new Date(Date.now() - 864e5).toISOString();
+      const j = await api.get({ action: 'nudges', since });
+      if (j.nudges?.length) { localStorage.nudgeSeen = j.nudges[j.nudges.length - 1].at; nag(`${[...new Set(j.nudges.map(n => disp(n.from)))].join(', ')}님이 재촉했습니다.`); return; }
+    } catch {}
+    try { // 2) 배치한 날 끝내지 못한 업무 (전날에서 넘어온 미완료) / 오후 6시 이후 오늘 미완료
+      const d = todayKst(), rows = (await api.get({ who: DIRECTOR_WHO, from: d, to: d })).rows.filter(r => r.section === '원장님리스트' && !isDone(r));
+      const late = rows.filter(r => (r.created || d) < d), hour = +new Date(Date.now() + 9 * 36e5).toISOString().slice(11, 13);
+      if (late.length && once('nagLate')) nag(`지난날 끝내지 못한 업무가 ${late.length}개 있습니다.`);
+      else if (hour >= 18 && rows.length && once('nagEvening')) nag(`오늘 업무 ${rows.length}개가 아직 남아 있습니다.`);
+    } catch {}
+  }
+  setInterval(bossCheck, 60e3); // 창이 열려 있는 동안 1분마다
+  async function nudgeBoss() {
+    try { await api.post({ action: 'nudge' }); toast('원장님을 재촉 했습니다! ✅'); } catch (e) { toast(e.message); }
   }
   /* ---------- 사이드바 대메뉴 순서 편집: 편집 버튼을 켜고 손잡이를 끌어 위아래로 ---------- */
   const navGroups = () => [...document.querySelectorAll('.nav > button[data-view]')];

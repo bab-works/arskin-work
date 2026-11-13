@@ -560,3 +560,9 @@ html.printing .memo-sec{display:none!important}
 .swatches input:checked+span{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--text-1)}
 .swatches input:focus-visible+span{outline:2px solid var(--blue);outline-offset:3px}
 .tag-row button{min-height:40px}
+/* J4: 재촉·알림 */
+.nudge-btn{min-height:44px;background:#fff3e6;color:#b35300;font-weight:700}
+.nudge-btn:hover{background:#ffe6cc}
+.dir-head .nudge-btn,.dir-head .nag-perm{margin-top:4px}
+.home-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.nag-dlg{width:min(460px,calc(100vw - 32px))}.nag-dlg h2{font-size:19px;line-height:1.45}
