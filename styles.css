@@ -725,3 +725,10 @@ html.printing .reel .pst{width:auto}html.printing .reel .pst svg{width:12px;heig
 .hw-kind{font-size:12px;color:var(--text-2);background:var(--grey100);padding:2px 6px;border-radius:6px}
 .hw-assign{min-height:32px;padding:0 12px;font-size:13px;background:var(--blue-weak);color:var(--blue-text);position:relative}
 .hw-assign::after{content:"";position:absolute;left:0;right:0;top:50%;height:44px;transform:translateY(-50%)}
+/* 릴스 행 정렬 통일: 손잡이 | 상태 | 제목(늘어남) | 단계 버튼(오른쪽) */
+.row.reel{display:flex;align-items:center;gap:6px;padding-left:4px}
+.row.reel .drag,.drag-spacer{flex:none;width:20px;margin-left:0}
+.row.reel .pst{flex:none;width:24px;display:grid;place-items:center}
+.row.reel .reel-title,.row.reel .tx{flex:1;min-width:0}
+.row.reel .reel-steps{margin-left:auto;flex:none}
+.row.reel .del{flex:none}

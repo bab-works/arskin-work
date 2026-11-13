@@ -288,7 +288,7 @@
     let hidden = 0;
     rows.forEach(r => { const n = itemRow(r, opts); if (hide && isDone(r)) { n.classList.add('collapsed'); hidden++; } box.append(n); });
     if (hidden) { const m = el(`<button class="more">… 완료 ${hidden}건 보기</button>`); m.onclick = () => { state.expanded.add(key); render(); }; box.append(m); }
-    box.append(addInput(text => addRow({ date, section, col: col ?? '', text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
+    box.append(addInput(text => opts.onAdd ? opts.onAdd(text) : addRow({ date, section, col: col ?? '', text, status: opts.noStatus ? '' : (opts.defaultStatus || 'todo') })));
     return box;
   }
   // 완료 정렬: 방금 바꾼 행은 400ms 제자리에 두었다가 220ms 동안 새 위치로 이동(FLIP)
@@ -371,7 +371,7 @@
   const reelLink = r => r.end && /^https?:/.test(r.end) ? r.end : `https://docs.google.com/spreadsheets/d/1onONNURdaBteNOeEP4VGANBYLQHlipe451M4rnKqBLo/edit#gid=1655414943&range=L${String(r.col).slice(5)}`;
   function reelRow(r, virtual = false) {
     const steps = reelSteps(r), row = el(`<div class="row reel${isDone(r) ? ' done' : ''}${virtual ? ' virtual' : ''}"${virtual ? '' : ` data-id="${esc(r.id)}"`}></div>`);
-    if (!virtual) row.append(dragHandle(r));
+    row.append(virtual ? el('<span class="drag-spacer" aria-hidden="true"></span>') : dragHandle(r));
     row.append(el(`<span class="pst">${statusIcon(statusCode(r.status))}</span>`));
     const a = el(`<a class="tx reel-title" target="_blank" rel="noopener" title="영상 기획 열기"></a>`); a.href = reelLink(r); a.textContent = r.text; row.append(a);
     row.append(el(`<small class="reel-print">${steps.size ? REEL_STEPS.filter(x => steps.has(x)).join('·') + ' 완료' : ''}</small>`)); // 인쇄용 짧은 표시
@@ -384,7 +384,10 @@
         const set = reelSteps(target); set.has(st) ? set.delete(st) : set.add(st);
         const status = set.size === REEL_STEPS.length ? 'done' : set.size ? 'doing' : 'todo';
         updateRow(target, { start: REEL_STEPS.filter(x => set.has(x)).join(','), status });
-        if (st === '촬영') api.post({ action: 'reelsShot', row: String(target.col).slice(5), undo: !set.has('촬영') }).catch(() => {}); // 영상 기획(원장님 숙제)에도 반영
+        // 영상 기획 시트에도: 촬영 ⭕ / 편집 ⭕ / 업로드 날짜 + 콘텐츠 캘린더의 그날 영상 링크
+        api.post({ action: 'reelsStep', row: String(target.col).slice(5), step: st, on: set.has(st) })
+          .then(j => { if (j.link) { updateRow(target, { end: j.link }); render(); toast('업로드 영상 링크를 연결했습니다'); } else if (st === '업로드' && set.has(st)) toast('콘텐츠 캘린더에 아직 오늘 게시물이 없어요. 올라오면 링크가 자동으로 채워집니다'); })
+          .catch(e => toast('영상 기획 반영 실패: ' + e.message));
         if (status === 'done') holdSort(target.id);
         render();
       };
@@ -404,11 +407,19 @@
   }
   function taskSection(d, s) {
     const all = rowsFor(d, s.key), done = all.filter(isDone).length;
-    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo' }));
+    const onAdd = s.key !== '릴스업무' ? undefined : async text => { // 릴스 직접 추가 → 영상 기획 시트에 새 기획 행 → 그 행과 연결된 릴스 업무
+      const title = text.replace(CAT_RE, '').trim() || text;
+      try { const j = await api.post({ action: 'reelsAdd', title }); if (!j.row) throw new Error('기획 행을 찾지 못했습니다');
+        addRow({ date: d, section: '릴스업무', col: 'plan:' + j.row, text: title, status: 'todo', start: '', end: '' }); toast('영상 기획 시트에도 추가했습니다'); }
+      catch (e) { addRow({ date: d, section: '릴스업무', col: '', text, status: 'todo' }); toast('영상 기획 시트에는 쓰지 못했습니다: ' + e.message); }
+      render();
+    };
+    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo', onAdd }));
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
     if (s.key === '릴스업무') { // 영상 기획에서 아직 촬영 안 한 항목: 오늘 행이 없으면 가상 행으로 보여주고 처음 누를 때 저장
       const have = new Set(all.map(r => r.col)), list = node.querySelector('.task-list'), add = list.querySelector(':scope > .add');
-      state.reelPlan.filter(p => !p.shot && !have.has('plan:' + p.row)).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
+      const tkey = t => String(t).normalize('NFKC').replace(CAT_RE, '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase(), seenT = new Set(all.map(r => tkey(r.text)));
+      state.reelPlan.filter(p => !p.shot && !have.has('plan:' + p.row) && !seenT.has(tkey(p.title)) && seenT.add(tkey(p.title))).forEach(p => add.before(reelRow({ id: '', date: d, section: '릴스업무', col: 'plan:' + p.row, text: p.title, start: '', end: p.ref, status: 'todo' }, true)));
       // 정리: 영상 기획 연동 항목(단계 버튼) 묶음 → 직접 추가한 릴스 업무 묶음
       const planRows = [...list.querySelectorAll(':scope > .row.reel')], manual = [...list.querySelectorAll(':scope > [data-id]:not(.reel)')];
       if (planRows.length) { const h = el(`<h4 class="reel-head">영상 기획 연동 · ${planRows.length}</h4>`); list.prepend(h); [...planRows].reverse().forEach(n => h.after(n)); }
@@ -417,7 +428,7 @@
       manual.forEach(n => { const r = state.rows.find(x => x.id === n.dataset.id); if (!r || isProject(r)) return; const base = r.text.replace(CAT_RE, '').replace(STEP_RE, '').trim(), m = r.text.match(STEP_RE); if (!m) return; (groups.get(base) || groups.set(base, []).get(base)).push({ r, n, step: m[1] }); });
       groups.forEach((items, base) => {
         const tag = items[0].r.text.match(CAT_RE)?.[1], done = items.every(i => isDone(i.r));
-        const g = el(`<div class="row reel reel-group${done ? ' done' : ''}"><span class="pst">${statusIcon(done ? 'done' : items.some(i => isDone(i.r)) ? 'doing' : 'todo')}</span>${tag ? `<span class="cat" style="${tagStyle(tag)}">${esc(tagLabel(tag))}</span>` : ''}<span class="tx">${esc(base)}</span><small class="reel-print">${REEL_STEPS.filter(st => items.some(i => i.step === st && isDone(i.r))).join('·')}${items.some(i => isDone(i.r)) ? ' 완료' : ''}</small><div class="reel-steps" role="group" aria-label="${esc(base)} 단계"></div></div>`);
+        const g = el(`<div class="row reel reel-group${done ? ' done' : ''}"><span class="drag-spacer" aria-hidden="true"></span><span class="pst">${statusIcon(done ? 'done' : items.some(i => isDone(i.r)) ? 'doing' : 'todo')}</span>${tag ? `<span class="cat" style="${tagStyle(tag)}">${esc(tagLabel(tag))}</span>` : ''}<span class="tx">${esc(base)}</span><small class="reel-print">${REEL_STEPS.filter(st => items.some(i => i.step === st && isDone(i.r))).join('·')}${items.some(i => isDone(i.r)) ? ' 완료' : ''}</small><div class="reel-steps" role="group" aria-label="${esc(base)} 단계"></div></div>`);
         REEL_STEPS.forEach(st => {
           const it = items.find(i => i.step === st), b = el(`<button type="button" aria-pressed="${!!it && isDone(it.r)}"${it ? '' : ' disabled title="이 단계 업무가 없습니다"'}>${st}</button>`);
           if (it) b.onclick = () => setStatus(it.r, isDone(it.r) ? 'todo' : 'done');
@@ -473,7 +484,7 @@
   async function homeworkShot(p, on) {
     if ('shot' in p) p.shot = on; else { const x = state.reelPlan.find(y => String(y.row) === String(p.row)); if (x) x.shot = on; }
     try {
-      await api.post({ action: 'reelsShot', row: p.row, undo: !on });
+      await api.post({ action: 'reelsStep', row: p.row, step: '촬영', on });
       const owner = C.REELS_OWNER, d = todayKst(); if (!owner) return;
       const rows = (await api.get({ who: owner, from: d, to: d })).rows, r = rows.find(x => x.col === 'plan:' + p.row);
       const steps = new Set(String(r?.start || '').split(',').filter(Boolean)); on ? steps.add('촬영') : steps.delete('촬영');
@@ -1381,8 +1392,10 @@
     try { // 2) 배치한 날 끝내지 못한 업무 (전날에서 넘어온 미완료) / 오후 6시 이후 오늘 미완료
       const d = todayKst(), rows = (await api.get({ who: DIRECTOR_WHO, from: d, to: d })).rows.filter(r => r.section === '원장님리스트' && !isDone(r));
       const late = rows.filter(r => (r.created || d) < d), hour = +new Date(Date.now() + 9 * 36e5).toISOString().slice(11, 13);
-      if (late.length && once('nagLate')) nag(`지난날 끝내지 못한 업무가 ${late.length}개 있습니다.`);
-      else if (hour >= 18 && rows.length && once('nagEvening')) nag(`오늘 업무 ${rows.length}개가 아직 남아 있습니다.`);
+      if (late.length && once('nagLate')) return nag(`지난날 끝내지 못한 업무가 ${late.length}개 있습니다.`);
+      // 정기 재촉: 13시·15시·18시 (그 시각이 지났는데 아직 안 띄웠으면 한 번만)
+      const slot = [18, 15, 13].find(h => hour >= h);
+      if (slot && once('nagAt' + slot)) { [13, 15, 18].filter(h => h < slot).forEach(h => once('nagAt' + h)); nag(`정기 재촉 · ${slot}시${rows.length ? ` · 남은 업무 ${rows.length}개` : ''}`); }
     } catch {}
   }
   setInterval(bossCheck, 60e3); // 창이 열려 있는 동안 1분마다

@@ -31,7 +31,7 @@ function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yy
 function doGet(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
-  if (p.action === 'ping') return json({ v: 23, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
+  if (p.action === 'ping') return json({ v: 24, auth: 'code', content: true, instagram: true, revenue: true }); // 웹앱이 사람별 시트 지원 여부를 확인
   if (p.action === 'content') { try { return json(contentData(p.fresh === '1')); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'calendar') return json({ grid: calendarGrid() });
   if (p.action === 'director') { try { return json({ tasks: directorList_(), me: memberFor_(p.code) }); } catch (err) { return json({ error: err.message }); } }
@@ -58,6 +58,8 @@ function doPost(e) {
   }
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
+  if (body.action === 'reelsStep') { try { return json(reelsStep_(body.row, body.step, body.on === true)); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'reelsAdd') { try { return json(reelsAdd_(body.title, body.kind)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row, body.undo ? '' : undefined) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
@@ -650,6 +652,7 @@ function directorEdit_(body, me) {
 /* ---------- 릴스업무 ↔ 영상 기획: 아직 촬영 안 한 기획을 가져오고, 촬영하면 기획 시트에 ⭕ 표시 ---------- */
 // 기획 시트 열: J 타겟팅, K 방식, L 영상 리스트(제목), M 촬영 여부, N 업로드완료, O 레퍼런스, P 업로드 영상
 function reelsPlan_() { // 기각·업로드 끝난 것 제외. shot: 촬영 표시(⭕) 여부, type: 방식(숙제/내부촬영)
+  try { fillUploadLinks_(); } catch (e) {}
   return contentPlanRead(SpreadsheetApp.openById(CALENDAR_SS_ID)).filter(function (r) {
     var v = r.v.map(function (x) { return String(x).trim(); });
     return /[\p{L}\p{N}]/u.test(v[2]) && v[1] !== '기각' && v[3] !== '기각' && !v[4];
@@ -787,4 +790,52 @@ function leaveEdit_(b, me) {
     }
   } finally { lock.releaseLock(); }
   return leaveList_();
+}
+
+/* ---------- 릴스 단계 ↔ 영상 기획 시트: 촬영=M(⭕), 편집=Q(⭕, 새로 쓰는 열), 업로드=N(날짜) + P(콘텐츠 캘린더에서 같은 날 올린 영상 링크 자동) ---------- */
+function planDate_(d) { return Utilities.formatDate(d || new Date(), 'Asia/Seoul', 'yyyy. M. d'); }
+// 콘텐츠 캘린더(채널 시트)에서 그날 올린 게시물 링크 찾기: 영어 타겟은 글로벌 계정, 나머지는 홍크크 계정
+function uploadLinkFor_(ss, dateText, kind) {
+  var src = CONTENT_SOURCES.filter(function (x) { return x.ch === (kind === '영어' ? 'global' : 'hongzz'); })[0];
+  var sh = ss.getSheetByName(src.sheet), n = sh.getLastRow() - 3; if (n < 1) return '';
+  var rows = sh.getRange(4, src.col, n, src.width).getDisplayValues();
+  for (var i = rows.length - 1; i >= 0; i--) if (String(rows[i][0]).trim() === dateText && /^https?:/.test(rows[i][2])) return rows[i][2];
+  return '';
+}
+function reelsStep_(row, step, on) {
+  row = Number(row);
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), sh = contentPlanSheet(ss);
+    if (!Number.isInteger(row) || row < 4 || row > sh.getLastRow()) throw new Error('기획 행 번호가 올바르지 않습니다');
+    if (!String(sh.getRange(3, 17).getDisplayValue()).trim()) sh.getRange(3, 17).setValue('편집');
+    var link = '';
+    if (step === '촬영') sh.getRange(row, 13).setValue(on ? '⭕' : '');
+    else if (step === '편집') sh.getRange(row, 17).setValue(on ? '⭕' : '');
+    else if (step === '업로드') {
+      if (!on) sh.getRange(row, 14).setValue('');
+      else {
+        var date = planDate_(), kind = String(sh.getRange(row, 10).getDisplayValue()).trim();
+        sh.getRange(row, 14).setValue(date);
+        link = String(sh.getRange(row, 16).getDisplayValue()).trim() || uploadLinkFor_(ss, date, kind);
+        if (link) sh.getRange(row, 16).setValue(link);
+      }
+    } else throw new Error('단계를 확인해 주세요');
+    SpreadsheetApp.flush(); CacheService.getScriptCache().remove('content-v3');
+    return { ok: true, link: link };
+  } finally { lock.releaseLock(); }
+}
+// 업로드 날짜는 있는데 영상 링크가 비어 있는 기획 행: 콘텐츠 캘린더에 그날 게시물이 생기면 채운다
+function fillUploadLinks_() {
+  var ss = SpreadsheetApp.openById(CALENDAR_SS_ID), sh = contentPlanSheet(ss), n = sh.getLastRow() - 3; if (n < 1) return 0;
+  var v = sh.getRange(4, 10, n, 7).getDisplayValues(), filled = 0;
+  v.forEach(function (r, i) { if (String(r[4]).trim() && !String(r[6]).trim()) { var l = uploadLinkFor_(ss, String(r[4]).trim(), String(r[0]).trim()); if (l) { sh.getRange(i + 4, 16).setValue(l); filled++; } } });
+  return filled;
+}
+// 릴스 업무에 직접 추가 → 영상 기획 시트 빈 행에 새 기획(방식: 내부촬영)으로 쓰고 행 번호를 돌려준다
+function reelsAdd_(title, kind) {
+  title = String(title || '').trim().slice(0, 200); if (!title) throw new Error('제목을 입력해 주세요');
+  var plan = contentPlanAddMany_([[kind === '영어' ? '영어' : '국내', '내부촬영', title, '', '', '', '']]);
+  var hit = plan.filter(function (r) { return String(r.v[2]).trim() === title; }).pop();
+  return { row: hit ? hit.row : 0, ref: '' };
 }
