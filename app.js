@@ -45,6 +45,7 @@
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const toTime = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
   function toast(msg, action) { // action: { label, ms, run } → 되돌리기 같은 버튼
+    if (/unauthorized/.test(msg)) return; // 코드가 틀리면 코드 입력 창이 대신 뜬다
     const t = $('appToast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t);
     if (action) { const b = el(`<button type="button">${esc(action.label)}</button>`); b.onclick = () => { clearTimeout(toast.t); t.classList.add('hidden'); action.run(); }; t.append(b); }
     toast.t = setTimeout(() => t.classList.add('hidden'), action?.ms || 2500);
@@ -1173,7 +1174,7 @@
     const sk = `shared:${owner}:${from}:${to}`, sc = cacheGet(sk);
     if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); renderShared(); }
     try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; const rows = result.rows.filter(r => !dir || r.section === '원장님일정'); cacheSet(sk, rows); state.shared = rows.map(r => ({ ...r, _who: owner })); }
-    catch (e) { toast('공통 데이터 불러오기 실패: ' + e.message); return; }
+    catch (e) { if (e.message !== 'unauthorized') toast('공통 데이터 불러오기 실패: ' + e.message); return; } // 코드 문제는 코드 입력 창이 따로 뜸
     if (dir) api.get({ who: SHARED, from, to }).then(j => { if (!isDirector()) return; state.mktEvents = j.rows.filter(r => r.section === '일정').map(r => ({ ...r, _who: SHARED })); renderShared(); }).catch(() => {}); // 원장님 캘린더에 공용 일정도 (다른 색)
     renderShared();
   }
