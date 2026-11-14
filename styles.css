@@ -1250,3 +1250,18 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .pub-wait{font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 @media(min-width:601px){.topbar .datestrip{flex:none}.topbar .actions{margin-left:auto}}
 .done-range{position:relative}.done-range::after{content:"";position:absolute;inset:-4px 0}
+/* 모바일 하단 탭: 리퀴드 글래스 — 바닥에서 띄운 둥근 유리 알약 */
+@media(max-width:900px){
+  .main{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+  .bottomnav{left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom));padding:6px;gap:2px;border-radius:999px;
+    background:rgba(255,255,255,.58);-webkit-backdrop-filter:blur(22px) saturate(185%);backdrop-filter:blur(22px) saturate(185%);
+    border:1px solid rgba(255,255,255,.7);
+    box-shadow:0 10px 30px rgba(0,27,55,.16),0 2px 6px rgba(0,27,55,.08),inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(0,27,55,.04)}
+  .bottomnav button{min-height:52px;border-radius:999px;padding:6px 2px;color:#4e5968;font-weight:600;transition:background var(--dur) var(--ease),color var(--dur) var(--ease),transform var(--dur-fast) var(--ease)}
+  .bottomnav button.active{color:var(--blue-dark);background:rgba(255,255,255,.85);box-shadow:0 1px 3px rgba(0,27,55,.12),inset 0 1px 0 #fff}
+  .bottomnav button:active{transform:scale(.94)}
+  .bottomnav .nav-badge{top:4px}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){@media(max-width:900px){.bottomnav{background:rgba(255,255,255,.96)}}}
+@media(prefers-reduced-transparency:reduce){@media(max-width:900px){.bottomnav{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}}
+@media(max-width:600px){#sharedcal .sc-day{padding-right:36px}.memo-btn{min-width:44px;justify-content:center}}
