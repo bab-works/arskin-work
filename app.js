@@ -44,6 +44,16 @@
   const $ = id => document.getElementById(id);
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const toTime = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+  // 확인 창: 화면 가운데, 뒤는 살짝 어둡게. confirm() 대신 (Enter=확인, Esc=취소)
+  function ask(msg, { ok = '확인', danger = false, title = '' } = {}) {
+    return new Promise(res => {
+      const d = el(`<dialog class="ask-dlg" aria-labelledby="askT"><h2 id="askT">${esc(title || msg.split('\n')[0])}</h2>${title || msg.includes('\n') ? `<p>${esc(title ? msg : msg.split('\n').slice(1).join('\n'))}</p>` : ''}<div class="ask-acts"><button type="button" data-v="0">${/취소/.test(ok) ? '닫기' : '취소'}</button><button type="button" data-v="1" class="${danger ? 'danger-fill' : 'primary'}">${esc(ok)}</button></div></dialog>`);
+      let v = false; d.onclick = e => { const b = e.target.closest('[data-v]'); if (b) { v = b.dataset.v === '1'; d.close(); } else if (e.target === d) d.close(); };
+      d.onclose = () => { d.remove(); res(v); };
+      document.body.append(d); d.showModal(); d.querySelector('[data-v="1"]').focus();
+    });
+  }
+  window.ask = ask;
   function toast(msg, action) { // action: { label, ms, run } → 되돌리기 같은 버튼
     if (/unauthorized/.test(msg)) return; // 코드가 틀리면 코드 입력 창이 대신 뜬다
     const t = $('appToast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.t);
@@ -91,7 +101,7 @@
   // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽)
   function deleteRows(list) {
     const related = state.rows.filter(x => ['프로젝트', '하위업무'].includes(x.section) && list.some(r => NESTABLE.has(r.section) && x.col === r.id));
-    if (related.some(x => x.section === '하위업무') && !confirm('하위 업무도 함께 삭제할까요?')) return;
+    if (related.some(x => x.section === '하위업무') && !list._ok) { ask('하위 업무도 함께 삭제할까요?', { ok: '삭제', danger: true }).then(ok => { if (ok) { list._ok = true; deleteRows(list); render(); } }); return; }
     const gone = [...list, ...related], snap = { rows: [...state.rows], shared: [...state.shared] };
     state.rows = state.rows.filter(x => !gone.includes(x)); state.shared = state.shared.filter(x => !gone.includes(x));
     state.selected.clear();
@@ -491,8 +501,8 @@
       box.append(b);
     });
     const rej = el('<button type="button" class="reel-rej" title="기각: 내 목록에서 빼고 영상 기획에 기각 표시">기각</button>');
-    rej.onclick = () => {
-      if (!confirm(`"${r.text}"을(를) 기각할까요? 영상 기획 시트에도 기각으로 표시됩니다.`)) return;
+    rej.onclick = async () => {
+      if (!(await ask(`"${r.text}"을(를) 기각할까요?`, { title: '릴스 기각', ok: '기각', danger: true }))) return;
       api.post({ action: 'reelsReject', row: String(r.col).slice(5) }).then(() => toast('기각했습니다')).catch(e => toast('기각 표시 실패: ' + e.message));
       state.reelPlan = state.reelPlan.filter(p => 'plan:' + p.row !== r.col);
       if (virtual) render(); else { deleteRows([r]); render(); }
@@ -753,7 +763,7 @@
 
   async function carryForward() { // 복사 규칙은 서버(generateDay_) 한 곳에만 있다
     const d = state.sel;
-    if (!confirm(`직전 근무일의 이어갈 항목을 ${d}(으)로 가져올까요?\n(완료 업무와 타임라인은 제외, 데일리 고정업무는 시작 전으로 초기화)`)) return;
+    if (!(await ask(`완료 업무와 타임라인은 제외하고, 데일리 고정업무는 시작 전으로 초기화돼요.`, { title: `직전 근무일 항목을 ${d.slice(5).replace('-', '/')}로 가져올까요?`, ok: '가져오기' }))) return;
     const j = await api.post({ action: 'generate', date: d, force: true }).catch(e => (toast(e.message), null));
     if (!j) return;
     if (!j.src) return toast('가져올 이전 보고서가 없습니다');
@@ -943,6 +953,7 @@
   // shortcut: 일정의 '순서' 칸에 "반복규칙 ext" 를 함께 저장 (예: "w ext"). 빈 값은 서버가 무시하므로 지울 때는 '-'
   const ruleOf = r => String(r.order || '').split(' ').find(t => REPEAT[t]) || '';
   const isExt = r => String(r.order || '').split(' ').includes('ext');
+  const isInt = r => String(r.order || '').split(' ').includes('int');
   const evColor = r => String(r.order || '').split(' ').find(t => t.startsWith('c:'))?.slice(2) || ''; // 일정 색 (순서 칸에 c:색)
   const nextDate = (d, rule) => { if (rule !== 'm') return shiftDate(d, REPEAT[rule]); const t = new Date(d + 'T00:00:00'); t.setMonth(t.getMonth() + 1); return iso(t); };
   // 반복 일정을 완료하면 다음 회차를 만든다(이미 있으면 만들지 않음)
@@ -965,7 +976,7 @@
     const isEv = ['일정', '원장님일정'].includes(r.section), isTl = r.section === '타임라인';
     $('beColorWrap').hidden = !isTl && !isEv;
     if (isTl || isEv) { const cur = (isTl ? String(r.col || '').replace('c:', '') : evColor(r)) || 'blue'; $('beColorWrap').innerHTML = '색 ' + Object.entries(TL_COLORS).map(([k, c]) => `<label title="${k}"><input type="radio" name="beColor" value="${k}"${k === cur ? ' checked' : ''}><span style="background:${c[0]};border-color:${c[1]}"></span></label>`).join(''); }
-    $('beRepeatWrap').hidden = !isEv; $('beExtWrap').hidden = !isEv; $('beRepeat').value = isEv ? ruleOf(r) : ''; $('beExt').checked = isEv && isExt(r);
+    $('beRepeatWrap').hidden = !isEv; $('beExtWrap').hidden = !isEv; $('beRepeat').value = isEv ? ruleOf(r) : ''; $('beExt').checked = isEv && isExt(r); $('beInt').checked = isEv && isInt(r);
     $('beCopyWrap').hidden = !!isNew; $('beCopyDate').value = shiftDate(r.date, 7);
     const a = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 130, top: innerHeight / 2 - 80, width: 0 };
     p.style.left = Math.max(8, Math.min(innerWidth - 350, a.left - 350)) + 'px';
@@ -998,7 +1009,7 @@
     if (['일정', '원장님일정'].includes(editing.r.section)) { const p = parseTimeText(text); if (p) t = { text: p.text, start: p.start, end: p.end }; } // "09시 내부회의" → 09:00~10:00 내부회의
     const pick = document.querySelector('input[name=beColor]:checked')?.value || 'blue';
     if (editing.r.section === '타임라인') t.col = 'c:' + pick;
-    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = [$('beRepeat').value, $('beExt').checked && 'ext', pick !== 'blue' && 'c:' + pick].filter(Boolean).join(' ') || '-'; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
+    if (['일정', '원장님일정'].includes(editing.r.section)) t.order = [$('beRepeat').value, $('beExt').checked && 'ext', $('beInt').checked && 'int', pick !== 'blue' && 'c:' + pick].filter(Boolean).join(' ') || '-'; // shortcut: 일정 행은 '순서' 칸에 반복 규칙(w/2w/m)을 저장, 일정 정렬은 시각으로 하므로 겹치지 않음
     if (editing.isNew) addRow({ ...editing.r, ...t }); else updateRow(editing.r, t);
     state.ext = null; // 대시보드 외부 미팅 다시 받기
     closeEditor(); renderTimeline(); renderShared();
@@ -1103,6 +1114,7 @@
   function leaveDirSheet() { state.person = state.prevPerson || C.DEFAULT_PERSON; state.rows = []; state.sel = null; state.sharedAnchor = null; load(); }
 
   function setView(v) {
+    if (v === 'leaves') { state.hospTab = state.hospTab === 'cal' || !state.hospTab ? 'leave' : state.hospTab; v = 'hospital'; } // 연월차는 아르스킨 연월차 캘린더 안으로 합침
     if (state.revOnly && v !== 'revenue') v = 'revenue';
     state.view = v;
     const navV = v === 'daily' && isDirector() ? 'director' : v;
@@ -1266,7 +1278,7 @@
   // 연월차: 공통 시트 leaves 탭
   const LEAVE_KINDS = ['연차', '오전 반차', '오후 반차'];
   async function loadLeaves() { try { state.leaves = (await api.get({ action: 'leaves' })).leaves || []; renderShared(); if (state.view === 'team') renderTeam(); } catch {} }
-  async function leaveEdit(body) { try { state.leaves = (await api.post(body)).leaves || []; toast(body.action === 'leaveAdd' ? `${body.kind} 등록했습니다` : '취소했습니다'); } catch (e) { toast(e.message); } renderShared(); if (state.view === 'team') renderTeam(); if (state.view === 'leaves') setView('leaves'); if (state.view === 'hospital') renderHospital(); }
+  async function leaveEdit(body) { try { state.leaves = (await api.post(body)).leaves || []; toast(body.action === 'leaveAdd' ? `${body.kind} 등록했습니다` : '취소했습니다'); } catch (e) { toast(e.message); } renderShared(); if (state.view === 'team') renderTeam(); if (state.view === 'hospital') renderHospital(); }
   // 주간↔월간: 높이를 이전 값에서 새 값으로 부드럽게 (모션 줄이기면 즉시)
   function switchCalMode(mode) {
     const cal = $('sharedcal'), h0 = cal.offsetHeight;
@@ -1314,7 +1326,7 @@
       const col = el(`<div class="sc-day${d === today ? ' today' : ''}${d === state.sel ? ' sel' : ''}${outside ? ' sc-outside' : ''}" data-date="${d}"><button type="button" class="sc-date" aria-label="${d} 보고서 보기"><span>${WD[dt.getDay()]}</span><b>${dt.getDate()}</b>${state.holidays[d] ? `<em class="sc-hol">${esc(state.holidays[d].name)}</em>` : ''}</button></div>`);
       if (!dir) state.leaves.filter(l => l.date === d && marketers().some(p => p.name === l.who)).forEach(l => {
         const chip = el(`<button type="button" class="sc-leave k-${LEAVE_KINDS.indexOf(l.kind)}" title="${esc(disp(l.who))} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''} (누르면 취소)">${esc(disp(l.who))} ${esc(l.kind.replace(' 반차', '반차'))}</button>`);
-        chip.onclick = e => { e.stopPropagation(); if (confirm(`${disp(l.who)} ${d} ${l.kind}를 취소할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
+        chip.onclick = e => { e.stopPropagation(); ask(`${disp(l.who)} · ${d.slice(5).replace('-', '/')} ${l.kind}`, { title: '연월차를 취소할까요?', ok: '취소하기', danger: true }).then(ok => ok && leaveEdit({ action: 'leaveDelete', id: l.id })); };
         col.append(chip);
       });
       if (state.leaveMode && !dir) { col.classList.add('leave-pick'); col.onclick = e => { if (e.target.closest('.sc-leave')) return; leaveEdit({ action: 'leaveAdd', date: d, kind: state.leaveMode, who: state.person }); state.leaveMode = ''; }; }
@@ -1325,7 +1337,7 @@
       if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
       if (!outside) {
         [...state.shared.filter(r => r.section === EV && r.date === d && (dir || !state.calWho || r.col === state.calWho)), ...(dir ? (state.mktEvents || []).filter(r => r.date === d) : [])].sort((a, b) => (a.start || '').localeCompare(b.start || '')).forEach(r => {
-          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}${isExt(r) ? ' ext' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${ruleOf(r) ? ' <span class="rep" title="반복 일정">↻</span>' : ''}${isExt(r) ? ' <em class="ext-badge">외부</em>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
+          const wrap = el(`<div class="sc-ev-wrap${isDone(r) ? ' done' : ''}${isExt(r) ? ' ext' : ''}"><input type="checkbox" aria-label="${esc(r.text)} 완료"${isDone(r) ? ' checked' : ''}><button class="sc-ev"><small>${esc(r.start || '시간 미정')}${r.end ? '–' + esc(r.end) : ''}${ruleOf(r) ? ' <span class="rep" title="반복 일정">↻</span>' : ''}${isExt(r) ? ' <em class="ext-badge">외부</em>' : ''}${isInt(r) ? ' <em class="int-badge">내부</em>' : ''}</small><span>${esc(r.text)}</span></button></div>`);
           const ev = wrap.querySelector('.sc-ev'), ec = TL_COLORS[evColor(r)];
           if (dir && r._who === SHARED) wrap.classList.add('from-mkt'); if (ec) Object.assign(ev.style, { background: ec[0], color: ec[1] });
           ev.title = `${r.start || ''}${r.end ? '~' + r.end : ''} ${r.text}${r.col ? ' · ' + disp(r.col) : ''}`;
@@ -1412,10 +1424,10 @@
   const setHolidays = list => { state.holidays = {}; (list || []).forEach(h => { state.holidays[h.date] = h; }); };
   // 설정: 휴일 관리(관리자=미스타전 코드만 추가·삭제, 나머지는 보기)
   // 메뉴 권한 (관리자가 설정에서 사람별로 끔). 관리자는 항상 전부.
-  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['hospital', '아르스킨 캘린더'], ['leaves', '연월차'], ['revenue', '월간 매출표']];
+  const PERMS = [['calendar', '콘텐츠 스튜디오'], ['daily', '일간보고서'], ['director', '원장님 워크시트'], ['team', '마케팅 공용'], ['team:check', '└ 업무 체크'], ['hospital', '아르스킨 연월차 캘린더'], ['revenue', '월간 매출표']];
   const can = k => !(state.deny || []).includes(k);
   function applyPerms() {
-    ['calendar', 'daily', 'director', 'team', 'leaves', 'hospital', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
+    ['calendar', 'daily', 'director', 'team', 'hospital', 'revenue'].forEach(k => document.querySelectorAll(`[data-view="${k}"]:not(.gear)`).forEach(b => b.classList.toggle('perm-off', !can(k))));
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('perm-off', !can('team:' + b.dataset.team)));
     const goKey = { sheet: 'director' }; document.querySelectorAll('[data-go]').forEach(b => b.classList.toggle('perm-off', !can(goKey[b.dataset.go] || b.dataset.go)));
     if (state.revOnly) { if (state.view !== 'revenue') setView('revenue'); return; } // 매출표 전용 계정
@@ -1562,7 +1574,7 @@
         const tx = it.querySelector('.dir-text'); tx.textContent = t.text;
         tx.onblur = () => { const v = tx.textContent.trim(); if (v && v !== t.text) saveDirector({ action: 'directorSave', task: { id: t.id, text: v } }); };
         it.querySelectorAll('[data-st]').forEach(b => b.onclick = () => saveDirector({ action: 'directorSave', task: { id: t.id, status: b.dataset.st } }));
-        it.querySelector('.dir-del')?.addEventListener('click', () => { if (confirm('이 숙제를 지울까요?')) saveDirector({ action: 'directorDelete', task: { id: t.id } }); });
+        it.querySelector('.dir-del')?.addEventListener('click', async () => { if (await ask('이 숙제를 지울까요?', { ok: '삭제', danger: true })) saveDirector({ action: 'directorDelete', task: { id: t.id } }); });
         g.append(it);
       });
       box.append(g);
@@ -1754,11 +1766,15 @@
   }
   // 아르스킨 캘린더: 병원 전 직원 연월차만 (마케팅 공용 캘린더 월간 보기와 같은 모양)
   function renderHospital() {
-    const box = $('hospitalHub'), today = todayKst(), anchor = state.hospAnchor || today, month = anchor.slice(0, 7);
+    const tab = state.hospTab || 'cal', hb = $('hospitalHub');
+    const head = `<header class="lv-head"><div><h1>아르스킨 연월차 캘린더</h1></div><div class="seg lv-tabs" role="tablist">${[['cal', '캘린더'], ['leave', '연월차'], ['org', '조직도']].map(([k, l]) => `<button role="tab" data-ht="${k}" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}">${l}</button>`).join('')}</div></header>`;
+    hb.onclick = e => { const b = e.target.closest('[data-ht]'); if (b) { state.hospTab = b.dataset.ht; renderHospital(); } };
+    if (tab !== 'cal') { hb.innerHTML = head; state.lvTab = tab === 'org' ? 'org' : 'leave'; renderLeaves(hb); return; }
+    const box = hb, today = todayKst(), anchor = state.hospAnchor || today, month = anchor.slice(0, 7);
     const first = month + '-01', start = weekStart(first), ppl = staffAll(), who = state.hospWho || '';
     const lastDay = new Date(+month.slice(0, 4), +month.slice(5, 7), 0).getDate();
     const end = shiftDate(month + '-' + String(lastDay).padStart(2, '0'), 0), weeks = Math.ceil((Math.round((new Date(end) - new Date(start)) / 864e5) + 1) / 7);
-    box.innerHTML = `<section class="sharedcal hosp-cal"><div class="sc-header"><div><b>아르스킨 캘린더</b><small>${+month.slice(0, 4)}년 ${+month.slice(5)}월 · 병원 전 직원 연월차</small></div></div>
+    box.innerHTML = head + `<section class="sharedcal hosp-cal"><div class="sc-header"><div><b>아르스킨 캘린더</b><small>${+month.slice(0, 4)}년 ${+month.slice(5)}월 · 병원 전 직원 연월차</small></div></div>
       <div class="sc-who" role="group" aria-label="직원 필터">${[{ name: '', label: '전체' }, ...ppl].map(p => `<button type="button" data-who="${esc(p.name)}" aria-pressed="${who === p.name}"${p.name ? ` style="--pc:${esc(p.color)}"` : ''}>${p.name ? '<i class="lv-dot"></i>' : ''}${esc(p.label)}</button>`).join('')}</div>
       <div class="sc-navigation"><span class="sc-nav-mid"><button type="button" class="sc-prev" aria-label="이전 달">‹</button><b class="hosp-month">${+month.slice(0, 4)}년 ${+month.slice(5)}월</b><button type="button" class="sc-next" aria-label="다음 달">›</button><button type="button" class="sc-today">오늘</button></span></div>
       <div class="sc-week sc-month sc-7 hosp-grid" role="grid" aria-label="${+month.slice(5)}월 연월차"></div></section>`;
@@ -1775,7 +1791,7 @@
     box.querySelector('.sc-prev').onclick = () => mv(-1); box.querySelector('.sc-next').onclick = () => mv(1); box.querySelector('.sc-today').onclick = () => go(today);
     box.querySelector('.sc-who').onclick = e => { const b = e.target.closest('[data-who]'); if (b) { state.hospWho = b.dataset.who; renderHospital(); } };
     grid.onclick = e => {
-      const lv = e.target.closest('.hosp-leave'); if (lv) { const l = state.leaves.find(x => x.id === lv.dataset.id); if (l && confirm(`${staffOf(l.who).label} ${l.date} ${l.kind}를 취소할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); return; }
+      const lv = e.target.closest('.hosp-leave'); if (lv) { const l = state.leaves.find(x => x.id === lv.dataset.id); if (l) ask(`${staffOf(l.who).label} · ${l.date.slice(5).replace('-', '/')} ${l.kind}`, { title: '연월차를 취소할까요?', ok: '취소하기', danger: true }).then(ok => ok && leaveEdit({ action: 'leaveDelete', id: l.id })); return; }
       const add = e.target.closest('.sc-add'); if (add) hospAdd(add, add.closest('.sc-day').dataset.date);
     };
   }
@@ -1798,6 +1814,15 @@
     return out;
   }
   const staffOf = n => staffAll().find(p => p.name === n) || { name: n, label: disp(n), color: '#495057' };
+  // 발생 연차(근로기준법 기본): 1년 미만 = 다 채운 달마다 1일(최대 11) / 1년 이상 = 15일, 3년차부터 2년마다 +1(최대 25). 기간은 입사 기념일 기준
+  function entitle(hired, today) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(hired || '')) return null;
+    const h = new Date(hired + 'T00:00:00'), t = new Date(today + 'T00:00:00'); if (t < h) return null;
+    let years = t.getFullYear() - h.getFullYear(); const ann = new Date(h); ann.setFullYear(h.getFullYear() + years); if (ann > t) { years--; ann.setFullYear(ann.getFullYear() - 1); }
+    if (years < 1) { let m = (t.getFullYear() - h.getFullYear()) * 12 + t.getMonth() - h.getMonth(); if (t.getDate() < h.getDate()) m--; return { days: Math.min(11, Math.max(0, m)), from: hired, years: 0, months: m }; }
+    return { days: Math.min(25, 15 + Math.floor((years - 1) / 2)), from: iso(ann), years };
+  }
+  console.assert(entitle('2026-01-10', '2026-11-16').days === 10 && entitle('2025-11-16', '2026-11-16').days === 15 && entitle('2022-03-01', '2026-11-16').days === 16 && entitle('2000-01-01', '2026-11-16').days === 25, 'entitle');
   // 조직도: 대표원장 → 부서 → 사람. 오늘 휴가인 사람은 표시
   function orgChart(ppl, today) {
     const off = new Map(state.leaves.filter(l => l.date === today).map(l => [l.who, l.kind]));
@@ -1816,31 +1841,29 @@
     const col = n => staffOf(n).color, sum = a => a.reduce((t, l) => t + days(l), 0);
     const fmtD = d => `${+d.slice(5, 7)}/${+d.slice(8)} (${WD[new Date(d + 'T00:00:00').getDay()]})`;
     const tab = state.lvTab || 'leave';
-    const head = el(`<header class="lv-head"><div><h1>${tab === 'org' ? '조직도' : '연월차'}</h1><p>${tab === 'org' ? `아르스킨 ${ppl.length + 1}명 · 부서는 직원 명단 관리에서 바꿀 수 있어요` : `${y}년 병원 전 직원 · 아래에서 바로 등록하거나 아르스킨 캘린더 날짜를 눌러 등록해요. 연차 1일, 반차 0.5일.`}</p></div><div class="seg lv-tabs" role="tablist"><button role="tab" data-lt="leave" aria-selected="${tab === 'leave'}" class="${tab === 'leave' ? 'active' : ''}">연월차</button><button role="tab" data-lt="org" aria-selected="${tab === 'org'}" class="${tab === 'org' ? 'active' : ''}">조직도</button></div></header>`);
-    head.querySelector('.lv-tabs').onclick = e => { const b = e.target.closest('[data-lt]'); if (b) { state.lvTab = b.dataset.lt; setView('leaves'); } };
-    box.append(head);
+    box.append(el(`<p class="lv-sub">${tab === 'org' ? `아르스킨 ${ppl.length + 1}명 · 부서는 직원 명단 관리에서 바꿀 수 있어요` : `${y}년 병원 전 직원 · 입사일을 넣으면 발생 연차가 자동 계산돼요. 연차 1일, 반차 0.5일.`}</p>`));
     if (tab === 'org') return box.append(orgChart(ppl, today));
     const form = el(`<form class="lv-form"><select name="who" aria-label="직원" required>${ppl.map(p => `<option value="${esc(p.name)}">${esc(p.label)}${p.team ? ' · ' + esc(p.team) : ''}</option>`).join('')}</select><input type="date" name="date" required aria-label="날짜" value="${today}"><select name="kind" aria-label="종류">${LEAVE_KINDS.map(k => `<option>${k}</option>`).join('')}</select><input name="memo" placeholder="메모 (선택)" maxlength="60" aria-label="메모"><button class="primary">등록</button><button type="button" class="lv-staff-btn" aria-expanded="false">직원 명단 관리</button></form>`);
     form.onsubmit = e => { e.preventDefault(); const f = e.target; leaveEdit({ action: 'leaveAdd', who: f.who.value, date: f.date.value, kind: f.kind.value, memo: f.memo.value.trim() }); };
     // 직원 명단: 이름·별칭·부서·색 편집 (마케터는 이름만 고정)
     const all = staffAll(), stored = n => (state.staff || []).find(x => x.name === n) || {};
     const sw = cur => PALETTE.map(c => `<label class="sw" title="${c}"><input type="radio" name="color" value="${c}"${c === cur ? ' checked' : ''}><i style="background:${c}"></i></label>`).join('') + `<label class="sw sw-custom" title="직접 고르기"><input type="color" name="custom" value="${/^#[0-9a-f]{6}$/i.test(cur) ? cur : '#3182f6'}" aria-label="색 직접 고르기"></label>`;
-    const mgr = el(`<section class="lv-panel lv-staff" hidden><h2>직원 명단 <small>이름·별칭·부서·색을 고칠 수 있어요 · 마케터는 자동 포함</small></h2><ul class="lv-staff-list">${all.map((p, i) => `<li data-i="${i}"><i class="lv-dot" style="--pc:${esc(p.color)}"></i><b>${esc(p.label)}</b>${p.label !== p.name && !p.mk ? `<small class="muted">(${esc(p.name)})</small>` : ''}<span>${esc(p.team || '')}</span><button type="button" class="lv-edit" aria-label="${esc(p.label)} 편집">편집</button>${p.mk ? '' : `<button type="button" class="del" aria-label="${esc(p.label)} 명단에서 빼기">${icon('x', 14)}</button>`}</li>`).join('')}</ul><form class="lv-staff-add"><input name="name" placeholder="이름" required maxlength="20" aria-label="직원 이름"><input name="alias" placeholder="별칭 (선택)" maxlength="20" aria-label="별칭"><input name="team" placeholder="부서 (예: 상담, 데스크, 간호)" maxlength="20" aria-label="부서"><button class="primary">추가</button></form></section>`);
-    const saveStaff = async (list, msg = '직원 명단을 저장했습니다') => { try { state.staff = (await api.post({ action: 'staffSave', staff: list })).staff || []; toast(msg); if (list.some(x => x.was && x.was !== x.name)) await loadLeaves(); setView('leaves'); $('leavesHub').querySelector('.lv-staff').hidden = false; $('leavesHub').querySelector('.lv-staff-btn').setAttribute('aria-expanded', 'true'); } catch (err) { toast(err.message); } };
+    const mgr = el(`<section class="lv-panel lv-staff" hidden><h2>직원 명단 <small>이름·별칭·부서·색을 고칠 수 있어요 · 마케터는 자동 포함</small></h2><ul class="lv-staff-list">${all.map((p, i) => `<li data-i="${i}"><i class="lv-dot" style="--pc:${esc(p.color)}"></i><b>${esc(p.label)}</b>${p.label !== p.name && !p.mk ? `<small class="muted">(${esc(p.name)})</small>` : ''}<span>${esc(p.team || '')}</span><button type="button" class="lv-edit" aria-label="${esc(p.label)} 편집">편집</button>${p.mk ? '' : `<button type="button" class="del" aria-label="${esc(p.label)} 명단에서 빼기">${icon('x', 14)}</button>`}</li>`).join('')}</ul><form class="lv-staff-add"><input name="name" placeholder="이름" required maxlength="20" aria-label="직원 이름"><input name="alias" placeholder="별칭 (선택)" maxlength="20" aria-label="별칭"><input name="team" placeholder="부서 (예: 상담, 데스크, 간호)" maxlength="20" aria-label="부서"><input type="date" name="hired" aria-label="입사일" title="입사일" max="${today}"><button class="primary">추가</button></form></section>`);
+    const saveStaff = async (list, msg = '직원 명단을 저장했습니다') => { try { state.staff = (await api.post({ action: 'staffSave', staff: list })).staff || []; toast(msg); if (list.some(x => x.was && x.was !== x.name)) await loadLeaves(); renderHospital(); $('hospitalHub').querySelector('.lv-staff').hidden = false; $('hospitalHub').querySelector('.lv-staff-btn').setAttribute('aria-expanded', 'true'); } catch (err) { toast(err.message); } };
     const plain = () => (state.staff || []).map(x => ({ ...x }));
-    mgr.querySelector('.lv-staff-add').onsubmit = e => { e.preventDefault(); const f = e.target; saveStaff([...plain(), { name: f.name.value.trim(), alias: f.alias.value.trim(), team: f.team.value.trim(), color: PALETTE[((state.staff || []).length + 3) % PALETTE.length] }]); };
+    mgr.querySelector('.lv-staff-add').onsubmit = e => { e.preventDefault(); const f = e.target; saveStaff([...plain(), { name: f.name.value.trim(), alias: f.alias.value.trim(), team: f.team.value.trim(), hired: f.hired.value, color: PALETTE[((state.staff || []).length + 3) % PALETTE.length] }]); };
     mgr.querySelector('.lv-staff-list').onclick = e => {
       const li = e.target.closest('li[data-i]'); if (!li) return; const p = all[+li.dataset.i];
-      if (e.target.closest('.del')) { if (confirm(`${p.label}을(를) 명단에서 뺄까요? (지난 연월차 기록은 남아요)`)) saveStaff(plain().filter(x => x.name !== p.name)); return; }
+      if (e.target.closest('.del')) { ask('지난 연월차 기록은 그대로 남아요.', { title: `${p.label}을(를) 명단에서 뺄까요?`, ok: '빼기', danger: true }).then(ok => ok && saveStaff(plain().filter(x => x.name !== p.name))); return; }
       if (!e.target.closest('.lv-edit')) return;
       mgr.querySelector('.lv-edit-form')?.remove();
-      const st = stored(p.name), fm = el(`<form class="lv-edit-form"><label>이름<input name="name" value="${esc(p.name)}" maxlength="20" required${p.mk ? ' readonly title="마케터 이름은 접속 코드와 연결돼 있어 여기서 바꾸지 않아요"' : ''}></label><label>별칭<input name="alias" value="${esc(st.alias || (p.mk && p.label !== p.name ? p.label : ''))}" maxlength="20" placeholder="화면에 보일 이름"></label><label>부서<input name="team" value="${esc(p.team || '')}" maxlength="20"></label><div class="lv-sw" role="radiogroup" aria-label="배경 색">${sw(p.color)}</div><div class="lv-edit-acts"><button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
+      const st = stored(p.name), fm = el(`<form class="lv-edit-form"><label>이름<input name="name" value="${esc(p.name)}" maxlength="20" required${p.mk ? ' readonly title="마케터 이름은 접속 코드와 연결돼 있어 여기서 바꾸지 않아요"' : ''}></label><label>별칭<input name="alias" value="${esc(st.alias || (p.mk && p.label !== p.name ? p.label : ''))}" maxlength="20" placeholder="화면에 보일 이름"></label><label>부서<input name="team" value="${esc(p.team || '')}" maxlength="20"></label><label>입사일<input type="date" name="hired" value="${esc(st.hired || '')}" max="${today}"></label><div class="lv-sw" role="radiogroup" aria-label="배경 색">${sw(p.color)}</div><div class="lv-edit-acts"><button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
       li.after(fm); fm.querySelector('input[name=alias]').focus();
       fm.querySelector('input[name=custom]').oninput = ev => { fm.querySelectorAll('input[name=color]').forEach(r => r.checked = false); ev.target.dataset.used = '1'; };
       fm.querySelector('[data-x]').onclick = () => fm.remove();
       fm.onsubmit = ev => { ev.preventDefault();
         const name = fm.name.value.trim(), color = fm.querySelector('input[name=color]:checked')?.value || (fm.custom.dataset.used ? fm.custom.value : p.color);
-        const rec = { name, was: p.name, alias: fm.alias.value.trim(), team: fm.team.value.trim(), color };
+        const rec = { name, was: p.name, alias: fm.alias.value.trim(), team: fm.team.value.trim(), color, hired: fm.hired.value };
         const list = plain(); const i = list.findIndex(x => x.name === p.name); if (i >= 0) list[i] = { ...list[i], ...rec }; else list.push(rec);
         saveStaff(list, `${rec.alias || name} 정보를 저장했습니다`); };
     };
@@ -1848,7 +1871,9 @@
     box.append(form, mgr);
     box.append(el(`<div class="lv-people">${ppl.map(p => { const mine = list.filter(l => l.who === p.name), next = mine.find(l => l.date >= today);
       return `<section class="lv-card" style="--pc:${col(p.name)}"><div class="lv-who"><span class="lv-av">${esc(p.label.slice(0, 1))}</span><b>${esc(p.label)}</b>${p.team ? `<small class="lv-team">${esc(p.team)}</small>` : ''}</div>
-        <div class="lv-big"><strong>${sum(mine)}</strong><span>일 사용</span></div>
+        ${(() => { const st = (state.staff || []).find(x => x.name === p.name), en = entitle(st?.hired, today); if (!en) return `<div class="lv-big"><strong>${sum(mine)}</strong><span>일 사용</span></div><p class="lv-ent muted">입사일을 넣으면 잔여 연차가 계산돼요</p>`;
+          const used = sum(state.leaves.filter(l => l.who === p.name && l.date >= en.from && l.date <= today)), left = en.days - used;
+          return `<div class="lv-big"><strong class="${left < 0 ? 'neg' : ''}">${left}</strong><span>일 남음</span></div><div class="lv-ent-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${en.days}" aria-valuenow="${used}" aria-label="연차 ${en.days}일 중 ${used}일 사용"><i style="width:${Math.min(100, en.days ? used / en.days * 100 : 0)}%"></i></div><p class="lv-ent">발생 ${en.days}일 · 사용 ${used}일 · ${en.years ? `근속 ${en.years}년` : `입사 ${en.months}개월`}</p>`; })()}
         <div class="lv-split"><span>연차 <b>${mine.filter(l => l.kind === '연차').length}</b></span><span>반차 <b>${mine.filter(l => l.kind !== '연차').length}</b></span></div>
         <p class="lv-next">${next ? `다음 휴가 <b>${fmtD(next.date)}</b> ${esc(next.kind)}` : '예정된 휴가 없음'}</p></section>`; }).join('')}</div>`));
     const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), curM = today.slice(5, 7);
@@ -1857,7 +1882,7 @@
     const item = l => `<li class="lv-item" style="--pc:${col(l.who)}"><span class="lv-date">${fmtD(l.date)}</span><span class="lv-person"><i class="lv-dot"></i>${esc(staffOf(l.who).label)}</span><span class="lv-kind k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><span class="lv-memo">${esc(l.memo || '')}</span><button type="button" class="del" data-id="${esc(l.id)}" aria-label="${esc(disp(l.who))} ${l.date} ${esc(l.kind)} 삭제">${icon('x', 14)}</button></li>`;
     const up = list.filter(l => l.date >= today), past = list.filter(l => l.date < today).reverse();
     const panel = el(`<div class="lv-lists"><section class="lv-panel"><h2>예정 <small>${up.length}</small></h2><ul class="lv-ul">${up.map(item).join('') || '<li class="lv-empty">예정된 휴가가 없어요</li>'}</ul></section><section class="lv-panel"><h2>지난 내역 <small>${past.length}</small></h2><ul class="lv-ul">${past.map(item).join('') || '<li class="lv-empty">아직 사용한 휴가가 없어요</li>'}</ul></section></div>`);
-    panel.onclick = e => { const b = e.target.closest('.del'); if (!b) return; const l = list.find(x => x.id === b.dataset.id); if (l && confirm(`${disp(l.who)} ${l.date} ${l.kind}를 삭제할까요?`)) leaveEdit({ action: 'leaveDelete', id: l.id }); };
+    panel.onclick = e => { const b = e.target.closest('.del'); if (!b) return; const l = list.find(x => x.id === b.dataset.id); if (l) ask(`${staffOf(l.who).label} · ${l.date.slice(5).replace('-', '/')} ${l.kind}`, { title: '연월차를 취소할까요?', ok: '취소하기', danger: true }).then(ok => ok && leaveEdit({ action: 'leaveDelete', id: l.id })); };
     box.append(panel);
   }
   // 태그 관리: 카드로 4~5개씩. 지운 태그는 '태그 휴지통'(영구 보관)으로 가고 칩 표시를 멈춘다. 복원 가능.
@@ -1890,7 +1915,7 @@
     box.append(trash);
   }
   async function tagTrash(action, tag) {
-    if (action === 'tagDelete' && !confirm(`"${tag}" 태그를 지울까요? 업무 글은 그대로 두고, 칩 표시만 멈춥니다. 태그 휴지통에 영구 보관되어 언제든 복원할 수 있어요.`)) return;
+    if (action === 'tagDelete' && !(await ask('업무 글은 그대로 두고 칩 표시만 멈춰요. 설정 → 태그 휴지통에서 언제든 복원할 수 있어요.', { title: `"${tag}" 태그를 지울까요?`, ok: '삭제', danger: true }))) return;
     try { const j = await api.post({ action, tag }); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); state.deletedTags = j.deletedTags || []; toast(action === 'tagDelete' ? '태그를 휴지통으로 옮겼습니다' : '태그를 복원했습니다'); renderTeam(); render(); }
     catch (e) { toast(e.message); }
   }

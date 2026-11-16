@@ -1265,3 +1265,22 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){@media(max-width:900px){.bottomnav{background:rgba(255,255,255,.96)}}}
 @media(prefers-reduced-transparency:reduce){@media(max-width:900px){.bottomnav{background:#fff;-webkit-backdrop-filter:none;backdrop-filter:none}}}
 @media(max-width:600px){#sharedcal .sc-day{padding-right:36px}.memo-btn{min-width:44px;justify-content:center}}
+/* 확인 창: 화면 가운데 · 뒤 살짝 어둡게 (모든 대화상자 공통 배경) */
+dialog::backdrop{background:rgba(25,31,40,.36);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.ask-dlg{border:none;border-radius:16px;padding:22px 22px 16px;width:min(360px,calc(100vw - 32px));box-shadow:0 20px 48px rgba(0,27,55,.24);margin:auto}
+.ask-dlg h2{margin:0 0 6px;font-size:17px;line-height:1.4}
+.ask-dlg p{margin:0 0 4px;font-size:14px;color:var(--text-2);line-height:1.5;white-space:pre-line}
+.ask-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
+.ask-acts button{min-height:48px;border-radius:12px;font-size:15px;font-weight:600}
+.ask-acts [data-v="0"]{background:var(--grey100);color:var(--text-1)}
+.danger-fill{background:#e03131;color:#fff}.danger-fill:hover{background:#c92a2a}
+/* 내부 미팅 표시 */
+.be-meet{display:flex;flex-wrap:wrap;gap:4px 16px}.be-meet[hidden]{display:none}
+.be-int input{accent-color:#1b64da}
+.int-badge{font-style:normal;font-size:12px;font-weight:700;color:#fff;background:#1b64da;border-radius:4px;padding:0 4px;margin-left:2px}
+/* 연월차: 발생·잔여 */
+.lv-sub{margin:-6px 0 12px;font-size:14px;color:var(--text-2)}
+.lv-big strong.neg{color:#c92a2a}
+.lv-ent{margin:0;font-size:12px;color:var(--text-2)}
+.lv-ent-bar{height:6px;border-radius:999px;background:var(--grey100);overflow:hidden}.lv-ent-bar i{display:block;height:100%;background:var(--pc);border-radius:inherit}
+.nav>button{white-space:nowrap}.nav>button[data-view=hospital]{letter-spacing:-.4px}

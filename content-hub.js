@@ -221,7 +221,7 @@ function renderPlan(){
 function rowVals(tr){ var v = []; tr.querySelectorAll('[data-k]').forEach(function(el){ v[+el.dataset.k] = el.dataset.k==='4' ? fromISO(el.value) : el.value; }); return v; }
 function toast(msg, err){ var t = $('toast'); t.textContent = msg; t.className = 'toast'+(err?' err':''); t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(function(){ t.hidden = true; }, err?6000:2500); }
 $('planBody').addEventListener('input', function(e){ var tr = e.target.closest('tr'); if (!tr) return; tr.classList.add('dirty'); var b = tr.querySelector('.save'); if (b) b.disabled = false; });
-$('planBody').addEventListener('click', function(e){
+$('planBody').addEventListener('click', async function(e){
   var b = e.target.closest('.save'); if (!b) return;
   var tr = b.closest('tr'), row = +tr.dataset.row, after = rowVals(tr);
   var orig = plan.filter(function(r){ return r.row===row; })[0];
@@ -247,7 +247,7 @@ $('pfReset').onclick = function(){ $('pfTarget').value = ''; $('pfType').value =
 $('planBody').addEventListener('click', function(e){
   var d = e.target.closest('[data-del]'); if (!d || saving) return;
   var row = +d.dataset.del, orig = plan.filter(function(r){ return r.row===row; })[0]; if (!orig) return;
-  if (!confirm('"'+(orig.v[2] || '이 항목')+'"을(를) 삭제할까요? 휴지통에 14일 보관됩니다.')) return;
+  if (!(await (window.ask ? window.ask('휴지통에 14일 보관돼요.', { title: '"'+(orig.v[2] || '이 항목')+'"을(를) 삭제할까요?', ok: '삭제', danger: true }) : Promise.resolve(confirm('삭제할까요?'))))) return;
   saving = true;
   request({ action: 'contentPlanDelete', row: row, before: orig.v }, true).then(function(data){ saving = false; plan = data.plan; cache = null; renderPlan(); toast('삭제했어요 (휴지통에서 복원 가능)'); }).catch(function(err){ saving = false; toast(err.message, true); });
 });
