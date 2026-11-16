@@ -1199,6 +1199,13 @@
   // 옛 배포(v1)는 who 를 무시하고 전성환 시트에 쓰므로, v2 확인 전에는 다른 사람·공통 데이터를 막는다
   let backendOk = null;
   const checkBackend = async () => backendOk ??= await api.get({ action: 'ping' }).then(j => j.v >= 2).catch(() => false);
+  function weeklySharedCleanup() {
+    if (isDirector() || readOnly() || weeklySharedCleanup.done === weekStart(todayKst())) return;
+    const wk = weekStart(todayKst()), old = state.shared.filter(r => r.section === '공통업무' && isDone(r) && String(r.completed || r.date).slice(0, 10) < wk);
+    weeklySharedCleanup.done = wk; if (!old.length) return;
+    state.shared = state.shared.filter(r => !old.includes(r));
+    api.post({ action: 'delete', ids: old.map(r => r.date + '|' + r.id), who: SHARED }).catch(() => {});
+  }
   async function loadShared() {
     const anchor = state.sharedAnchor || state.sel, ws = weekStart(anchor);
     const monthEnd = iso(new Date(+anchor.slice(0, 4), +anchor.slice(5, 7), 0));
@@ -1210,6 +1217,7 @@
     if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); renderShared(); }
     try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; const rows = result.rows.filter(r => !dir || r.section === '원장님일정'); cacheSet(sk, rows); state.shared = rows.map(r => ({ ...r, _who: owner })); }
     catch (e) { if (e.message !== 'unauthorized') toast('공통 데이터 불러오기 실패: ' + e.message); return; } // 코드 문제는 코드 입력 창이 따로 뜸
+    if (!dir) weeklySharedCleanup(); // 지난주까지 끝낸 공통 변동 업무는 주 단위로 정리
     if (dir) api.get({ who: SHARED, from, to }).then(j => { if (!isDirector()) return; state.mktEvents = j.rows.filter(r => r.section === '일정').map(r => ({ ...r, _who: SHARED })); renderShared(); }).catch(() => {}); // 원장님 캘린더에 공용 일정도 (다른 색)
     renderShared();
   }
@@ -1364,9 +1372,12 @@
     state.shared.filter(r => (DONE_TAB ? ['공통업무', '공통반복'].includes(r.section) : r.section === SEC) && r.date <= state.sel && taskKey(r.text))
       .sort((a, b) => a.date.localeCompare(b.date) || (a.updated || '').localeCompare(b.updated || '') || a.id.localeCompare(b.id))
       .forEach(r => latest.set(taskKey(r.text), r));
-    if (SEC === '공통반복' && !DONE_TAB) latest.forEach((r, k) => { // 지난날 끝낸 반복 업무는 오늘 '시작 전' 새 행으로 보여준다(누르기 전엔 저장 안 함)
-      if (r.date < state.sel && isDone(r)) { const v = { ...r, id: newId(state.sel), date: state.sel, status: 'todo', completed: '', origin: r.origin || r.id }; state.shared.push(v); latest.set(k, v); }
+    // 주간 정리: 지난주까지 끝낸 반복 업무는 이번 주에 '진행 중'으로 다시 배치(누르기 전엔 저장 안 함), 이번 주에 끝낸 건 완료로 유지
+    const wk = weekStart(state.sel), doneBefore = r => isDone(r) && String(r.completed || r.date).slice(0, 10) < wk;
+    if (SEC === '공통반복' && !DONE_TAB) latest.forEach((r, k) => {
+      if (doneBefore(r)) { const v = { ...r, id: newId(state.sel), date: state.sel, status: 'doing', completed: '', origin: r.origin || r.id }; state.shared.push(v); latest.set(k, v); }
     });
+    if (DONE_TAB) latest.forEach((r, k) => { if (doneBefore(r)) latest.delete(k); }); // 완료 탭은 이번 주에 끝낸 것만
     const list = el('<div class="shared-task-grid" role="group" aria-label="공통 업무 목록"></div>');
     const latestRows = [...latest.values()], lateS = r => state.doneLast && isDone(r) && !sortHold.has(r.id);
     const catOf = r => r.text.match(CAT_RE)?.[1] || '';
