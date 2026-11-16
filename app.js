@@ -1502,6 +1502,9 @@
     api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
     loadContentLinks();
     loadCalendar();
+    // 체험단·리얼모델 예약 → 오늘 변동업무(진행 중). 밤 00:05 자동 생성이 못 돌았을 때를 위해 하루 한 번 확인
+    if (asked === C.DEFAULT_PERSON && state.dir.me === C.DEFAULT_PERSON && afterLoad.trial !== today) { afterLoad.trial = today;
+      api.post({ action: 'trialSync', date: today }).then(j => { if (j.added?.length && asked === state.person) { state.rows.push(...j.added); render(); toast(`체험단 예약 ${j.added.length}건을 변동업무에 넣었습니다`); } }).catch(() => {}); }
   }
   /* ---------- 원장님 숙제 (마케터 → 원장님) ---------- */
   const DIR_ST = { pending: '대기', approved: '승인', rejected: '거절', done: '완료' };

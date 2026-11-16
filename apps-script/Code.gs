@@ -76,6 +76,7 @@ function doPost(e) {
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'trialSync') { try { return json(trialSync_(body.date)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'staffSave') { try { if (denyFor_(memberFor_(body.code)).indexOf('leaves') >= 0 && memberFor_(body.code) !== ADMIN) throw new Error('연월차 권한이 없습니다'); return json({ staff: staffSave_(body.staff) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'permsSave') { try { if (memberFor_(body.code) !== ADMIN) throw new Error('권한은 관리자(미스타전)만 바꿀 수 있습니다'); return json({ perms: permsSave_(body.perms) }); } catch (err) { return json({ error: err.message }); } }
@@ -617,6 +618,7 @@ function copyOf_(r, id, d, status, col) {
 function dailyGenerate() {
   var d = todayKst_();
   Object.keys(REPORT_SHEETS).forEach(function (who) { if (who !== '공통' && isWorkday_(d, who)) try { generateDay_(who, d, false); } catch (e) { console.error(who, e); } });
+  try { trialSync_(d); } catch (e) { console.error('trialSync', e); } // 체험단·리얼모델 예약 → 미스타전 변동업무
 }
 // 편집기에서 한 번만 실행: 기존 트리거를 지우고 매일 00:05(Asia/Seoul) 트리거를 다시 만든다
 function setupDailyTrigger() {
@@ -918,7 +920,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-13.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-16.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'team:tags', 'team:leaves', 'leaves', 'hospital', 'revenue'];
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -954,4 +956,35 @@ function staffSave_(list) {
     if (ren.length) { var ls = leaveSheet_(), n = ls.getLastRow(); if (n > 1) { var who = ls.getRange(2, 3, n - 1, 1).getValues(); who.forEach(function (w) { ren.forEach(function (x) { if (String(w[0]) === String(x.was)) w[0] = String(x.name).trim().slice(0, 20); }); }); ls.getRange(2, 3, n - 1, 1).setValues(who); } }
   } finally { lock.releaseLock(); }
   return staffList_();
+}
+
+// 체험단 일정(위아컴즈 시트) → 그날 예약을 미스타전 변동업무에 '진행 중'으로. 예: "체험단) 위아컴즈 1300 설보라 입술필러"
+// A열이 '리얼모델'이면 "리얼모델)". 같은 예약은 원본id(trial-날짜-행)로 한 번만 넣는다.
+var TRIAL_SS_ID = '12L-XwfqVdRkCTGfTjWtFyRWnILTucaA2E8H-3K2_9q4', TRIAL_TAB = '체험단일정', TRIAL_OWNER = '전성환', TRIAL_AGENCY = '위아컴즈';
+var FILLER_PARTS = ['입술', '팔자', '애교', '관자', '눈밑', '이마', '옆볼', '앞볼', '턱', '코', '어깨', '골반'];
+function trialItems_(d) {
+  var v = SpreadsheetApp.openById(TRIAL_SS_ID).getSheetByName(TRIAL_TAB).getDataRange().getDisplayValues(), out = [];
+  for (var i = 3; i < v.length; i++) {
+    var r = v[i], name = String(r[1] || '').trim(), m = String(r[6] || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); if (!name || !m) continue;
+    var date = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); if (date !== d) continue;
+    var t = String(r[7] || '').replace(/[^0-9]/g, ''), time = t.length >= 3 ? ('0' + t).slice(-4) : '';
+    var proc = String(r[2] || '').trim().replace(/\s*\(필러\)\s*/g, '필러').replace(/\s+/g, ' ');
+    if (FILLER_PARTS.indexOf(proc) >= 0) proc += '필러'; // 부위만 적힌 칸은 '입술필러'처럼
+    var kind = String(r[0] || '').trim() === '리얼모델' ? '리얼모델' : '체험단';
+    out.push({ origin: 'trial-' + d + '-' + (i + 1), text: kind + ') ' + [TRIAL_AGENCY, time, name, proc].filter(String).join(' ') });
+  }
+  return out;
+}
+function trialSync_(d) {
+  d = String(d || todayKst_()); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('날짜 형식이 올바르지 않습니다');
+  var items = trialItems_(d); if (!items.length) return { added: [] };
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var have = listRows(TRIAL_OWNER, d, d).map(function (r) { return r.origin; });
+    var add = items.filter(function (x) { return have.indexOf(x.origin) < 0; }); if (!add.length) return { added: [] };
+    var sh = monthSheet(TRIAL_OWNER, d, true), now = new Date().toISOString();
+    var rows = add.map(function (x, k) { return { id: newId_(d, 900 + k), date: d, section: '변동업무', col: 'L', status: 'doing', text: x.text, start: '', end: '', created: d, completed: '', origin: x.origin, order: '' }; });
+    sh.getRange(sh.getLastRow() + 1, 1, rows.length, NCOL).setValues(rows.map(function (o) { return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, '', o.origin, '']; }));
+    return { added: rows };
+  } finally { lock.releaseLock(); }
 }
