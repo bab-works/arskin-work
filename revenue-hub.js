@@ -26,6 +26,14 @@
     if (file.size > 15 * 1024 * 1024) throw new Error('파일이 너무 큽니다 (15MB 이하).');
     const X = await loadXLSX(), wb = X.read(await file.arrayBuffer(), { type: 'array' });
     if (wb.Sheets['통합데이터']) return window.RevenueModel.integrated(X.utils.sheet_to_json(wb.Sheets['통합데이터'], { header: 1, raw: false, defval: '' }));
+    // 담당자 일일마감 파일: 첫 탭만 본다. 연·월은 파일명(260530_…) → 탭 이름(5월) → 날짜 칸 순서로 찾는다
+    const first = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+    if (window.RevenueModel.isDaily(first)) {
+      const fm = file.name.match(/^(\d{2})(\d{2})(\d{2})/), tm = wb.SheetNames[0].match(/(\d{1,2})\s*월/), dm = first.map(r => String(r[0]).match(/(\d{1,2})\s*월\s*\d{1,2}\s*일/)).find(Boolean);
+      const month = fm ? +fm[2] : tm ? +tm[1] : dm ? +dm[1] : 0, year = fm ? 2000 + +fm[1] : new Date().getFullYear();
+      if (!month) throw new Error('파일에서 몇 월 마감인지 찾지 못했어요. 파일 이름을 "260530_5월 일일마감"처럼 날짜로 시작하게 해 주세요.');
+      return { staffDaily: true, year, month, part: window.RevenueModel.dailyRows(first, month) };
+    }
     const rows = await fileRows(file, X, wb); return window.RevenueModel.parse(rows, rows);
   }
   async function fileRows(file, X0, wb0) {
@@ -41,10 +49,34 @@
     const d = document.createElement('dialog'); d.className = 'code-dlg'; d.innerHTML = `<h2>${esc(title)}</h2><p>${esc(msg)}</p><div class="tr-acts"><button type="button" class="primary">확인</button></div>`;
     d.querySelector('button').onclick = () => d.close(); d.onclose = () => d.remove(); document.body.append(d); d.showModal();
   }
+  function pickStaff() { // 누구의 일일마감인지 (기기에 마지막 선택 기억)
+    return new Promise(res => {
+      const last = localStorage.rvStaff || '', opts = ['상담실장', '코디팀장', '데스크'];
+      const d = document.createElement('dialog'); d.className = 'ask-dlg';
+      d.innerHTML = `<h2>누구의 일일마감인가요?</h2><p>담당자별로 따로 보관하고, 그 달 매출표는 모두를 합쳐서 만들어요.</p><div class="rv-staff-pick">${opts.map(o => `<button type="button" data-s="${o}" class="${o === last ? 'primary' : ''}">${o}</button>`).join('')}</div><input class="rv-staff-other" placeholder="다른 담당자 이름" maxlength="20" value="${opts.includes(last) ? '' : esc(last)}"><div class="ask-acts"><button type="button" data-v="0">취소</button><button type="button" data-v="1" class="primary">확인</button></div>`;
+      let v = ''; d.onclick = e => { const b = e.target.closest('[data-s]'); if (b) { v = b.dataset.s; d.close(); return; } const a = e.target.closest('[data-v]'); if (a) { v = a.dataset.v === '1' ? (d.querySelector('.rv-staff-other').value.trim() || last) : ''; d.close(); } };
+      d.onclose = () => { d.remove(); if (v) try { localStorage.rvStaff = v; } catch {} res(v); };
+      document.body.append(d); d.showModal();
+    });
+  }
+  async function getAdminKey(label) {
+    let k = ''; try { k = localStorage.revenueAdminKey || ''; } catch {}
+    return k || (prompt(`${label} 보관하려면 업로드 토큰을 입력하세요 (관리자에게 받은 값)`) || '').trim();
+  }
   async function uploadMonth(file) {
     const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
-    const parsed = await fileParse(file), month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
-    parsed.updated = file.name;
+    let parsed = await fileParse(file);
+    if (parsed.staffDaily) { // 담당자 일일마감 → 담당자별로 보관하고 그 달 전체를 다시 합친다
+      const ym = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`, who = await pickStaff(); if (!who) return;
+      const adminKey = await getAdminKey(`${parsed.month}월 ${who} 마감을`); if (!adminKey) return rvAlert('업로드 토큰이 필요해요', '토큰은 스크립트 속성 REVENUE_ADMIN_KEYS 에 넣은 값이에요.');
+      try { await archive('save', { month: `${ym}#${who}`, data: { rows: parsed.part, file: file.name, at: new Date().toISOString() }, adminKey }); try { localStorage.revenueAdminKey = adminKey; } catch {} }
+      catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} return rvAlert(`${who} 마감 보관에 실패했어요`, e.message); }
+      const parts = { [who]: parsed.part };
+      try { const l = await archive('list'); for (const k of (l.parts || []).filter(k => k.startsWith(ym + '#') && k !== `${ym}#${who}`)) parts[k.split('#')[1]] = (await archive('get', { month: k })).data.rows || []; } catch {}
+      parsed = window.RevenueModel.fromParts(parts, parsed.year, parsed.month); parsed.updated = `${Object.keys(parts).join('·')} 일일마감 합산`;
+    }
+    const month = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
+    if (!parsed.updated) parsed.updated = file.name;
     // 먼저 화면에 보여주고(저장 실패해도 볼 수 있게), 그다음 보관 저장
     generation++; sourceMode = ''; data = parsed; shownMonth = month; selectedDay = parsed.daily.at(-1)?.day; hist[month] = parsed; render(); try { localStorage.rvLast = JSON.stringify({ m: month, d: parsed }); } catch {}
     let adminKey = ''; try { adminKey = localStorage.revenueAdminKey || ''; } catch {}
@@ -126,6 +158,7 @@
   const exGet = () => { try { return new Set(JSON.parse(localStorage.rvExclude || '[]')); } catch { return new Set(); } };
   const exSet = set => { try { localStorage.rvExclude = JSON.stringify([...set]); } catch {} };
   function procList(cats) { // 제외하지 않은 시술 TOP 10: 포함 건수 막대 + 포함된 보고의 매출
+    if (!cats.length) return '<p class="rv-sub">이 파일 형식에는 시술 정보가 없어요. 통합데이터가 있는 마감 파일을 올리면 시술 분석이 나와요.</p>';
     const ex = exGet(), list = cats.filter(c => !ex.has(c.name)).slice(0, 10), max = Math.max(1, ...list.map(c => c.count || 0));
     return list.map((c, i) => `<div class="rv-bar-item"><div><span><i style="background:${colors[i % colors.length]}"></i>${esc(c.name)}</span><b>${fmt(c.count)}건</b></div><div class="rv-bar-track"><i style="width:${(c.count || 0) / max * 100}%;background:${colors[i % colors.length]}"></i></div>${c.revenue != null ? `<small>포함 보고 매출 ${short(c.revenue)}원 · 해외 ${fmt(c.overseas || 0)}건</small>` : ''}</div>`).join('') || '<p class="rv-sub">모든 시술을 제외했어요. 필터에서 다시 켜 주세요.</p>';
   }

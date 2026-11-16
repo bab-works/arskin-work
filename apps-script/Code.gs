@@ -404,8 +404,9 @@ function revenueArchive_(b, me) {
   var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 2).getValues() : [];
   // 시트가 '2026-11'을 날짜로 바꿔 둔 경우도 'yyyy-MM'으로 읽는다
   rows = rows.map(function (r) { return [r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM') : String(r[0]), r[1]]; });
-  if (b.op === 'list') return { months: rows.map(function (r) { return String(r[0]); }).filter(String).sort().reverse() };
-  var month = String(b.month || ''); if (!/^\d{4}-\d{2}$/.test(month)) throw new Error('월 형식이 올바르지 않습니다');
+  // 'yyyy-MM' = 그 달 분석, 'yyyy-MM#담당자' = 그 담당자의 일일마감 원본 요약(이름 없이)
+  if (b.op === 'list') { var keys = rows.map(function (r) { return String(r[0]); }).filter(String); return { months: keys.filter(function (k) { return k.indexOf('#') < 0; }).sort().reverse(), parts: keys.filter(function (k) { return k.indexOf('#') > 0; }) }; }
+  var month = String(b.month || ''); if (!/^\d{4}-\d{2}(#[^#]{1,20})?$/.test(month)) throw new Error('월 형식이 올바르지 않습니다');
   var idx = -1; for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === month) { idx = i + 2; break; }
   if (b.op === 'get') { if (idx < 0) throw new Error('보관된 분석이 없습니다'); return { data: JSON.parse(sh.getRange(idx, 2).getValue()) }; }
   if (b.op !== 'save') throw new Error('unknown op');
@@ -920,7 +921,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-16.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-16.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -940,17 +941,17 @@ function permsSave_(perms) {
 // 병원 전 직원 명단(연월차·아르스킨 캘린더용): 공통 시트 'staff' 탭 [이름, 부서, 색, 별칭]. 마케터도 색·별칭을 덮어쓸 수 있게 같은 이름으로 저장
 function staffSheet_() {
   var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('staff');
-  if (!sh) { sh = ss.insertSheet('staff'); sh.getRange('A:E').setNumberFormat('@'); sh.appendRow(['이름', '부서', '색', '별칭', '입사일']); sh.setFrozenRows(1); }
-  if (sh.getRange(1, 5).getValue() !== '입사일') { sh.getRange(1, 4, 1, 2).setValues([['별칭', '입사일']]); sh.getRange('E:E').setNumberFormat('@'); }
+  if (!sh) { sh = ss.insertSheet('staff'); sh.getRange('A:F').setNumberFormat('@'); sh.appendRow(['이름', '부서', '색', '별칭', '입사일', '생일']); sh.setFrozenRows(1); }
+  if (sh.getRange(1, 6).getValue() !== '생일') { sh.getRange(1, 4, 1, 3).setValues([['별칭', '입사일', '생일']]); sh.getRange('E:F').setNumberFormat('@'); }
   return sh;
 }
-function staffList_() { var sh = staffSheet_(); if (sh.getLastRow() < 2) return []; return sh.getRange(2, 1, sh.getLastRow() - 1, 5).getDisplayValues().filter(function (r) { return r[0]; }).map(function (r) { return { name: r[0], team: r[1], color: r[2], alias: r[3], hired: r[4] }; }); }
+function staffList_() { var sh = staffSheet_(); if (sh.getLastRow() < 2) return []; return sh.getRange(2, 1, sh.getLastRow() - 1, 6).getDisplayValues().filter(function (r) { return r[0]; }).map(function (r) { return { name: r[0], team: r[1], color: r[2], alias: r[3], hired: r[4], birth: r[5] }; }); }
 function staffSave_(list) {
   var clean = (list || []).filter(function (x) { return x && String(x.name || '').trim(); }).slice(0, 200);
-  var rows = clean.map(function (x) { return [String(x.name).trim().slice(0, 20), String(x.team || '').slice(0, 20), String(x.color || '').slice(0, 10), String(x.alias || '').trim().slice(0, 20), /^\d{4}-\d{2}-\d{2}$/.test(String(x.hired || '')) ? String(x.hired) : '']; });
+  var rows = clean.map(function (x) { return [String(x.name).trim().slice(0, 20), String(x.team || '').slice(0, 20), String(x.color || '').slice(0, 10), String(x.alias || '').trim().slice(0, 20), /^\d{4}-\d{2}-\d{2}$/.test(String(x.hired || '')) ? String(x.hired) : '', /^\d{4}-\d{2}-\d{2}$/.test(String(x.birth || '')) ? String(x.birth) : '']; });
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
-    var sh = staffSheet_(); if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 5).clearContent(); if (rows.length) sh.getRange(2, 1, rows.length, 5).setValues(rows);
+    var sh = staffSheet_(); if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 6).clearContent(); if (rows.length) sh.getRange(2, 1, rows.length, 6).setValues(rows);
     // 이름을 바꾼 사람은 지난 연월차 기록의 이름도 함께 바꾼다
     var ren = clean.filter(function (x) { return x.was && String(x.was) !== String(x.name).trim(); });
     if (ren.length) { var ls = leaveSheet_(), n = ls.getLastRow(); if (n > 1) { var who = ls.getRange(2, 3, n - 1, 1).getValues(); who.forEach(function (w) { ren.forEach(function (x) { if (String(w[0]) === String(x.was)) w[0] = String(x.name).trim().slice(0, 20); }); }); ls.getRange(2, 3, n - 1, 1).setValues(who); } }

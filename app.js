@@ -1783,7 +1783,8 @@
     for (let i = 0; i < weeks * 7; i++) {
       const d = shiftDate(start, i), out = d.slice(0, 7) !== month, hol = state.holidays?.[d], wd = new Date(d + 'T00:00:00').getDay();
       const ls = state.leaves.filter(l => l.date === d && (!who || l.who === who));
-      const cell = el(`<div class="sc-day${d === today ? ' today' : ''}${out ? ' sc-outside' : ''}${hol ? ' holiday' : ''}${wd === 0 || wd === 6 ? ' wkend' : ''}" data-date="${d}" role="gridcell"><div class="sc-date"><b>${+d.slice(8)}</b>${hol ? `<em class="sc-hol">${esc(hol.name || hol)}</em>` : ''}</div>${ls.map(l => { const p = staffOf(l.who); return `<button type="button" class="hosp-leave" data-id="${esc(l.id)}" style="--pc:${esc(p.color)}" title="${esc(p.label)} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''}"><i class="lv-dot"></i>${esc(p.label)} <small>${esc(l.kind)}</small></button>`; }).join('')}<button type="button" class="sc-add" aria-label="${+d.slice(5, 7)}월 ${+d.slice(8)}일 연월차 등록">+</button></div>`);
+      const bd = (state.staff || []).filter(x => x.birth && x.birth.slice(5) === d.slice(5) && (!who || x.name === who)).map(x => staffOf(x.name));
+      const cell = el(`<div class="sc-day${d === today ? ' today' : ''}${out ? ' sc-outside' : ''}${hol ? ' holiday' : ''}${wd === 0 || wd === 6 ? ' wkend' : ''}" data-date="${d}" role="gridcell"><div class="sc-date"><b>${+d.slice(8)}</b>${hol ? `<em class="sc-hol">${esc(hol.name || hol)}</em>` : ''}</div>${ls.map(l => { const p = staffOf(l.who); return `<button type="button" class="hosp-leave" data-id="${esc(l.id)}" style="--pc:${esc(p.color)}" title="${esc(p.label)} ${esc(l.kind)}${l.memo ? ' · ' + esc(l.memo) : ''}"><i class="lv-dot"></i>${esc(p.label)} <small>${esc(l.kind)}</small></button>`; }).join('')}${bd.map(p => `<span class="hosp-bday" style="--pc:${esc(p.color)}">🎂 ${esc(p.label)}</span>`).join('')}<button type="button" class="sc-add" aria-label="${+d.slice(5, 7)}월 ${+d.slice(8)}일 연월차 등록">+</button></div>`);
       grid.append(cell);
     }
     const go = m => { state.hospAnchor = m; renderHospital(); };
@@ -1857,13 +1858,13 @@
       if (e.target.closest('.del')) { ask('지난 연월차 기록은 그대로 남아요.', { title: `${p.label}을(를) 명단에서 뺄까요?`, ok: '빼기', danger: true }).then(ok => ok && saveStaff(plain().filter(x => x.name !== p.name))); return; }
       if (!e.target.closest('.lv-edit')) return;
       mgr.querySelector('.lv-edit-form')?.remove();
-      const st = stored(p.name), fm = el(`<form class="lv-edit-form"><label>이름<input name="name" value="${esc(p.name)}" maxlength="20" required${p.mk ? ' readonly title="마케터 이름은 접속 코드와 연결돼 있어 여기서 바꾸지 않아요"' : ''}></label><label>별칭<input name="alias" value="${esc(st.alias || (p.mk && p.label !== p.name ? p.label : ''))}" maxlength="20" placeholder="화면에 보일 이름"></label><label>부서<input name="team" value="${esc(p.team || '')}" maxlength="20"></label><label>입사일<input type="date" name="hired" value="${esc(st.hired || '')}" max="${today}"></label><div class="lv-sw" role="radiogroup" aria-label="배경 색">${sw(p.color)}</div><div class="lv-edit-acts"><button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
+      const st = stored(p.name), fm = el(`<form class="lv-edit-form"><label>이름<input name="name" value="${esc(p.name)}" maxlength="20" required${p.mk ? ' readonly title="마케터 이름은 접속 코드와 연결돼 있어 여기서 바꾸지 않아요"' : ''}></label><label>별칭<input name="alias" value="${esc(st.alias || (p.mk && p.label !== p.name ? p.label : ''))}" maxlength="20" placeholder="화면에 보일 이름"></label><label>부서<input name="team" value="${esc(p.team || '')}" maxlength="20"></label><label>입사일<input type="date" name="hired" value="${esc(st.hired || '')}" max="${today}"></label><label>생일<input type="date" name="birth" value="${esc(st.birth || '')}" max="${today}"></label><div class="lv-sw" role="radiogroup" aria-label="배경 색">${sw(p.color)}</div><div class="lv-edit-acts"><button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
       li.after(fm); fm.querySelector('input[name=alias]').focus();
       fm.querySelector('input[name=custom]').oninput = ev => { fm.querySelectorAll('input[name=color]').forEach(r => r.checked = false); ev.target.dataset.used = '1'; };
       fm.querySelector('[data-x]').onclick = () => fm.remove();
       fm.onsubmit = ev => { ev.preventDefault();
         const name = fm.name.value.trim(), color = fm.querySelector('input[name=color]:checked')?.value || (fm.custom.dataset.used ? fm.custom.value : p.color);
-        const rec = { name, was: p.name, alias: fm.alias.value.trim(), team: fm.team.value.trim(), color, hired: fm.hired.value };
+        const rec = { name, was: p.name, alias: fm.alias.value.trim(), team: fm.team.value.trim(), color, hired: fm.hired.value, birth: fm.birth.value };
         const list = plain(); const i = list.findIndex(x => x.name === p.name); if (i >= 0) list[i] = { ...list[i], ...rec }; else list.push(rec);
         saveStaff(list, `${rec.alias || name} 정보를 저장했습니다`); };
     };

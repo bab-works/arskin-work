@@ -117,5 +117,35 @@ function integratedParse_(rows) {
     channels: obj(routes), visits: obj(visits), weeks: weeks.filter(Boolean),
     checks: { dailyDifference: 0, countDifference: 0, paymentDifference: Math.round(total - pays.reduce(function (a, b) { return a + b; }, 0)), countryDifference: 0, staffDifference: 0, cumulativeDifference: 0 } };
 }
-window.RevenueModel = { parse: revenueParse_, csv: parseCSV, integrated: integratedParse_ };
+// 담당자 일일마감 파일(첫 탭: 날짜·이름·초/재진·국적·경로·어플금액·업셀금액·총금액·결제방식…) → 이름 없는 요약 행
+// 날짜는 그날 첫 줄에만 있고, A열의 숫자는 베가스 금액. 결제방식 '강남언니+카드'는 어플금액=강남언니, 업셀금액=카드.
+function isDailySheet_(rows) { return (rows || []).slice(0, 6).some(function (r) { var h = (r || []).map(function (c) { return String(c).trim(); }); return h[0] === '날짜' && h[1] === '이름' && h.indexOf('초/재진') >= 0 && h.indexOf('결제방식') >= 0; }); }
+function dailySheetRows_(rows, month) {
+  var hi = rows.findIndex(function (r) { return String((r || [])[0]).trim() === '날짜' && String((r || [])[1]).trim() === '이름'; });
+  var head = rows[hi].map(function (c) { return String(c).trim(); }), col = function (n) { return head.indexOf(n); };
+  var C = { name: 1, visit: col('초/재진'), nation: col('국적'), route: col('경로'), app: col('어플금액'), up: col('업셀금액'), total: col('총금액'), pay: col('결제방식') };
+  var num = function (v) { var t = String(v == null ? '' : v).replace(/[₩원,\s]/g, ''); if (!t || t === '-') return 0; var n = Number(t); return isFinite(n) ? n : 0; };
+  var bucket = function (m) { m = String(m || '').trim(); return /강남언니|바비톡|어플/.test(m) ? 0 : /카드|단말/.test(m) ? 1 : /현금/.test(m) ? 2 : /큐릭|알리|위챗|QR/i.test(m) ? 3 : 4; };
+  var day = 0, out = [];
+  rows.slice(hi + 1).forEach(function (r) {
+    var a = String(r[0] || '').trim(), dm = a.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/) || a.match(/^\d{4}-(\d{1,2})-(\d{1,2})/);
+    if (dm && Number(dm[1]) === month) day = Number(dm[2]);
+    if (!String(r[C.name] || '').trim() || !day) return;
+    var vegas = !dm && /^[\d,.\s]+$/.test(a) ? num(a) : 0, total = num(r[C.total]), app = num(r[C.app]), up = num(r[C.up]), method = String(r[C.pay] || '').trim(), pays = [0, 0, 0, 0, 0];
+    var parts = method.split('+').map(function (x) { return x.trim(); }).filter(String);
+    if (parts.length > 1 && app && parts.some(function (x) { return bucket(x) === 0; })) { pays[0] += app; pays[bucket(parts.filter(function (x) { return bucket(x) !== 0; })[0])] += total - app; }
+    else pays[bucket(parts[0] || method)] += total; // shortcut: '현금+카드'처럼 나눈 금액이 없는 복합결제는 첫 결제수단으로 합산
+    var visit = String(r[C.visit] || '').trim() === '초' ? 1 : 0, upsell = bucket(method) === 0 && parts.length === 1 ? 0 : up;
+    out.push([day, visit, String(r[C.nation] || '').trim() || '미상', String(r[C.route] || '').trim() || '미상', total, vegas, upsell].concat(pays));
+  });
+  return out; // [일, 초진여부, 국적, 경로, 총금액, 베가스, 업셀집계, 강남언니/바비톡, 카드, 현금, 큐릭, 기타/계좌]
+}
+// 담당자별 요약 행들을 합쳐 통합데이터 형태로 → integratedParse_
+function fromStaffParts_(parts, year, month) {
+  var head = [year + '년 ' + month + '월 일일 마감 · 월간 누적', '담당자', '초/재진', '국적', '경로', '총금액', '베가스 금액', '업셀 집계', '검증차액', '강남언니/바비톡', '카드', '현금', '큐릭', '기타/계좌'], rows = [head];
+  Object.keys(parts).forEach(function (who) { (parts[who] || []).forEach(function (x) {
+    rows.push([year + '-' + ('0' + month).slice(-2) + '-' + ('0' + x[0]).slice(-2), who, x[1] ? '초' : '재', x[2], x[3], x[4], x[5], x[6], 0, x[7], x[8], x[9], x[10], x[11]]); }); });
+  var d = integratedParse_(rows); d.source = 'daily'; d.parts = Object.keys(parts); return d;
+}
+window.RevenueModel = { parse: revenueParse_, csv: parseCSV, integrated: integratedParse_, isDaily: isDailySheet_, dailyRows: dailySheetRows_, fromParts: fromStaffParts_ };
 })();
