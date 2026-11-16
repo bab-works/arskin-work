@@ -1286,3 +1286,17 @@ dialog::backdrop{background:rgba(25,31,40,.36);-webkit-backdrop-filter:blur(2px)
 .nav>button{white-space:nowrap}.nav>button[data-view=hospital]{letter-spacing:-.4px}
 .hosp-bday{display:block;font-size:12px;font-weight:600;padding:2px 6px;border-radius:6px;background:#fff9db;color:#8a6100}
 .lv-edit-form select,.lv-staff-add select{min-height:40px;border:none;border-radius:6px;background:#fff;padding:0 10px;font:inherit;font-size:14px}.lv-staff-add select{background:var(--grey50);min-height:44px}
+/* 중간 폭(901~1279px): 사이드바를 아이콘만 있는 얇은 레일로 접기. 900px 이하는 사이드바 숨김 + 하단 탭 */
+@media(min-width:901px) and (max-width:1279px){
+  .app{grid-template-columns:76px minmax(0,1fr)}
+  .sidebar{padding:18px 10px;align-items:center;gap:18px}
+  .brand{padding:0}.brand small{display:none}
+  .brand img.brand-logo{width:48px;height:44px;object-fit:cover;object-position:left center}
+  .nav{align-items:center}
+  .nav>button{font-size:0;width:52px;height:48px;padding:0;justify-content:center;position:relative;gap:0}
+  .nav>button .nav-ic{width:22px;height:22px;opacity:.85}
+  .nav>button .nav-badge{position:absolute;top:4px;right:2px;font-size:12px;margin:0}
+  .nav .subnav,.nav-grip{display:none!important}
+  .sidefoot{padding:0;align-items:center}.sidefoot a,.sidefoot .nav-edit{display:none}
+  .sidefoot-row{justify-content:center}
+}

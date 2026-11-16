@@ -1965,6 +1965,8 @@
   }
   /* ---------- 사이드바 대메뉴 순서 편집: 편집 버튼을 켜고 손잡이를 끌어 위아래로 ---------- */
   const navGroups = () => [...document.querySelectorAll('.nav > button[data-view]')];
+  // 접힌 레일(아이콘만)에서도 이름이 보이게: 마우스를 올리면 메뉴 이름
+  document.querySelectorAll('.nav > button[data-view]').forEach(b => { const t = b.textContent.trim().replace(/\d+$/, ''); b.title = t; if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', t); });
   function applyNavOrder() {
     let order = []; try { order = JSON.parse(localStorage.navOrder || '[]'); } catch {}
     const nav = document.querySelector('.nav');
