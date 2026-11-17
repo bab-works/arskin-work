@@ -1301,3 +1301,15 @@ dialog::backdrop{background:rgba(25,31,40,.36);-webkit-backdrop-filter:blur(2px)
   .sidefoot-row{justify-content:center}
 }
 .readonly .subtask input[type=checkbox]{pointer-events:none}.readonly .subtask button:not(.drag){display:none}
+/* 인쇄: 팔로업처럼 하위 업무가 있는 카드도 다른 줄과 같은 크기로, 하위 업무까지 */
+html.printing .project-card{padding:1px 2px;margin:0;border:none!important;background:none!important;box-shadow:none!important;border-radius:0}
+html.printing .pc-line{min-height:0;gap:4px;padding:0}
+html.printing .project-title{font-size:11px;font-weight:700;line-height:15px;white-space:normal;overflow:visible}
+html.printing .pc-memo,html.printing .project-card .drag,html.printing .project-card .del{display:none!important}
+html.printing .pc-ring svg{width:12px;height:12px}
+html.printing .pc-toggle{font-size:9px;padding:0;min-height:0;background:none;color:#555}
+html.printing .subtasks{padding:0 0 2px 14px;margin:0;gap:0}
+html.printing .subtask{min-height:0;gap:4px;padding:0;font-size:10px;line-height:14px}
+html.printing .subtask input[type=checkbox]{width:9px;height:9px;margin:0}
+html.printing .subtask button,html.printing .subtask .sub-grip{display:none!important}
+html.printing .subtask-text{font-size:10px}

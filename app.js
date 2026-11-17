@@ -296,7 +296,7 @@
     const memo = el(`<button type="button" class="pc-memo${r.end ? ' has' : ''}" aria-haspopup="dialog" aria-label="${esc(r.text)} 메모${r.end ? ' 있음' : ''}" title="${esc(r.end || '메모')}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg></button>`);
     memo.onclick = e => { e.stopPropagation(); memoBubble(memo, r, readOnly()); };
     line.append(title, memo, prog, tog, del); card.append(line);
-    if (!open) return card;
+    if (!open && !state.printAll) return card; // 인쇄할 때는 하위 업무까지 모두 펼쳐서
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
       const sub = el('<div class="subtask"></div>');
@@ -1211,6 +1211,7 @@
   addEventListener('beforeprint', () => {
     if (state.view !== 'daily') setView('daily');
     document.documentElement.classList.add('printing');
+    state.printAll = true; renderReport();
     { const r = document.getElementById('sec-릴스업무'), pb = $('sec-pub'); if (r && pb) { const w = el('<div class="print-pair"></div>'); r.before(w); w.append(r, pb); } } // 인쇄: 릴스·이번 주 발행을 좌우 2열로
     // 마케팅 공통 업무도 같은 A4에: 진행 중 + 이날 완료한 것만 보고서 끝에 붙였다가 인쇄 후 제거
     const list = state.shared.filter(r => r.section === '공통업무' && (!isDone(r) || String(r.completed || r.date).slice(0, 10) === state.sel));
@@ -1219,7 +1220,7 @@
     document.documentElement.style.setProperty('--print-zoom', Math.min(1, (279 * mm) / h).toFixed(3));
     document.documentElement.style.setProperty('--print-zoom2', Math.min(1, (279 * mm) / $('donePage').scrollHeight).toFixed(3));
   });
-  addEventListener('afterprint', () => { document.documentElement.classList.remove('printing'); document.querySelectorAll('.print-shared').forEach(n => n.remove()); if (document.querySelector('.print-pair')) renderReport(); });
+  addEventListener('afterprint', () => { document.documentElement.classList.remove('printing'); document.querySelectorAll('.print-shared').forEach(n => n.remove()); state.printAll = false; renderReport(); });
   /* ---------- 공통 캘린더 · 공통 업무 (아르스킨 공통 시트, 모든 사람 보고서 상단에 동일하게 표시) ---------- */
   const SHARED = '공통';
   const weekStart = d => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); };
