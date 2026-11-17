@@ -87,13 +87,25 @@
       return j;
     },
   };
-  const save = (rows, who = state.person) => api.post({ action: 'upsert', rows, who }).catch(e => toast('저장 실패: ' + e.message));
+  // 저장: 네트워크가 끊기거나 서버가 잠깐 바쁘면 두 번까지 자동 재시도(같은 id로 덮어써서 중복 없음)
+  const NET_ERR = /Failed to fetch|NetworkError|Load failed|잠시 밀렸/i;
+  const save = (rows, who = state.person) => { const go = n => api.post({ action: 'upsert', rows, who }).catch(e => {
+    if (n < 2 && NET_ERR.test(e.message)) return new Promise(r => setTimeout(r, 1500 * (n + 1))).then(() => go(n + 1));
+    toast('저장 실패: ' + (NET_ERR.test(e.message) ? '서버가 잠시 응답하지 않아요. 잠시 후 다시 해 주세요.' : e.message)); }); return go(0); };
   const removeIds = (ids, who = state.person) => api.post({ action: 'delete', ids, who }).catch(e => toast('삭제 실패: ' + e.message));
 
   function addRow(o) {
     if (!(o.text || '').trim()) return null;
     const r = { id: newId(o.date), status: '', col: '', text: '', start: '', end: '', ...o };
-    (r._who ? state.shared : state.rows).push(r); save([r], r._who); return r; // _who='공통' 이면 공통 시트
+    (r._who ? state.shared : state.rows).push(r); save([r], r._who);
+    // 주간고정을 이번 주 지난 날짜에 뒤늦게 넣으면, 같은 주의 그 뒤 날짜(오늘까지)에도 함께 넣는다
+    const today = todayKst();
+    if (r.section === '주간고정' && !o._wk && r.date < today && weekStart(r.date) === weekStart(today)) {
+      const later = state.dates.filter(d => d > r.date && d <= today && weekStart(d) === weekStart(r.date) && !state.rows.some(x => x.date === d && x.section === '주간고정' && x.text === r.text));
+      later.forEach(d => addRow({ ...o, date: d, origin: r.id, _wk: true }));
+      if (later.length) toast(`이번 주 ${later.map(d => +d.slice(8) + '일').join('·')}에도 함께 넣었어요`);
+    }
+    return r; // _who='공통' 이면 공통 시트
   }
   function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); }
   const deleteRow = r => deleteRows([r]);

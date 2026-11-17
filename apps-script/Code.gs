@@ -28,7 +28,8 @@ var HEADER = ['id', '날짜', '구분', '열', '상태', '내용', '시작', '�
 var NCOL = HEADER.length;
 function todayKst_() { return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'); }
 
-function doGet(e) {
+function doGet(e) { try { return doGet_(e); } catch (err) { return json({ error: String(err.message || err) }); } }
+function doGet_(e) {
   var p = e.parameter || {};
   if (!memberFor_(p.code)) return json({ error: 'unauthorized' });
   if (revenueOnly_(memberFor_(p.code))) { // 매출표만 허용된 계정: 다른 데이터는 읽지 못함
@@ -54,7 +55,9 @@ function doGet(e) {
   return json({ rows: listRows(p.who, p.from, p.to) });
 }
 
-function doPost(e) {
+// 어떤 오류든 JSON으로 돌려준다(오류 페이지가 나가면 브라우저에는 'Failed to fetch'로만 보임)
+function doPost(e) { try { return doPost_(e); } catch (err) { return json({ error: /lock|잠금|timed out/i.test(String(err)) ? '다른 저장이 진행 중이라 잠시 밀렸어요. 자동으로 다시 시도합니다.' : String(err.message || err), retry: true }); } }
+function doPost_(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
   if (revenueOnly_(memberFor_(body.code)) && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
@@ -87,7 +90,7 @@ function doPost(e) {
   var reelsSync = writer === DIRECTOR && body.action === 'upsert' && (body.rows || []).every(function (o) { return o.section === '릴스업무'; });
   if (who !== writer && who !== '공통' && who !== DIRECTOR && !reelsSync) return json({ error: '다른 사람의 일일보고는 볼 수만 있습니다' });
   var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(30000); // 자동 생성·체험단 연동과 겹쳐도 기다렸다 저장
   try {
     if (body.action === 'upsert') (body.rows || []).forEach(function (o) { upsertRow(who, o); });
     else if (body.action === 'delete') (body.ids || []).forEach(function (id) { deleteRow(who, id); });
@@ -921,7 +924,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-16.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-17.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
