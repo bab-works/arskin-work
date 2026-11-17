@@ -1235,7 +1235,7 @@ html.rev-only .bottomnav [data-view=home],html.rev-only .sidefoot .nav-edit,html
 .memo-btn.has::after{content:"";position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%;background:#f76707}
 .memo-btn[hidden]{display:none}
 @media(max-width:600px){.memo-btn span{display:none}.memo-btn{padding:0 12px}.tb-sep{display:none}}
-.memo-sec{display:none!important}html.printing .memo-sec{display:block!important}
+.memo-sec{display:none!important}
 /* 태그 편집 말풍선 */
 .cat[data-tag]{cursor:pointer}
 .tag-pop{position:fixed;z-index:75;width:280px;background:#fff;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 12px 32px rgba(0,27,55,.18);animation:popIn 160ms var(--ease)}
