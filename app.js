@@ -294,7 +294,7 @@
     tog.onclick = () => { open ? state.expanded.delete('p:' + r.id) : state.expanded.add('p:' + r.id); render(); };
     const del = el(`<button class="del" title="프로젝트 삭제" aria-label="프로젝트 삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); };
     const memo = el(`<button type="button" class="pc-memo${r.end ? ' has' : ''}" aria-haspopup="dialog" aria-label="${esc(r.text)} 메모${r.end ? ' 있음' : ''}" title="${esc(r.end || '메모')}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg></button>`);
-    memo.onclick = e => { e.stopPropagation(); memoBubble(memo, r); };
+    memo.onclick = e => { e.stopPropagation(); memoBubble(memo, r, readOnly()); };
     line.append(title, memo, prog, tog, del); card.append(line);
     if (!open) return card;
     const list = el('<div class="subtasks"></div>');
@@ -625,11 +625,11 @@
     pop.onsubmit = async e => { e.preventDefault(); try { const j = await api.post({ action: 'tagSave', tag: t, label: pop.label.value.trim(), color: pop.color.value || '', desc: pop.desc.value.trim() }); state.tags = Object.fromEntries((j.tags || []).map(x => [x.tag, x])); toast(`${t} 태그를 저장했습니다`); close(); render(); } catch (err) { toast(err.message); } };
     pop.querySelector('.tp-del').onclick = () => { close(); tagTrash('tagDelete', t); };
   }
-  function memoBubble(anchor, r) {
+  function memoBubble(anchor, r, ro = false) {
     document.querySelector('.memo-bubble')?.remove();
     const b = anchor.getBoundingClientRect(), pop = el(`<div class="memo-bubble" role="dialog" aria-label="${esc(r.text)} 메모"><textarea rows="4" placeholder="이 항목 메모 (자동 저장)"></textarea><small>자동 저장 · Esc로 닫기</small></div>`);
-    const ta = pop.querySelector('textarea'); ta.value = r.end || ''; let t;
-    const flush = () => { clearTimeout(t); const v = ta.value.trim(); if (v !== (r.end || '')) { updateRow(r, { end: v }); anchor.classList.toggle('has', !!v); anchor.title = v || '메모'; } };
+    const ta = pop.querySelector('textarea'); ta.value = r.end || ''; let t; if (ro) { ta.readOnly = true; pop.querySelector('small').textContent = '보기 전용 · 이 사람만 고칠 수 있어요'; }
+    const flush = () => { clearTimeout(t); const v = ta.value.trim(); if (!ro && v !== (r.end || '')) { updateRow(r, { end: v }); anchor.classList.toggle('has', !!v); anchor.title = v || '메모'; } };
     ta.oninput = () => { clearTimeout(t); t = setTimeout(flush, 700); };
     const close = () => { flush(); pop.remove(); removeEventListener('pointerdown', off, true); anchor.focus(); };
     const off = e => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
@@ -824,6 +824,9 @@
     let { from, to } = doneRange(), pick = null, month = (to || todayKst()).slice(0, 7);
     const pop = el('<div class="range-pop" role="dialog" aria-label="완료일 범위 선택"></div>'); document.body.append(pop);
     const a = anchor.getBoundingClientRect(); pop.style.top = a.bottom + 6 + 'px'; pop.style.left = Math.max(8, Math.min(innerWidth - 340, a.left)) + 'px';
+    // 아래 공간이 모자라면 버튼 위로 연다(내용이 그려진 뒤 높이를 재서)
+    const fit = () => { const h = pop.offsetHeight, below = innerHeight - a.bottom - 14, above = a.top - 14; pop.style.top = (h > below && above > below ? Math.max(8, a.top - 6 - h) : Math.min(a.bottom + 6, innerHeight - h - 8)) + 'px'; };
+    requestAnimationFrame(fit); new MutationObserver(fit).observe(pop, { childList: true });
     const close = () => { pop.remove(); removeEventListener('pointerdown', outside, true); };
     const outside = e => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
     addEventListener('pointerdown', outside, true);
