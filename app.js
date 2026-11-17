@@ -814,8 +814,9 @@
     if (!days.length) return box.append(el('<div class="empty-note">이 기간에 완료한 업무가 없습니다.</div>'));
     days.forEach(d => {
       const g = el(`<section class="sec done-day"><h3>${fmtDate(d)} <small class="sec-count">${byDay[d].length}건</small></h3></section>`);
-      byDay[d].forEach(r => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
-        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${r.section === '하위업무' && parentOf(r) ? `<span class="done-parent">${esc(parentOf(r).text.replace(CAT_RE, '').slice(0, 24))} ›</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(r.section === '하위업무' ? (TASK_SECTIONS.find(x => x.key === parentOf(r)?.section)?.L || '하위 업무') + ' · 하위' : TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
+      byDay[d].forEach(r0 => { const pr = r0.section === '하위업무' && parentOf(r0), r = pr ? { ...r0, text: `${pr.text} -> ${r0.text}` } : r0; // 하위 업무: '상위 항목 -> 하위 항목'
+        const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
+        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(r.section === '하위업무' ? (TASK_SECTIONS.find(x => x.key === pr?.section)?.L || '하위 업무') + ' · 하위' : TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
       box.append(g);
     });
   }
