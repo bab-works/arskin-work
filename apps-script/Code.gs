@@ -924,7 +924,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-17.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-17.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -981,13 +981,21 @@ function trialItems_(d) {
 }
 function trialSync_(d) {
   d = String(d || todayKst_()); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('날짜 형식이 올바르지 않습니다');
-  var items = trialItems_(d); if (!items.length) return { added: [] };
+  var items = trialItems_(d);
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    var have = listRows(TRIAL_OWNER, d, d).map(function (r) { return r.origin; });
-    var add = items.filter(function (x) { return have.indexOf(x.origin) < 0; }); if (!add.length) return { added: [] };
-    var sh = monthSheet(TRIAL_OWNER, d, true), now = new Date().toISOString();
+    var cur = listRows(TRIAL_OWNER, d, d), have = cur.map(function (r) { return r.origin; });
+    var add = items.filter(function (x) { return have.indexOf(x.origin) < 0; });
     var rows = add.map(function (x, k) { return { id: newId_(d, 900 + k), date: d, section: '변동업무', col: 'L', status: 'doing', text: x.text, start: '', end: '', created: d, completed: '', origin: x.origin, order: '' }; });
+    // 체험단)·리얼모델) 업무에 "1600" 같은 시각이 있으면 타임라인에 1시간 블록으로 (원본id tl-업무id로 한 번만)
+    cur.filter(function (r) { return r.section === '변동업무' && r.created === d; }).concat(rows).forEach(function (r, k) {
+      var m = /^(체험단|리얼모델)\)/.test(r.text) && String(r.text).match(/(?:^|\s)(\d{1,2})(\d{2})(?=\s|$)/), h = m && +m[1], mi = m && +m[2];
+      if (!m || h > 22 || mi > 59 || have.indexOf('tl-' + r.id) >= 0) return;
+      var p2 = function (n) { return ('0' + n).slice(-2); };
+      rows.push({ id: newId_(d, 950 + k), date: d, section: '타임라인', col: '', status: '', text: r.text, start: p2(h) + ':' + p2(mi), end: p2(h + 1) + ':' + p2(mi), created: d, completed: '', origin: 'tl-' + r.id, order: '' });
+    });
+    if (!rows.length) return { added: [] };
+    var sh = monthSheet(TRIAL_OWNER, d, true), now = new Date().toISOString();
     sh.getRange(sh.getLastRow() + 1, 1, rows.length, NCOL).setValues(rows.map(function (o) { return [o.id, o.date, o.section, o.col, o.status, o.text, o.start, o.end, now, o.created, '', o.origin, '']; }));
     return { added: rows };
   } finally { lock.releaseLock(); }
