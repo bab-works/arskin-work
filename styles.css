@@ -1313,3 +1313,4 @@ html.printing .subtask{min-height:0;gap:4px;padding:0;font-size:10px;line-height
 html.printing .subtask input[type=checkbox]{width:9px;height:9px;margin:0}
 html.printing .subtask button,html.printing .subtask .sub-grip{display:none!important}
 html.printing .subtask-text{font-size:10px}
+.done-parent{color:var(--text-2);font-size:12px;font-weight:600;margin-right:2px}

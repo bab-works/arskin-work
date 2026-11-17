@@ -799,7 +799,8 @@
   function renderDone() {
     const box = $('donePage'); if (!box) return;
     const { from, to } = doneRange(), printOn = pref('printDone', false);
-    const all = [...(state.doneRows || []), ...state.rows].filter(r => DONE_SECS.has(r.section) && isDone(r));
+    const src = [...(state.doneRows || []), ...state.rows], parentOf = r => src.find(x => x.id === r.col); // 하위 업무도 완료 목록에 (부모 제목과 함께)
+    const all = src.filter(r => (DONE_SECS.has(r.section) || r.section === '하위업무') && isDone(r));
     const latest = new Map(); all.forEach(r => { const k = r.origin || r.id, c = r.completed || r.date; if (c >= from && c <= to && (!latest.has(k) || latest.get(k).date < r.date)) latest.set(k, { ...r, _c: c }); });
     const byDay = {}; [...latest.values()].forEach(r => (byDay[r._c] = byDay[r._c] || []).push(r));
     const days = Object.keys(byDay).sort().reverse();
@@ -814,7 +815,7 @@
     days.forEach(d => {
       const g = el(`<section class="sec done-day"><h3>${fmtDate(d)} <small class="sec-count">${byDay[d].length}건</small></h3></section>`);
       byDay[d].forEach(r => { const m = r.text.match(CAT_RE), rest = m && r.text.slice(m[0].length);
-        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
+        g.append(el(`<div class="row done"><span class="pst">${statusIcon('done')}</span><div class="tx">${rest ? `<span class="cat" data-tag="${esc(m[1])}" style="${tagStyle(m[1])}">${esc(tagLabel(m[1]))}</span> ` : ''}${r.section === '하위업무' && parentOf(r) ? `<span class="done-parent">${esc(parentOf(r).text.replace(CAT_RE, '').slice(0, 24))} ›</span> ` : ''}${esc(rest || r.text)}</div><small class="done-sec">${esc(r.section === '하위업무' ? (TASK_SECTIONS.find(x => x.key === parentOf(r)?.section)?.L || '하위 업무') + ' · 하위' : TASK_SECTIONS.find(x => x.key === r.section)?.L || r.section)}</small></div>`)); });
       box.append(g);
     });
   }
