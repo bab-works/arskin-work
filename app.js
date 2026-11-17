@@ -130,7 +130,8 @@
   }
 
   const ord = r => Number(r.order) || Infinity; // 순서 없는 행은 기존 순서대로 뒤에
-  const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col)).sort((a, b) => ord(a) - ord(b));
+  // '후순위' 칸은 선순위로 옮기지 않은 변동업무 전부(예전 행·새로 들어온 행 포함)
+  const rowsFor = (date, section, col) => state.rows.filter(r => r.date === date && r.section === section && (col === undefined || r.col === col || (col === '후순위' && r.col !== '선순위'))).sort((a, b) => ord(a) - ord(b));
   // 같은 칸에 행이 여러 개면(과거 시트 흔적) 첫 행에 합쳐 저장한다
   function setCellText(date, section, col, text) {
     const rs = rowsFor(date, section, col);
@@ -571,7 +572,11 @@
       catch (e) { addRow({ date: d, section: '릴스업무', col: '', text, status: 'todo' }); toast('영상 기획 시트에는 쓰지 못했습니다: ' + e.message); }
       render();
     };
-    const node = sec(s.L, itemList(d, s.key, undefined, { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo', onAdd }));
+    const lopts = { doneLast: true, defaultStatus: s.key === '변동업무' ? 'doing' : 'todo', onAdd };
+    // 미스타전 변동업무: 후순위(위) · 선순위(아래)로 나눠 드래그로 옮긴다
+    const split = s.key === '변동업무' && state.person === C.DEFAULT_PERSON;
+    const body = split ? (() => { const w = el('<div class="prio-split"></div>'); [['후순위', 'prio-low'], ['선순위', 'prio-high']].forEach(([c, cls]) => { const n = rowsFor(d, s.key, c).length; w.append(el(`<h4 class="prio-head ${cls}">${c} <small>${n}</small></h4>`), itemList(d, s.key, c, lopts)); }); return w; })() : itemList(d, s.key, undefined, lopts);
+    const node = sec(s.L, body);
     node.id = 'sec-' + s.key; node.querySelector('h3').insertAdjacentHTML('beforeend', ` <small class="sec-count">${done}/${all.length}</small>`);
     if (false && s.key === '팔로업' && !readOnly()) { // shortcut: 섹션 메모는 항목별 메모로 대체(코드·데이터 보관)
       const has = !!cellText(d, '팔로업메모', '').trim(), mb = el(`<button type="button" class="fu-memo-btn${has ? ' has' : ''}" aria-haspopup="dialog">메모${has ? ' •' : ''}</button>`);

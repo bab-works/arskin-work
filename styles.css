@@ -1314,3 +1314,12 @@ html.printing .subtask input[type=checkbox]{width:9px;height:9px;margin:0}
 html.printing .subtask button,html.printing .subtask .sub-grip{display:none!important}
 html.printing .subtask-text{font-size:10px}
 .done-parent{color:var(--text-2);font-size:12px;font-weight:600;margin-right:2px}
+/* 변동업무 후순위·선순위 */
+.prio-head{display:flex;align-items:center;gap:6px;margin:10px 0 4px;font-size:12px;font-weight:700;color:var(--text-2)}
+.prio-head:first-child{margin-top:2px}
+.prio-head small{font-weight:600;color:var(--text-2);background:var(--grey100);border-radius:999px;padding:0 7px}
+.prio-head::before{content:"";width:8px;height:8px;border-radius:50%}
+.prio-low::before{background:#adb5bd}.prio-high::before{background:#f76707}
+.prio-head.prio-high{color:#b35000}
+.prio-split .task-list{min-height:36px}
+html.printing .prio-head{margin:2px 0 0;font-size:9px}
