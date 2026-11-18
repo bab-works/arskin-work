@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/arskin-icon.png?v=2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="styles.css?v=202611170804">
+<link rel="stylesheet" href="styles.css?v=202611180205">
 </head>
 <body>
 <div class="app">
@@ -26,6 +26,7 @@
       </div>
       <button data-view="daily"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3h8l3 3v11H6z" /><path d="M9 9h5M9 12h5M9 15h3"/></svg>일간보고서</button>
       <div class="subnav" id="subnav"></div>
+      <button data-view="memo"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5z"/><path d="M8 9h5M8 12h5M8 15h3"/></svg>메모 · 회의록</button>
       <button data-view="director"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M4 17c.6-3.2 3-5 6-5s5.4 1.8 6 5"/></svg>원장님 워크시트<span class="nav-badge hidden" aria-live="polite"></span></button>
       <div class="subnav dir-subnav" hidden><button data-dir="list">숙제 목록</button><button data-dir="sheet">원장님 워크시트</button></div>
       <button data-view="team"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="8" r="2.8"/><circle cx="14" cy="9" r="2.3"/><path d="M2 17c0-3 2.3-5 5-5s5 2 5 5M12.5 16c.3-2 1.5-3.3 3.3-3.3S18 14 18 16"/></svg>마케팅 공용</button>
@@ -39,7 +40,7 @@
   <main class="main">
     <header class="topbar">
       <div class="datestrip" id="datestrip"></div>
-      <span class="tb-sep" aria-hidden="true"></span><button type="button" id="memoBtn" class="memo-btn" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5z"/><path d="M8 9h5M8 12h5M8 15h3"/></svg><span>메모·회의록</span></button>
+      
       <div class="actions">
         <button id="btnPrint" title="인쇄 (Ctrl+P)" aria-label="인쇄"><i data-icon="print"></i>인쇄</button>
         <button id="toolToggle" class="icon-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="toolMenu" title="도구">☰</button>
@@ -84,6 +85,7 @@
     <section id="viewHome" class="view hidden"><div id="homeHub" class="home"></div></section>
     <section id="viewTeam" class="view hidden"><div id="teamHub" class="team"></div></section>
     <section id="viewSettings" class="view hidden"><div id="settingsHub" class="team"></div></section>
+    <section id="viewMemo" class="view hidden"><div id="memoHub"></div></section>
     <section id="viewRevenue" class="view hidden"><div id="revenueHub"></div></section>
   </main>
 
@@ -92,6 +94,7 @@
     <button data-view="calendar"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4"/></svg>콘텐츠</button>
     <button data-view="daily" aria-label="일간보고서"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3h8l3 3v11H6z"/><path d="M9 9h5M9 12h5M9 15h3"/></svg>보고서</button>
     <button data-view="director" aria-label="원장님 워크시트"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M4 17c.6-3.2 3-5 6-5s5.4 1.8 6 5"/></svg>원장님<span class="nav-badge hidden"></span></button>
+    <button data-view="memo" aria-label="메모 · 회의록"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3h7l3 3v11H5z"/><path d="M8 9h5M8 12h5M8 15h3"/></svg>메모</button>
     <button data-view="revenue" aria-label="월간 매출표"><svg class="nav-ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 17h14"/><path d="M5 14V9M9 14V5M13 14v-3M17 14V7"/></svg>매출</button>
   </nav>
 </div>
@@ -107,10 +110,12 @@
 </div>
 <div id="appToast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<script src="config.js?v=202611170804"></script>
-<script src="content-hub.js?v=202611170804"></script>
-<script src="revenue-model.js?v=202611170804"></script>
-<script src="revenue-hub.js?v=202611170804"></script>
-<script src="app.js?v=202611170804"></script>
+<script src="config.js?v=202611180205"></script>
+<script src="content-hub.js?v=202611180205"></script>
+<script src="revenue-model.js?v=202611180205"></script>
+<script src="revenue-hub.js?v=202611180205"></script>
+<script src="memo-md.js?v=202611180205"></script>
+<script src="memo-hub.js?v=202611180205"></script>
+<script src="app.js?v=202611180205"></script>
 </body>
 </html>

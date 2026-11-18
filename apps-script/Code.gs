@@ -60,6 +60,7 @@ function doPost(e) { try { return doPost_(e); } catch (err) { return json({ erro
 function doPost_(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
+  if (body.action === 'memo') { try { return json(memo_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } } // 개인 메모장(본인 것만)
   if (revenueOnly_(memberFor_(body.code)) && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
   if (body.action === 'revenueArchive') { try { return json(revenueArchive_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'revenueRows') { try { return json({ rows: revenueRows_(body.revenueKey) }); } catch (err) { return json({ error: err.message }); } }
@@ -924,7 +925,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-17.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-18.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1002,3 +1003,86 @@ function trialSync_(d) {
     return { added: rows };
   } finally { lock.releaseLock(); }
 }
+
+/* ---------- 개인 메모장 ----------
+ * 접속코드의 이름별 Drive 폴더(「아르스킨 메모 (개인별)/이름」)에 notes.json 과 사진을 둔다.
+ * 요청의 who 는 보지 않고 접속코드의 주인(memberFor_)만 쓴다 → 다른 사람 메모는 읽을 수도 쓸 수도 없다.
+ * 처음 열 때 예전 일일보고 '메모·회의록' 칸을 「이전 일일 메모」 폴더로 복사한다(원본은 그대로). */
+var MEMO_TRASH_DAYS = 30, MEMO_COLORS = ['#3182f6', '#1baf7a', '#eda100', '#eb6834', '#e5484d', '#e87ba4', '#6250d6', '#8b95a1'];
+function authorizeMemo() { DriveApp.getRootFolder(); } // 배포 전에 편집기에서 한 번 실행해 Drive 권한을 승인
+function memoDir_(me) {
+  var P = PropertiesService.getScriptProperties(), id = P.getProperty('MEMO_ROOT'), root = null;
+  try { root = id ? DriveApp.getFolderById(id) : null; if (root && root.isTrashed()) root = null; } catch (e) { root = null; }
+  if (!root) { root = DriveApp.createFolder('아르스킨 메모 (개인별)'); P.setProperty('MEMO_ROOT', root.getId()); }
+  var it = root.getFoldersByName(me); return it.hasNext() ? it.next() : root.createFolder(me);
+}
+function memoSub_(dir, name) { var it = dir.getFoldersByName(name); return it.hasNext() ? it.next() : dir.createFolder(name); }
+function memoLoad_(me) {
+  var dir = memoDir_(me), it = dir.getFilesByName('notes.json');
+  if (it.hasNext()) { var f = it.next(); return { dir: dir, file: f, data: JSON.parse(f.getBlob().getDataAsString() || '{}') }; }
+  var data = { folders: [], notes: [], trash: [] }, old = memoOldDaily_(me);
+  if (old.length) { data.folders.push({ id: 'f-old', name: '이전 일일 메모', color: '#8b95a1' }); data.notes = old; }
+  return { dir: dir, file: dir.createFile('notes.json', JSON.stringify(data), 'application/json'), data: data };
+}
+function memoOldDaily_(me) {
+  if (!sheetIdFor(me)) return [];
+  var by = {};
+  SpreadsheetApp.openById(sheetIdFor(me)).getSheets().forEach(function (sh) {
+    if (!/^\d{4}-\d{2}$/.test(sh.getName()) || sh.getLastRow() < 2) return;
+    sh.getRange(2, 1, sh.getLastRow() - 1, NCOL).getDisplayValues().forEach(function (r) { if (r[2] === '메모' && String(r[5]).trim()) by[r[1]] = (by[r[1]] ? by[r[1]] + '\n\n' : '') + r[5]; });
+  });
+  return Object.keys(by).sort().map(function (d) { return { id: 'old-' + d, title: d + ' 메모·회의록', folder: 'f-old', text: by[d], created: d + 'T09:00:00.000Z', updated: d + 'T09:00:00.000Z' }; });
+}
+// 순수 데이터 변경(테스트 가능): data 를 고치고 응답 객체를 돌려준다
+function memoApply_(data, b, now) {
+  data.folders = data.folders || []; data.notes = data.notes || []; data.trash = data.trash || [];
+  var cut = new Date(Date.parse(now) - MEMO_TRASH_DAYS * 864e5).toISOString();
+  data.trash = data.trash.filter(function (n) { return n.deletedAt >= cut; });
+  var str = function (v, n) { return String(v == null ? '' : v).slice(0, n); }, okId = function (v) { return /^[\w-]{1,40}$/.test(String(v || '')); };
+  var hasFolder = function (id) { return data.folders.some(function (f) { return f.id === id; }); };
+  var find = function (arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return i; return -1; };
+  if (b.op === 'save') {
+    var n = b.note || {}; if (!okId(n.id)) throw new Error('메모 id 가 올바르지 않습니다');
+    var i = find(data.notes, n.id), old = i >= 0 ? data.notes[i] : { id: n.id, created: now };
+    var o = { id: n.id, title: str(n.title, 200), folder: hasFolder(n.folder) ? n.folder : '', text: str(n.text, 300000), created: old.created, updated: now };
+    if (i >= 0) data.notes[i] = o; else data.notes.push(o);
+    return { note: o };
+  }
+  if (b.op === 'delete' || b.op === 'restore' || b.op === 'purge') {
+    var from = b.op === 'delete' ? data.notes : data.trash, k = find(from, b.id); if (k < 0) return { data: data };
+    var x = from.splice(k, 1)[0];
+    if (b.op === 'delete') { x.deletedAt = now; data.trash.push(x); }
+    if (b.op === 'restore') { delete x.deletedAt; if (!hasFolder(x.folder)) x.folder = ''; data.notes.push(x); }
+    return { data: data };
+  }
+  if (b.op === 'folders') {
+    var seen = {};
+    data.folders = (b.folders || []).filter(function (f) { return f && okId(f.id) && !seen[f.id] && (seen[f.id] = 1); }).slice(0, 100)
+      .map(function (f) { return { id: f.id, name: str(f.name, 40).trim() || '새 폴더', color: MEMO_COLORS.indexOf(f.color) >= 0 ? f.color : MEMO_COLORS[0] }; });
+    data.notes.forEach(function (n) { if (n.folder && !hasFolder(n.folder)) n.folder = ''; });
+    return { data: data };
+  }
+  return { data: data }; // load
+}
+function memo_(b, me) {
+  if (!me) throw new Error('unauthorized');
+  if (b.op === 'imgGet') {
+    var f = DriveApp.getFileById(String(b.id || '')), imgs = memoSub_(memoDir_(me), 'images'), mine = false, ps = f.getParents();
+    while (ps.hasNext()) if (ps.next().getId() === imgs.getId()) mine = true;
+    if (!mine) throw new Error('이 사진을 볼 수 없습니다');
+    var bl = f.getBlob(); return { mime: bl.getContentType(), data: Utilities.base64Encode(bl.getBytes()) };
+  }
+  if (b.op === 'imgPut') {
+    var mime = String(b.mime || ''); if (!/^image\/(jpeg|png|gif|webp)$/.test(mime)) throw new Error('사진 파일(jpg·png·gif·webp)만 올릴 수 있습니다');
+    var bytes = Utilities.base64Decode(String(b.data || '')); if (bytes.length > 8 * 1024 * 1024) throw new Error('사진이 너무 큽니다 (8MB 이하)');
+    var file = memoSub_(memoDir_(me), 'images').createFile(Utilities.newBlob(bytes, mime, str_(b.name, 80) || 'photo'));
+    return { id: file.getId() };
+  }
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var m = memoLoad_(me), res = memoApply_(m.data, b, new Date().toISOString());
+    if (b.op !== 'load') m.file.setContent(JSON.stringify(m.data));
+    return res;
+  } finally { lock.releaseLock(); }
+}
+function str_(v, n) { return String(v == null ? '' : v).slice(0, n); }

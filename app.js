@@ -643,14 +643,6 @@
     const left = Math.max(8, Math.min(innerWidth - 300, b.left + b.width / 2 - 140)); pop.style.left = left + 'px'; pop.style.top = b.bottom + 10 + 'px'; pop.style.setProperty('--tail', (b.left + b.width / 2 - left) + 'px');
     setTimeout(() => addEventListener('pointerdown', off, true), 0); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
   }
-  function openDayMemo() {
-    const d = state.sel, dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="dmT"><h2 id="dmT">메모 · 회의록 <small class="muted">${fmtDate(d)}</small></h2><textarea rows="14" placeholder="오늘 메모와 회의 내용을 적어 두세요. 자동 저장되고 인쇄에도 들어가요."></textarea><div class="tr-acts"><small class="muted">자동 저장</small><button type="button" class="primary">닫기</button></div></dialog>`);
-    const ta = dlg.querySelector('textarea'); ta.value = cellText(d, '메모', ''); let t;
-    const flush = () => { clearTimeout(t); if (ta.value !== cellText(d, '메모', '')) setCellText(d, '메모', '', ta.value); };
-    ta.oninput = () => { clearTimeout(t); t = setTimeout(flush, 800); };
-    dlg.querySelector('.primary').onclick = () => dlg.close(); dlg.onclose = () => { flush(); dlg.remove(); render(); };
-    document.body.append(dlg); dlg.showModal(); ta.focus();
-  }
   function openFollowMemo(d) {
     const dlg = el(`<dialog class="code-dlg fu-memo-dlg" aria-labelledby="fuMemoT"><h2 id="fuMemoT">팔로업 메모</h2><textarea rows="10" placeholder="팔로업 진행 상황, 연락할 사람, 다음 액션 등을 적어 두세요. 자동 저장됩니다."></textarea><div class="tr-acts"><small class="muted">자동 저장 · 다음 근무일로 이어집니다</small><button type="button" class="primary">닫기</button></div></dialog>`);
     const ta = dlg.querySelector('textarea'); ta.value = cellText(d, '팔로업메모', ''); let t;
@@ -1138,6 +1130,7 @@
   function setView(v) {
     if (v === 'leaves') { state.hospTab = state.hospTab === 'cal' || !state.hospTab ? 'leave' : state.hospTab; v = 'hospital'; } // 연월차는 아르스킨 연월차 캘린더 안으로 합침
     if (state.revOnly && v !== 'revenue') v = 'revenue';
+    if (state.view === 'memo' && v !== 'memo') window.MemoHub.leave();
     state.view = v;
     const navV = v === 'daily' && isDirector() ? 'director' : v;
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === navV));
@@ -1145,6 +1138,7 @@
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
     $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
+    $('viewMemo').classList.toggle('hidden', v !== 'memo'); if (v === 'memo') window.MemoHub.open();
     $('viewDirector').classList.toggle('hidden', v !== 'director');
     $('viewHome').classList.toggle('hidden', v !== 'home');
     $('viewTeam').classList.toggle('hidden', v !== 'team');
@@ -1160,7 +1154,7 @@
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
-  function render() { { const has = !!(state.sel && cellText(state.sel, '메모', '').trim()); $('memoBtn').classList.toggle('has', has); $('memoBtn').hidden = isDirector(); } renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
+  function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
@@ -1209,7 +1203,6 @@
   $('widthEdit').onclick = () => { const box = $('widthBox'); box.hidden = !box.hidden; $('widthEdit').setAttribute('aria-pressed', !box.hidden); if (!box.hidden) $('mainW').focus(); };
   $('mainW').oninput = e => setMainW(+e.target.value);
   $('mainWreset').onclick = () => setMainW(800);
-  $('memoBtn').onclick = openDayMemo;
   $('btnDoneSort').onclick = () => { state.doneLast = !state.doneLast; localStorage.doneSort = state.doneLast ? 'bottom' : 'keep'; render(); };
   $('btnCollapse').onclick = () => { state.collapse = !state.collapse; localStorage.collapse = state.collapse ? '1' : '0'; state.expanded.clear(); render(); };
   $('btnPrint').onclick = () => { setView('daily'); print(); };
