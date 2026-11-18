@@ -1439,3 +1439,4 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 #viewHome{overflow-x:clip} /* 배경 로고가 2px 넘쳐 휴대폰 가로 스크롤 생기던 것 */
 .sidefoot-row .nav-edit{white-space:nowrap;padding:0 6px;font-size:13px}.sidefoot-row #navLogout{flex:none}
 .hp-send .primary{flex:none;white-space:nowrap}
+.task-list .pc-line>.cat{min-width:5.2em;text-align:center}html.printing .task-list .pc-line>.cat{min-width:0}

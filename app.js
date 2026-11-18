@@ -160,6 +160,8 @@
     const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del);
     return row;
   }
+  // '분류) 내용' → 칩 + 내용 (업무 행·팔로업 프로젝트 제목 공통)
+  function paintCat(r, chip, tx) { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; if (m) chip.dataset.tag = m[1]; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; }
   function itemRow(r, opts = {}) {
     if (NESTABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
@@ -170,7 +172,7 @@
     if (!opts.noStatus) row.append(statusButton(r, code => setStatus(r, code)));
     // '분류) 내용' 은 칩으로 보여주기만 하고, 편집할 때는 원문 전체를 그대로 보여준다
     const tx = el(`<div class="tx" contenteditable="plaintext-only"></div>`), chip = el('<span class="cat" hidden></span>');
-    const paint = () => { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; if (m) chip.dataset.tag = m[1]; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; };
+    const paint = () => paintCat(r, chip, tx);
     paint();
     tx.onfocus = () => { chip.hidden = true; tx.textContent = r.text; };
     tx.onblur = () => { const v = tx.textContent.trim(); if (!v) { deleteRow(r); render(); return; } if (v !== r.text) updateRow(r, { text: v }); paint(); };
@@ -287,16 +289,18 @@
     const p = progressOf(r), open = state.expanded.has('p:' + r.id);
     const card = el(`<div class="project-card${open ? ' open' : ''}" data-id="${esc(r.id)}"></div>`);
     const line = el('<div class="pc-line"></div>'); line.append(dragHandle(r));
-    const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'); title.textContent = r.text;
-    title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else if (!text) title.textContent = r.text; };
-    title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); title.blur(); } };
+    const title = el('<div class="project-title" contenteditable="plaintext-only"></div>'), chip = el('<span class="cat" hidden></span>');
+    paintCat(r, chip, title);
+    title.onfocus = () => { chip.hidden = true; title.textContent = r.text; }; // 고칠 때는 '분류) 내용' 원문 그대로
+    title.onblur = () => { const text = title.textContent.trim(); if (text && text !== r.text) { updateRow(r, { text }); render(); } else paintCat(r, chip, title); };
+    title.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); title.blur(); } if (e.key === 'Escape') { title.textContent = r.text; title.blur(); } };
     const C2 = 2 * Math.PI * 9, prog = el(`<span class="pc-ring" role="progressbar" aria-label="${esc(r.text)} 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.percent}"><svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="9" fill="none" stroke="var(--grey100)" stroke-width="3.5"/><circle cx="12" cy="12" r="9" fill="none" stroke="${p.percent === 100 ? 'var(--st-done)' : 'var(--blue)'}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(C2 * p.percent / 100).toFixed(1)} ${C2.toFixed(1)}" transform="rotate(-90 12 12)"/></svg></span>`);
     const tog = el(`<button type="button" class="pc-toggle" aria-expanded="${open}" title="하위 업무 ${open ? '접기' : '펼치기'}">${p.done}/${p.total} · ${p.percent}% ${open ? '▴' : '▾'}</button>`);
     tog.onclick = () => { open ? state.expanded.delete('p:' + r.id) : state.expanded.add('p:' + r.id); render(); };
     const del = el(`<button class="del" title="프로젝트 삭제" aria-label="프로젝트 삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); };
     const memo = el(`<button type="button" class="pc-memo${r.end ? ' has' : ''}" aria-haspopup="dialog" aria-label="${esc(r.text)} 메모${r.end ? ' 있음' : ''}" title="${esc(r.end || '메모')}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg></button>`);
     memo.onclick = e => { e.stopPropagation(); memoBubble(memo, r, readOnly()); };
-    line.append(title, memo, prog, tog, del); card.append(line);
+    line.append(chip, title, memo, prog, tog, del); card.append(line);
     if (!open && !state.printAll) return card; // 인쇄할 때는 하위 업무까지 모두 펼쳐서
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
