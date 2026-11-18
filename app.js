@@ -74,10 +74,10 @@
   }
   const checkAuth = j => { if (j.error === 'unauthorized') askCode(accessCode() ? '코드가 맞지 않습니다. 다시 입력해 주세요.' : '팀에서 받은 접속 코드를 입력해 주세요.'); };
   const api = {
-    async get(params) {
+    async get(params, ms = 0) { // ms: 그 시간 안에 답이 없으면 포기(첫 화면이 서버를 무한정 기다리지 않게)
       const u = new URL(C.API_URL);
       Object.entries({ code: accessCode(), who: state.person, ...params }).forEach(([k, v]) => u.searchParams.set(k, v));
-      const j = await (await fetch(u)).json();
+      const j = await (await fetch(u, ms ? { signal: AbortSignal.timeout(ms) } : {})).json();
       checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
@@ -1509,7 +1509,7 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
-    try { const j = await api.get({ action: 'boot' }); boot.at = Date.now(); applyBoot(j); cacheSet('boot', j); }
+    try { const j = await api.get({ action: 'boot' }, c ? 8000 : 20000); boot.at = Date.now(); applyBoot(j); cacheSet('boot', j); }
     catch { if (!c) await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); loadDirector(); loadTags(); loadLeaves(); } // 옛 서버
     paintDirBadge(); if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
     const mine = C.PEOPLE.find(p => p.name === state.dir.me && !p.director); // 접속한 사람의 일일보고를 먼저
@@ -1517,7 +1517,7 @@
     if (state.view === 'home') renderHome(); if (state.view === 'team') renderTeam();
   }
   async function load() {
-    if (!state.holidays) { state.holidays = {}; await boot(); }
+    if (!state.holidays) { state.holidays = {}; if (!cacheGet('boot')) $('report').innerHTML = '<div class="empty-note">서버에 연결하는 중… <small>(배포 직후에는 잠깐 느릴 수 있어요)</small></div>'; await boot(); }
     if (state.revOnly) return; // 매출표 전용 계정은 보고서 데이터를 부르지 않음
     state.dates = workDates(C.DAYS); state.sel = state.sel || state.dates[state.dates.length - 1];
     renderPeople(); loadShared();
