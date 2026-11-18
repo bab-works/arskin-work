@@ -13,7 +13,7 @@
       } catch (e) { if (n < 2 && /Failed to fetch|NetworkError|Load failed/i.test(e.message)) { await new Promise(r => setTimeout(r, 1200 * (n + 1))); continue; } throw e; }
     }
   }
-  let host, data = null, cur = null, folder = ls('memoFolder') || '', q = '', mode = 'view', saveT = null, dirty = false, status = '';
+  let host, data = null, cur = null, folder = ls('memoFolder') || '', q = '', ed = null, saveT = null, dirty = false, status = '';
   const imgCache = {};
   const newId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const titleOf = n => (n.title || '').trim() || (n.text || '').split('\n').map(s => s.replace(/^[#>\-*\s\d.[\]x]+/, '').trim()).find(Boolean) || '제목 없음';
@@ -23,7 +23,7 @@
   async function open() {
     host = $('memoHub');
     if (!data) { host.innerHTML = '<div class="mm-loading">메모 불러오는 중…</div>'; try { data = (await call({ op: 'load' })).data; } catch (e) { host.innerHTML = `<div class="mm-loading">메모를 불러오지 못했어요 <small>${esc(e.message)}</small> <button type="button" class="more">다시 시도</button></div>`; host.querySelector('.more').onclick = () => { data = null; open(); }; return; }
-      const last = data.notes.find(n => n.id === ls('memoCur')) || [...data.notes].sort((a, b) => b.updated < a.updated ? -1 : 1)[0]; cur = last || null; mode = cur && cur.text ? 'view' : 'edit'; }
+      const last = data.notes.find(n => n.id === ls('memoCur')) || [...data.notes].sort((a, b) => b.updated < a.updated ? -1 : 1)[0]; cur = last || null; }
     if (folder && folder !== 'trash' && !fOf(folder)) folder = '';
     paint();
   }
@@ -31,6 +31,7 @@
   function queue() { dirty = true; setStatus('저장 중…'); clearTimeout(saveT); saveT = setTimeout(flush, 1000); }
   async function flush() {
     clearTimeout(saveT); if (!dirty || !cur) return; dirty = false;
+    if (ed && ed.isConnected && ed.dataset.id === cur.id) cur.text = window.MemoMD.fromHtml(ed); // 편집 화면을 마크다운으로 저장
     try { await saveNote(cur); setStatus('저장됨'); paintList(); }
     catch (e) { dirty = true; setStatus('저장 실패'); toast('메모 저장 실패: ' + e.message); }
   }
@@ -85,64 +86,101 @@
     });
   }
   async function trashOp(op, id) { try { data = (await call({ op, id })).data; if (op === 'restore') toast('메모를 복원했어요'); paintFolders(); paintList(); } catch (e) { toast(e.message); } }
-  async function select(n) { await flush(); cur = n; ls('memoCur', n?.id || ''); mode = n && n.text ? 'view' : 'edit'; paintList(); paintMain(); if (innerWidth < 760 && host.querySelector('.mm.open')) toggleSide(); }
-  function newNote() { flush(); const n = { id: newId('n'), title: '', folder: folder && folder !== 'trash' ? folder : '', text: '', updated: new Date().toISOString() }; data.notes.push(n); cur = n; ls('memoCur', n.id); mode = 'edit'; if (folder === 'trash') folder = ''; paintFolders(); paintList(); paintMain(); host.querySelector('.mm-title')?.focus(); }
+  async function select(n) { await flush(); cur = n; ls('memoCur', n?.id || ''); paintList(); paintMain(); if (innerWidth < 760 && host.querySelector('.mm.open')) toggleSide(); }
+  function newNote() { flush(); const n = { id: newId('n'), title: '', folder: folder && folder !== 'trash' ? folder : '', text: '', updated: new Date().toISOString() }; data.notes.push(n); cur = n; ls('memoCur', n.id); if (folder === 'trash') folder = ''; paintFolders(); paintList(); paintMain(); host.querySelector('.mm-title')?.focus(); }
 
-  const TOOLS = [['h', '제목', '## '], ['b', '굵게', '**'], ['i', '기울임', '*'], ['s', '취소선', '~~'], ['ul', '목록', '- '], ['ol', '번호 목록', '1. '], ['task', '체크박스', '- [ ] '], ['q', '인용', '> '], ['code', '코드', '`'], ['hr', '구분선', '\n---\n'], ['tbl', '표', '\n| 항목 | 내용 |\n|---|---|\n|  |  |\n']];
-  const TOOL_LABEL = { h: 'H', b: '<b>B</b>', i: '<i>I</i>', s: '<s>S</s>', ul: '•', ol: '1.', task: '☑', q: '❝', code: '&lt;/&gt;', hr: '—', tbl: '▦' };
+  const ICON = {
+    list: '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M8 4v12"/></svg>',
+    del: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10M9 9v5M11 9v5"/></svg>',
+  };
+  // 서식: 글자 선택 후 누르거나, 줄 맨 앞에서 '# ', '- ', '1. ', '[] ', '> ' 를 치면 바로 바뀐다
+  const TOOLS = [['h', '제목', 'H'], ['b', '굵게 (Ctrl+B)', '<b>B</b>'], ['i', '기울임 (Ctrl+I)', '<i>I</i>'], ['s', '취소선', '<s>S</s>'], ['ul', '목록', '•'], ['ol', '번호 목록', '1.'], ['task', '체크박스', '☑'], ['q', '인용', '❝'], ['code', '코드', '&lt;/&gt;'], ['hr', '구분선', '—'], ['tbl', '표', '▦']];
+  const cmd = (c, v) => document.execCommand(c, false, v);
+  const blockOf = () => { const n = getSelection().anchorNode; let b = n && (n.nodeType === 1 ? n : n.parentElement); while (b && b !== ed && !/^(P|DIV|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(b.tagName)) b = b.parentElement; return b && b !== ed ? b : null; };
+  const checkbox = () => { const c = document.createElement('input'); c.type = 'checkbox'; return c; };
+  function makeTask() {
+    let li = blockOf(); if (!li || li.tagName !== 'LI') { cmd('insertUnorderedList'); li = blockOf(); }
+    if (!li || li.tagName !== 'LI' || li.classList.contains('task')) return;
+    li.classList.add('task'); li.prepend(checkbox(), ' ');
+    const r = document.createRange(); r.setStart(li, li.childNodes.length); r.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(r);
+  }
+  function tool(k) {
+    ed.focus(); const b = blockOf();
+    if (k === 'h') cmd('formatBlock', b && /^H/.test(b.tagName) ? 'p' : 'h2');
+    else if (k === 'q') cmd('formatBlock', b?.closest('blockquote') ? 'p' : 'blockquote');
+    else if (k === 'b') cmd('bold'); else if (k === 'i') cmd('italic'); else if (k === 's') cmd('strikeThrough');
+    else if (k === 'ul') cmd('insertUnorderedList'); else if (k === 'ol') cmd('insertOrderedList'); else if (k === 'task') makeTask();
+    else if (k === 'code') { const t = String(getSelection()); cmd('insertHTML', `<code>${esc(t || '코드')}</code>&#8203;`); }
+    else if (k === 'hr') cmd('insertHorizontalRule');
+    else if (k === 'tbl') cmd('insertHTML', '<table><tbody><tr><th>항목</th><th>내용</th></tr><tr><td><br></td><td><br></td></tr></tbody></table><p><br></p>');
+    changed();
+  }
+  function changed() {
+    if (!ed.firstElementChild && !ed.textContent) ed.innerHTML = '<p><br></p>';
+    [...ed.childNodes].filter(n => n.nodeType === 3 && n.nodeValue.trim()).forEach(t => { const p = document.createElement('p'); t.replaceWith(p); p.append(t); }); // 맨바깥 글자는 문단으로
+    ed.querySelectorAll('li.task').forEach(li => { if (!li.querySelector(':scope > input[type=checkbox]')) li.prepend(checkbox(), ' '); });
+    ed.querySelectorAll('li:not(.task) > input[type=checkbox]').forEach(c => c.parentElement.classList.add('task'));
+    ed.classList.toggle('empty', !ed.textContent.trim() && !ed.querySelector('img,hr,li,table'));
+    queue();
+  }
+  function shortcut() { // 줄 맨 앞 마크다운 기호 + 띄어쓰기 → 서식
+    const sel = getSelection(), tn = sel.anchorNode, b = blockOf(); if (!b || !tn || tn.nodeType !== 3) return;
+    let before = tn.nodeValue.slice(0, sel.anchorOffset), prev = tn.previousSibling; // 같은 줄(앞의 목록·줄바꿈 뒤)만 본다
+    while (prev && !(prev.nodeType === 1 && /^(BR|UL|OL|P|DIV|H\d|BLOCKQUOTE|PRE|TABLE|HR)$/.test(prev.tagName))) { before = prev.textContent + before; prev = prev.previousSibling; }
+    if (tn.parentElement !== b && !/^(P|DIV|LI|H\d)$/.test(tn.parentElement.tagName)) return;
+    const m = before.match(/^(#{1,3}|[-*]|1[.)]|>|\[ ?\]|\[x\])[\s ]$/);
+    if (!m || tn.nodeValue.slice(0, sel.anchorOffset) !== before) return;
+    tn.nodeValue = tn.nodeValue.slice(sel.anchorOffset);
+    const c = document.createRange(); if (tn.nodeValue) c.setStart(tn, 0); else { const br = document.createElement('br'); tn.replaceWith(br); c.setStartBefore(br); }
+    c.collapse(true); sel.removeAllRanges(); sel.addRange(c);
+    const k = m[1];
+    if (k[0] === '#') cmd('formatBlock', 'h' + k.length); else if (k === '>') cmd('formatBlock', 'blockquote');
+    else if (k === '-' || k === '*') cmd('insertUnorderedList'); else if (/^1/.test(k)) cmd('insertOrderedList');
+    else { makeTask(); const cb = blockOf()?.querySelector(':scope > input'); if (k === '[x]' && cb) cb.checked = true; }
+  }
   function paintMain() {
     const main = host.querySelector('.mm-main'), side = host.querySelector('.mm').classList.contains('open');
-    const listBtn = `<button type="button" class="mm-listbtn" aria-expanded="${side}" title="목록 열기·닫기"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M8 4v12"/></svg><span>목록</span></button>`;
-    if (!cur) { main.innerHTML = `<div class="mm-bar">${listBtn}<span class="mm-grow"></span><button type="button" class="primary mm-new">+ 새 메모</button></div><div class="mm-blank"><p>메모를 고르거나 새로 만들어 보세요.</p><p class="muted">마크다운(# 제목, **굵게**, - 목록, - [ ] 체크)과 사진 붙여넣기를 쓸 수 있어요. 메모는 내 접속코드로만 열려요.</p></div>`; wireBar(main); return; }
+    const listBtn = `<button type="button" class="mm-icon mm-listbtn" aria-expanded="${side}" aria-label="목록 열기·닫기" title="목록">${ICON.list}</button>`;
+    if (ed && ed.isConnected && cur && ed.dataset.id === cur.id) cur.text = window.MemoMD.fromHtml(ed); // 다시 그리기 전에 편집 중인 내용 보존
+    ed = null;
+    if (!cur) { main.innerHTML = `<div class="mm-bar">${listBtn}<span class="mm-grow"></span><button type="button" class="primary mm-new">+ 새 메모</button></div><div class="mm-blank"><p>메모를 고르거나 새로 만들어 보세요.</p><p class="muted">줄 맨 앞에 # (제목), - (목록), [] (체크박스), > (인용)을 치고 띄우면 서식이 바로 바뀌어요. 사진은 붙여넣기·끌어놓기로. 메모는 내 접속코드로만 열려요.</p></div>`; wireBar(main); return; }
     main.innerHTML = `<div class="mm-bar">${listBtn}
         <select class="mm-fsel" aria-label="폴더"><option value="">폴더 없음</option>${data.folders.map(f => `<option value="${esc(f.id)}"${f.id === cur.folder ? ' selected' : ''}>${esc(f.name)}</option>`).join('')}</select>
-        <div class="mm-seg" role="group" aria-label="보기 방식"><button type="button" data-mode="edit" aria-pressed="${mode === 'edit'}">편집</button><button type="button" data-mode="view" aria-pressed="${mode === 'view'}">보기</button></div>
         <span class="mm-grow"></span><small class="mm-status" aria-live="polite">${esc(status)}</small>
-        <button type="button" class="mm-del" title="휴지통으로">삭제</button><button type="button" class="primary mm-new">+ 새 메모</button></div>
+        <button type="button" class="mm-icon mm-del" aria-label="메모 삭제 (휴지통으로)" title="삭제">${ICON.del}</button><button type="button" class="primary mm-new">+ 새 메모</button></div>
       <input class="mm-title" placeholder="제목" maxlength="200" value="${esc(cur.title)}" aria-label="메모 제목">
-      ${mode === 'edit' ? `<div class="mm-tools" role="toolbar" aria-label="서식">${TOOLS.map(([k, l]) => `<button type="button" data-t="${k}" title="${l}" aria-label="${l}">${TOOL_LABEL[k]}</button>`).join('')}<label class="mm-photo" title="사진 첨부 (붙여넣기·끌어놓기도 돼요)">📷 사진<input type="file" accept="image/*" multiple hidden></label></div>
-        <textarea class="mm-text" placeholder="여기에 적으세요. 마크다운을 쓸 수 있어요.&#10;# 제목  **굵게**  - 목록  - [ ] 할 일  > 인용" aria-label="메모 본문">${esc(cur.text)}</textarea>`
-      : `<article class="mm-view">${cur.text.trim() ? window.MemoMD.render(cur.text) : '<p class="muted">내용이 없어요. 편집을 눌러 적어 보세요.</p>'}</article>`}`;
+      <div class="mm-tools" role="toolbar" aria-label="서식">${TOOLS.map(([k, l, g]) => `<button type="button" data-t="${k}" title="${l}" aria-label="${l}">${g}</button>`).join('')}<label class="mm-photo" title="사진 첨부 (붙여넣기·끌어놓기도 돼요)">📷 사진<input type="file" accept="image/*" multiple hidden></label></div>
+      <div class="mm-ed mm-view" contenteditable="true" role="textbox" aria-multiline="true" aria-label="메모 본문" data-ph="여기에 바로 적으세요. 줄 맨 앞에 # 제목, - 목록, [] 체크박스" data-id="${esc(cur.id)}"></div>`;
     wireBar(main);
     main.querySelector('.mm-fsel').onchange = e => { cur.folder = e.target.value; queue(); paintFolders(); paintList(); };
-    main.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; paintMain(); if (mode === 'edit') main.querySelector('.mm-text')?.focus(); });
     main.querySelector('.mm-title').oninput = e => { cur.title = e.target.value; queue(); const it = host.querySelector(`.mm-item[data-id="${CSS.escape(cur.id)}"] b`); if (it) it.textContent = titleOf(cur); };
+    main.querySelector('.mm-title').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); ed.focus(); } };
     main.querySelector('.mm-del').onclick = async () => { if (!confirm(`'${titleOf(cur)}' 메모를 휴지통으로 옮길까요? (30일 보관)`)) return; const id = cur.id; clearTimeout(saveT); dirty = false;
       const saved = !!cur.created; data.notes = data.notes.filter(n => n.id !== id); cur = null;
       if (saved) await trashOp('delete', id); paintFolders(); paintList(); paintMain(); };
-    const ta = main.querySelector('.mm-text');
-    if (ta) {
-      const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.max(320, ta.scrollHeight + 4) + 'px'; }; fit();
-      ta.oninput = () => { cur.text = ta.value; fit(); queue(); };
-      ta.onkeydown = e => {
-        if ((e.ctrlKey || e.metaKey) && /^[bi]$/i.test(e.key)) { e.preventDefault(); tool(ta, e.key.toLowerCase()); }
-        if (e.key === 'Enter' && !e.isComposing) { // 목록 줄에서 엔터 → 다음 줄도 같은 기호, 빈 항목이면 목록 끝
-          const s = ta.selectionStart, line = ta.value.slice(ta.value.lastIndexOf('\n', s - 1) + 1, s), m = line.match(/^(\s*)([-*+] \[[ xX]\] |[-*+] |(\d+)[.)] )(.*)$/);
-          if (m) { e.preventDefault(); if (!m[4].trim()) { ta.setRangeText('', s - line.length, s, 'end'); } else { const mk = m[3] ? `${+m[3] + 1}. ` : m[2].replace(/\[[xX]\]/, '[ ]'); ta.setRangeText('\n' + m[1] + mk, s, ta.selectionEnd, 'end'); } ta.oninput(); }
-        }
-        if (e.key === 'Tab') { e.preventDefault(); const s = ta.selectionStart, st = ta.value.lastIndexOf('\n', s - 1) + 1; if (e.shiftKey) { if (ta.value.startsWith('  ', st)) { ta.setRangeText('', st, st + 2, 'end'); } } else ta.setRangeText('  ', st, st, 'end'); ta.oninput(); }
-      };
-      ta.onpaste = e => { const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); upload(fs, ta); } };
-      ta.ondragover = e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); };
-      ta.ondrop = e => { const fs = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); upload(fs, ta); } };
-      main.querySelectorAll('[data-t]').forEach(b => b.onclick = () => tool(ta, b.dataset.t));
-      main.querySelector('.mm-photo input').onchange = e => { upload([...e.target.files], ta); e.target.value = ''; };
-    } else {
-      const v = main.querySelector('.mm-view');
-      v.querySelectorAll('input[data-line]').forEach(cb => cb.onchange = () => { const L = cur.text.split('\n'), i = +cb.dataset.line; L[i] = L[i].replace(/\[([ xX])\]/, cb.checked ? '[x]' : '[ ]'); cur.text = L.join('\n'); queue(); });
-      v.ondblclick = e => { if (!e.target.closest('a,input,img')) { mode = 'edit'; paintMain(); } };
-      v.querySelectorAll('img.mm-img').forEach(img => { img.onclick = () => window.open(img.src, '_blank'); });
-      loadImages(v);
-    }
+    ed = main.querySelector('.mm-ed');
+    ed.innerHTML = window.MemoMD.render(cur.text) || '<p><br></p>'; // 빈 메모도 문단 안에서 시작해야 '# ' 같은 서식이 먹는다
+    ed.querySelectorAll('li.task > label').forEach(l => l.replaceWith(...l.childNodes)); // 글자를 눌러도 체크가 바뀌지 않게
+    ed.classList.toggle('empty', !cur.text.trim());
+    loadImages(ed);
+    try { cmd('defaultParagraphSeparator', 'p'); } catch {}
+    ed.oninput = e => { if (e.inputType === 'insertText' && e.data === ' ') shortcut(); changed(); };
+    ed.addEventListener('change', e => { if (e.target.matches('input[type=checkbox]')) { e.target.toggleAttribute('checked', e.target.checked); changed(); } });
+    ed.onkeydown = e => {
+      if (e.key === 'Tab') { const li = blockOf(); if (li?.tagName === 'LI') { e.preventDefault(); cmd(e.shiftKey ? 'outdent' : 'indent'); changed(); } }
+      if (e.key === 'Enter' && !e.isComposing && !e.shiftKey) { const li = blockOf(); // 빈 목록 줄에서 엔터 → 목록 끝
+        if (li?.tagName === 'LI' && !li.textContent.trim() && !li.querySelector('img')) { e.preventDefault(); li.querySelector(':scope > input')?.remove(); li.classList.remove('task'); cmd(li.parentElement.tagName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList'); changed(); } }
+    };
+    ed.onpaste = e => { e.preventDefault(); const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (fs.length) return upload(fs);
+      const t = e.clipboardData.getData('text/plain'); if (!t) return;
+      if (/\n/.test(t.trim()) || /^(#{1,6} |[-*] |\d+\. |> |```)/m.test(t)) { cmd('insertHTML', window.MemoMD.render(t)); loadImages(ed); } else cmd('insertText', t); changed(); };
+    ed.ondragover = e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); };
+    ed.ondrop = e => { const fs = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')); if (fs.length || e.dataTransfer.types.includes('text/html')) { e.preventDefault(); if (fs.length) upload(fs); else cmd('insertText', e.dataTransfer.getData('text/plain')); } };
+    ed.onclick = e => { const a = e.target.closest('a'); if (a && (e.ctrlKey || e.metaKey)) window.open(a.href, '_blank'); };
+    main.querySelectorAll('[data-t]').forEach(b => { b.onmousedown = e => e.preventDefault(); b.onclick = () => tool(b.dataset.t); });
+    main.querySelector('.mm-photo input').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
   }
   function wireBar(main) { main.querySelector('.mm-listbtn').onclick = () => { toggleSide(); }; main.querySelectorAll('.mm-new').forEach(b => b.onclick = newNote); }
-  function tool(ta, k) {
-    const [, , mk] = TOOLS.find(t => t[0] === k), s = ta.selectionStart, e = ta.selectionEnd, sel = ta.value.slice(s, e);
-    if (['b', 'i', 's', 'code'].includes(k)) ta.setRangeText(mk + (sel || '글자') + mk, s, e, sel ? 'end' : 'select');
-    else if (k === 'hr' || k === 'tbl') ta.setRangeText(mk, s, e, 'end');
-    else { const st = ta.value.lastIndexOf('\n', s - 1) + 1, block = ta.value.slice(st, e); ta.setRangeText(block.split('\n').map((l, i) => (k === 'ol' ? `${i + 1}. ` : mk) + l).join('\n'), st, e, 'end'); }
-    ta.focus(); ta.oninput();
-  }
   // 사진: 긴 변 1600px JPEG 로 줄여 내 Drive 폴더에 올리고, 본문에는 ![사진](memo:파일id) 로 넣는다
   async function shrink(f) {
     if (f.type === 'image/gif' && f.size < 4e6) return { blob: f, mime: 'image/gif' };
@@ -151,16 +189,16 @@
     return { blob: await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85)), mime: 'image/jpeg' };
   }
   const b64 = blob => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(blob); });
-  async function upload(files, ta) {
+  async function upload(files) {
     for (const f of files) {
       if (!f.type.startsWith('image/')) { toast('사진 파일만 올릴 수 있어요'); continue; }
-      const tag = `![업로드 중 ${f.name.replace(/[\[\]]/g, '')}…]()`; ta.setRangeText(`\n${tag}\n`, ta.selectionStart, ta.selectionEnd, 'end'); ta.oninput();
-      try { const { blob, mime } = await shrink(f), r = await call({ op: 'imgPut', mime, name: f.name, data: await b64(blob) });
-        imgCache[r.id] = Promise.resolve(URL.createObjectURL(blob));
-        cur.text = cur.text.replace(tag, `![${f.name.replace(/\.[^.]+$/, '').replace(/[\[\]]/g, '') || '사진'}](memo:${r.id})`); }
-      catch (e) { cur.text = cur.text.replace(tag, ''); toast('사진 올리기 실패: ' + e.message); }
-      if (ta.isConnected) { const p = ta.selectionStart; ta.value = cur.text; ta.selectionStart = ta.selectionEnd = Math.min(p, ta.value.length); }
-      queue();
+      const key = 'u' + Date.now().toString(36), alt = f.name.replace(/\.[^.]+$/, '').replace(/[\[\]"<>]/g, '') || '사진';
+      ed.focus(); cmd('insertHTML', `<img class="mm-img loading" data-up="${key}" alt="${esc(alt)}"><br>`);
+      const img = () => ed?.querySelector(`img[data-up="${key}"]`);
+      try { const { blob, mime } = await shrink(f), r = await call({ op: 'imgPut', mime, name: f.name, data: await b64(blob) }), u = URL.createObjectURL(blob);
+        imgCache[r.id] = Promise.resolve(u); const el = img(); if (el) { el.dataset.memo = r.id; el.removeAttribute('data-up'); el.src = u; el.classList.remove('loading'); } }
+      catch (e) { img()?.remove(); toast('사진 올리기 실패: ' + e.message); }
+      if (ed) changed();
     }
   }
   function loadImages(root) {

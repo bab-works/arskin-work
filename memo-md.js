@@ -49,5 +49,55 @@
     }
     return out.join('');
   }
-  window.MemoMD = { render, inline };
+  // 편집 화면(HTML) → 저장용 마크다운. 아는 태그만 옮기고 나머지는 글자만 남긴다(붙여넣은 HTML 도 안전)
+  const BLOCK = /^(P|DIV|H[1-6]|UL|OL|LI|BLOCKQUOTE|PRE|HR|TABLE|THEAD|TBODY|TR)$/;
+  const wrap = (m, s) => { const x = s.match(/^(\s*)([\s\S]*?)(\s*)$/); return x[2] ? x[1] + m + x[2] + m + x[3] : s; };
+  function inl(n) {
+    if (n.nodeType === 3) return n.nodeValue.replace(/ /g, ' ').replace(/​/g, '');
+    if (n.nodeType !== 1) return '';
+    const t = n.tagName, c = () => [...n.childNodes].map(inl).join('');
+    if (t === 'BR') return '\n';
+    if (t === 'B' || t === 'STRONG') return wrap('**', c());
+    if (t === 'I' || t === 'EM') return wrap('*', c());
+    if (t === 'S' || t === 'DEL' || t === 'STRIKE') return wrap('~~', c());
+    if (t === 'MARK') return wrap('==', c());
+    if (t === 'CODE') return n.textContent ? '`' + n.textContent.replace(/`/g, "'") + '`' : '';
+    if (t === 'A') { const h = n.getAttribute('href') || ''; return /^(https?:|mailto:)/i.test(h) && c().trim() !== h ? `[${c()}](${h})` : c(); }
+    if (t === 'IMG') { const alt = (n.getAttribute('alt') || '사진').replace(/[\[\]]/g, ''); if (n.dataset.memo) return `![${alt}](memo:${n.dataset.memo})`; const src = n.getAttribute('src') || ''; return /^https:/.test(src) ? `![${alt}](${src})` : ''; }
+    if (t === 'INPUT' || t === 'SCRIPT' || t === 'STYLE') return '';
+    if (BLOCK.test(t)) return c() + '\n';
+    return c();
+  }
+  const line = s => s.replace(/\n+$/, '');
+  function list(el, lv) {
+    const out = []; let k = 1;
+    [...el.children].forEach(li => {
+      if (li.tagName === 'UL' || li.tagName === 'OL') { out.push(list(li, lv + 1)); return; }
+      const cb = li.querySelector(':scope > input[type=checkbox], :scope > label > input[type=checkbox]');
+      const txt = [...li.childNodes].filter(x => !(x.nodeType === 1 && /^(UL|OL)$/.test(x.tagName))).map(inl).join('').replace(/\s*\n\s*/g, ' ').trim();
+      out.push('  '.repeat(lv) + (el.tagName === 'OL' ? `${k++}. ` : '- ') + (cb ? `[${cb.checked ? 'x' : ' '}] ` : '') + txt);
+      li.querySelectorAll(':scope > ul, :scope > ol').forEach(sub => out.push(list(sub, lv + 1)));
+    });
+    return out.filter(Boolean).join('\n');
+  }
+  function blocks(parent) {
+    const out = []; let buf = '';
+    const push = () => { if (buf.replace(/\n/g, '').trim()) out.push(line(buf).replace(/^\n+/, '')); buf = ''; };
+    parent.childNodes.forEach(n => {
+      if (n.nodeType !== 1 || !BLOCK.test(n.tagName)) { buf += inl(n); return; }
+      push(); const t = n.tagName;
+      if (/^H[1-6]$/.test(t)) { const s = inl(n).replace(/\n/g, ' ').trim(); if (s) out.push('#'.repeat(+t[1]) + ' ' + s); }
+      else if (t === 'P' || t === 'DIV' || t === 'LI') out.push(...blocks(n));
+      else if (t === 'BLOCKQUOTE') { const s = blocks(n).join('\n\n'); if (s.trim()) out.push(s.split('\n').map(l => '> ' + l).join('\n')); }
+      else if (t === 'PRE') out.push('```\n' + n.textContent.replace(/\n$/, '') + '\n```');
+      else if (t === 'HR') out.push('---');
+      else if (t === 'UL' || t === 'OL') { const s = list(n, 0); if (s) out.push(s); }
+      else if (t === 'TABLE') { const rows = [...n.querySelectorAll('tr')].map(tr => [...tr.children].map(td => inl(td).replace(/\n/g, ' ').replace(/\|/g, '/').trim()));
+        if (rows.length) { const w = Math.max(...rows.map(r => r.length)), f = r => '| ' + Array.from({ length: w }, (_, i) => r[i] || ' ').join(' | ') + ' |'; out.push([f(rows[0]), '|' + ' --- |'.repeat(w), ...rows.slice(1).map(f)].join('\n')); } }
+      else out.push(...blocks(n));
+    });
+    push(); return out;
+  }
+  const fromHtml = root => blocks(root).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  window.MemoMD = { render, inline, fromHtml };
 })();

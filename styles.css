@@ -1365,12 +1365,11 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .mm-main{flex:1;min-width:0;padding:8px 24px 32px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
 .mm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;background:var(--card);z-index:2;padding:6px 0}
 .mm-grow{flex:1}.mm-status{color:var(--muted);font-size:12px}
-.mm-listbtn{display:inline-flex;align-items:center;gap:6px;background:var(--grey100);font-size:14px;min-height:40px}
-.mm-listbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6}.mm-listbtn[aria-expanded=true]{background:var(--blue-weak);color:var(--blue-text)}
+.mm-listbtn{background:var(--grey100)}.mm-listbtn[aria-expanded=true]{background:var(--blue-weak);color:var(--blue-text)}
 .mm-fsel{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font:inherit;font-size:14px;background:var(--card);max-width:160px}
-.mm-seg{display:inline-flex;background:var(--grey100);border-radius:var(--r-sm);padding:3px}
-.mm-seg button{background:none;padding:6px 12px;min-height:34px;font-size:13px;border-radius:8px;color:var(--muted)}.mm-seg button[aria-pressed=true]{background:var(--card);color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.mm-del{background:none;color:var(--red);font-size:14px}
+.mm-icon{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;background:none;border-radius:var(--r-sm);color:var(--sub)}.mm-icon:hover{background:var(--grey100)}
+.mm-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mm-del:hover{color:var(--red);background:#fff0f1}
 .mm-title{border:0;font-family:inherit;font-weight:700;font-size:24px;line-height:1.3;padding:8px 0;outline:none;background:none;color:var(--text);width:100%}
 .mm-tools{display:flex;gap:2px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);padding-bottom:8px}
 .mm-tools button,.mm-photo{background:none;min-width:36px;min-height:36px;padding:4px 8px;border-radius:8px;font-size:14px;color:var(--sub);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
@@ -1381,7 +1380,7 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .mm-view>:first-child{margin-top:0}
 .mm-view h1,.mm-view h2,.mm-view h3{line-height:1.35;margin:1.2em 0 .4em}.mm-view h1{font-size:24px}.mm-view h2{font-size:20px}.mm-view h3{font-size:17px}.mm-view h4,.mm-view h5,.mm-view h6{font-size:15px;margin:1em 0 .3em}
 .mm-view p{margin:.5em 0}.mm-view ul,.mm-view ol{padding-left:1.4em;margin:.4em 0}.mm-view li.task{list-style:none;margin-left:-1.3em}
-.mm-view li.task input{width:16px;height:16px;vertical-align:-2px;accent-color:var(--blue)}.mm-view li.task :checked+span{color:var(--muted);text-decoration:line-through}
+.mm-view li.task input{width:16px;height:16px;margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--blue);cursor:pointer}.mm-view li.task:has(>input:checked){color:var(--muted);text-decoration:line-through}
 .mm-view blockquote{margin:.6em 0;padding:2px 14px;border-left:3px solid var(--line);color:var(--sub)}
 .mm-view code{background:var(--grey100);border-radius:6px;padding:1px 6px;font-size:.9em}.mm-view pre{background:var(--grey100);border-radius:var(--r-sm);padding:12px 14px;overflow-x:auto}.mm-view pre code{background:none;padding:0}
 .mm-view hr{border:0;border-top:1px solid var(--line);margin:1.2em 0}.mm-view mark{background:#fff3b0;border-radius:3px;padding:0 2px}
@@ -1400,3 +1399,9 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 }
 .home-logout{display:flex;align-items:center;justify-content:center;gap:12px;margin:28px auto 8px;color:var(--muted);font-size:14px}
 .home-logout button{background:var(--card);min-height:44px;padding:0 18px;font-size:14px;color:var(--sub);border:1px solid var(--line)}
+/* 메모: 바로 고치는 본문, 스크롤바 숨김(스크롤은 그대로) */
+.mm-ed{position:relative;outline:none;min-height:320px;padding:4px 0 40px;cursor:text}
+.mm-ed.empty::before{content:attr(data-ph);color:var(--text-3);pointer-events:none;position:absolute}
+.mm-ed p{margin:.15em 0}.mm-ed img.mm-img{cursor:default}.mm-ed img.mm-img:hover{outline:2px solid var(--blue-weak)}
+.mm-float :is(.mm-side-in,.mm-main),.mm-float{scrollbar-width:none}
+.mm-float :is(.mm-side-in,.mm-main)::-webkit-scrollbar{display:none}
