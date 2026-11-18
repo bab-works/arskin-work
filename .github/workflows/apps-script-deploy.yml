@@ -1,9 +1,9 @@
-# apps-script/Code.gs 가 main 에 올라오면 Apps Script 에 올리고, 같은 배포(같은 주소)를 새 버전으로 갱신한다.
+# apps-script/Code.gs 가 main(또는 지금 기본 브랜치)에 올라오면 Apps Script 에 올리고, 같은 배포(같은 주소)를 새 버전으로 갱신한다.
 # 필요한 저장소 Secrets: CLASPRC_JSON(clasp 로그인 정보), SCRIPT_ID(스크립트 ID), DEPLOYMENT_ID(웹 앱 배포 ID)
 name: Apps Script 배포
 on:
   push:
-    branches: [main]
+    branches: [main, claude/focused-dirac-am1jeh]
     paths: ['apps-script/Code.gs']
   workflow_dispatch: {}
 concurrency: apps-script-deploy
