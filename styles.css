@@ -1325,12 +1325,19 @@ html.printing .subtask-text{font-size:10px}
 html.printing .prio-head{margin:2px 0 0;font-size:9px}
 
 /* ---------- 개인 메모장: 목록 패널은 폭이 0↔300px 로 밀려 나오고, 본문은 옆에 같이 보인다 ---------- */
-#viewMemo{padding:24px 0 40px}
-.mm{display:flex;align-items:flex-start;background:var(--card);border-radius:var(--r-lg);box-shadow:0 6px 20px rgba(0,27,55,.06);min-height:calc(100vh - 64px);overflow:hidden}
+.mm-float{position:fixed;z-index:50;right:24px;bottom:24px;width:780px;height:640px;min-width:440px;min-height:320px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.22),0 0 0 1px rgba(0,27,55,.06);overflow:hidden;resize:both;opacity:0;transform:translateY(12px) scale(.98);transform-origin:bottom right;transition:opacity 180ms var(--ease),transform 220ms var(--ease)}
+.mm-float[hidden]{display:none}.mm-float.show{opacity:1;transform:none}.mm-float.dragging{transition:none;user-select:none}
+.mm-fbar{flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 8px 6px 18px;border-bottom:1px solid var(--line);cursor:grab;background:var(--grey50)}
+.mm-float.dragging .mm-fbar{cursor:grabbing}.mm-fbar b{font-size:14px}
+.mm-close{background:none;min-width:40px;min-height:40px;font-size:16px;color:var(--muted);border-radius:var(--r-sm)}.mm-close:hover{background:var(--grey100);color:var(--text)}
+#memoHub{flex:1;min-height:0;display:flex}
+.mm{flex:1;min-width:0;display:flex;align-items:stretch;overflow:hidden}
+.nav>button.float-on{background:var(--blue-weak);color:var(--blue-text)}.bottomnav button.float-on{color:var(--blue-text)}
+@media (prefers-reduced-motion:reduce){.mm-float{transition:none}}
 .mm-loading{padding:40px;color:var(--muted)}.mm-loading small{display:block;margin:6px 0 12px}
 .mm-side{flex:none;width:0;align-self:stretch;overflow:hidden;border-right:1px solid transparent;background:var(--grey50);transition:width 340ms var(--ease),border-color 340ms var(--ease)}
 .mm.open .mm-side{width:300px;border-right-color:var(--line)}
-.mm-side-in{width:300px;padding:16px 14px;display:flex;flex-direction:column;gap:12px;opacity:0;transform:translateX(-16px);transition:opacity 260ms var(--ease),transform 340ms var(--ease);position:sticky;top:0;max-height:100vh;overflow-y:auto}
+.mm-side-in{width:300px;height:100%;padding:16px 14px;display:flex;flex-direction:column;gap:12px;opacity:0;transform:translateX(-16px);transition:opacity 260ms var(--ease),transform 340ms var(--ease);overflow-y:auto}
 .mm.open .mm-side-in{opacity:1;transform:none;transition-delay:60ms}
 @media (prefers-reduced-motion:reduce){.mm-side,.mm-side-in{transition:none}}
 .mm-fhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}.mm-fhead b{font-size:13px;color:var(--muted)}
@@ -1355,7 +1362,7 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .mm-item p{margin:4px 0 0;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mm-tacts{display:flex;gap:6px;margin-top:8px}.mm-tacts button{font-size:12px;padding:4px 10px;min-height:32px}.mm-tacts .danger{color:var(--red);background:none}
 .mm-empty{color:var(--muted);font-size:13px;padding:12px 4px}
-.mm-main{flex:1;min-width:0;padding:16px 28px 40px;display:flex;flex-direction:column;gap:10px}
+.mm-main{flex:1;min-width:0;padding:8px 24px 32px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
 .mm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;background:var(--card);z-index:2;padding:6px 0}
 .mm-grow{flex:1}.mm-status{color:var(--muted);font-size:12px}
 .mm-listbtn{display:inline-flex;align-items:center;gap:6px;background:var(--grey100);font-size:14px;min-height:40px}
@@ -1368,7 +1375,7 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .mm-tools{display:flex;gap:2px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);padding-bottom:8px}
 .mm-tools button,.mm-photo{background:none;min-width:36px;min-height:36px;padding:4px 8px;border-radius:8px;font-size:14px;color:var(--sub);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
 .mm-tools button:hover,.mm-photo:hover{background:var(--grey100)}.mm-photo{margin-left:auto;gap:4px}
-.mm-text{border:0;outline:none;resize:none;font:15px/1.75 ui-monospace,SFMono-Regular,Menlo,Consolas,"Pretendard",monospace;color:var(--text);background:none;width:100%;min-height:320px;padding:4px 0}
+.mm-text{border:0;outline:none;resize:none;font:inherit;font-size:15px;line-height:1.75;color:var(--text);background:none;width:100%;min-height:320px;padding:4px 0}
 .mm-blank{padding:60px 20px;text-align:center;color:var(--sub)}.mm-blank .muted{color:var(--muted);font-size:14px}
 .mm-view{font-size:15px;line-height:1.75;word-break:keep-all;overflow-wrap:anywhere;cursor:text}
 .mm-view>:first-child{margin-top:0}
@@ -1384,8 +1391,9 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .mm-img.loading{width:240px;height:160px;animation:mmPulse 1.2s ease-in-out infinite}.mm-img.broken{width:auto;height:auto;padding:12px;color:var(--muted);font-size:13px}
 @keyframes mmPulse{50%{opacity:.5}}
 @media (max-width:760px){
-  #viewMemo{padding:12px 0 90px}
-  .mm{min-height:calc(100vh - 120px);position:relative}
+  .mm-float{inset:8px 8px calc(84px + env(safe-area-inset-bottom)) 8px;width:auto;height:auto;min-width:0;resize:none;transform-origin:bottom center}
+  .mm-fbar{cursor:default}
+  .mm{position:relative}
   .mm-side{position:absolute;inset:0 auto 0 0;z-index:3;box-shadow:8px 0 24px rgba(0,27,55,.12)}
   .mm.open .mm-side{width:min(86vw,320px)}.mm-side-in{width:min(86vw,320px)}
   .mm-main{padding:12px 16px 32px}.mm-title{font-size:20px}.mm-status{display:none}

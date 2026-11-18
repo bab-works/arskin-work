@@ -1130,7 +1130,6 @@
   function setView(v) {
     if (v === 'leaves') { state.hospTab = state.hospTab === 'cal' || !state.hospTab ? 'leave' : state.hospTab; v = 'hospital'; } // 연월차는 아르스킨 연월차 캘린더 안으로 합침
     if (state.revOnly && v !== 'revenue') v = 'revenue';
-    if (state.view === 'memo' && v !== 'memo') window.MemoHub.leave();
     state.view = v;
     const navV = v === 'daily' && isDirector() ? 'director' : v;
     document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === navV));
@@ -1138,7 +1137,6 @@
     $('viewDaily').classList.toggle('hidden', v !== 'daily');
     $('viewCalendar').classList.toggle('hidden', v !== 'calendar');
     $('viewRevenue').classList.toggle('hidden', v !== 'revenue');
-    $('viewMemo').classList.toggle('hidden', v !== 'memo'); if (v === 'memo') window.MemoHub.open();
     $('viewDirector').classList.toggle('hidden', v !== 'director');
     $('viewHome').classList.toggle('hidden', v !== 'home');
     $('viewTeam').classList.toggle('hidden', v !== 'team');
@@ -1157,6 +1155,7 @@
   function render() { renderDatestrip(); renderShared(); renderReport(); renderTimeline(); loadDone(); $('btnCollapse').classList.toggle('on', state.collapse); $('btnCollapse').setAttribute('aria-pressed', state.collapse); $('btnDoneSort').classList.toggle('on', state.doneLast); $('btnDoneSort').setAttribute('aria-pressed', state.doneLast); }
 
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+    if (b.dataset.view === 'memo') return window.MemoHub.toggle(); // 메모는 지금 화면 위에 떠 있는 창
     if (b.classList.contains('active') && b.dataset.view !== 'home') return setView('home'); // 같은 대메뉴를 다시 누르면 접고 홈으로
     if (b.dataset.view === 'daily' && isDirector()) { leaveDirSheet(); return setView('daily'); } // 사람을 먼저 바꿔야 메뉴 표시가 맞는다
     const mineD = C.PEOPLE.find(p => p.name === state.dir.me && !p.director);

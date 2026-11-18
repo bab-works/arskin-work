@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="assets/arskin-icon.png?v=2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="styles.css?v=202611180205">
+<link rel="stylesheet" href="styles.css?v=202611180213">
 </head>
 <body>
 <div class="app">
@@ -85,7 +85,6 @@
     <section id="viewHome" class="view hidden"><div id="homeHub" class="home"></div></section>
     <section id="viewTeam" class="view hidden"><div id="teamHub" class="team"></div></section>
     <section id="viewSettings" class="view hidden"><div id="settingsHub" class="team"></div></section>
-    <section id="viewMemo" class="view hidden"><div id="memoHub"></div></section>
     <section id="viewRevenue" class="view hidden"><div id="revenueHub"></div></section>
   </main>
 
@@ -108,14 +107,15 @@
   <div class="be-copy" id="beCopyWrap"><input id="beCopyDate" type="date" aria-label="복제할 날짜"><select id="beCopyTo" aria-label="복제할 캘린더"><option value="공통">마케팅 공용</option><option value="원장님">원장님 캘린더</option><option value="me">내 타임라인</option></select><button id="beCopy" type="button">복제</button></div>
   <div class="be-actions"><button id="beDelete" class="danger">삭제</button><button id="beCancel">취소</button><button id="beSave" class="primary">저장</button></div>
 </div>
+<div id="memoFloat" class="mm-float" role="dialog" aria-label="메모 · 회의록" hidden><div class="mm-fbar" title="끌어서 옮기기"><b>메모 · 회의록</b><button type="button" class="mm-close" aria-label="메모 닫기" title="닫기">✕</button></div><div id="memoHub"></div></div>
 <div id="appToast" class="toast hidden" role="status" aria-live="polite"></div>
 
-<script src="config.js?v=202611180205"></script>
-<script src="content-hub.js?v=202611180205"></script>
-<script src="revenue-model.js?v=202611180205"></script>
-<script src="revenue-hub.js?v=202611180205"></script>
-<script src="memo-md.js?v=202611180205"></script>
-<script src="memo-hub.js?v=202611180205"></script>
-<script src="app.js?v=202611180205"></script>
+<script src="config.js?v=202611180213"></script>
+<script src="content-hub.js?v=202611180213"></script>
+<script src="revenue-model.js?v=202611180213"></script>
+<script src="revenue-hub.js?v=202611180213"></script>
+<script src="memo-md.js?v=202611180213"></script>
+<script src="memo-hub.js?v=202611180213"></script>
+<script src="app.js?v=202611180213"></script>
 </body>
 </html>

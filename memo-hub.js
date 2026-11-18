@@ -188,5 +188,33 @@
     try { data.folders = (await call({ op: 'folders', folders: list })).data.folders; data.notes.forEach(n => { if (n.folder && !fOf(n.folder)) n.folder = ''; }); }
     catch (e) { data.folders = prev; toast('폴더 저장 실패: ' + e.message); } paintFolders(); paintList(); paintMain(); }
 
-  window.MemoHub = { open, leave: flush };
+  // 떠 있는 창: 위 막대를 끌어 옮기고 오른쪽 아래 모서리로 크기 조절. 위치·크기는 이 브라우저에 기억
+  const win = () => $('memoFloat');
+  const fit = () => { const w = win(), x = Math.min(Math.max(8 - w.offsetWidth + 120, parseFloat(w.style.left) || 8), innerWidth - 120), y = Math.min(Math.max(8, parseFloat(w.style.top) || 8), innerHeight - 48); w.style.left = x + 'px'; w.style.top = y + 'px'; };
+  function place() {
+    const w = win(); if (innerWidth < 760) { w.removeAttribute('style'); return; }
+    let g = null; try { g = JSON.parse(ls('memoWin') || 'null'); } catch {}
+    const W = Math.min(g?.w || 780, innerWidth - 16), H = Math.min(g?.h || Math.min(640, innerHeight - 48), innerHeight - 16);
+    Object.assign(w.style, { width: W + 'px', height: H + 'px', left: (g ? g.x : innerWidth - W - 24) + 'px', top: (g ? g.y : innerHeight - H - 24) + 'px' }); fit();
+  }
+  const remember = () => { const w = win(); if (innerWidth < 760 || !w.style.left) return; ls('memoWin', JSON.stringify({ x: Math.round(parseFloat(w.style.left)), y: Math.round(parseFloat(w.style.top)), w: w.offsetWidth, h: w.offsetHeight })); }; // 열고 닫는 애니메이션(transform) 영향 없이
+  function setOpen(on) {
+    const w = win(); if (on === !w.hidden) return;
+    document.querySelectorAll('[data-view="memo"]').forEach(b => { b.classList.toggle('float-on', on); b.setAttribute('aria-expanded', on); });
+    if (!on) { flush(); w.classList.remove('show'); setTimeout(() => { if (!w.classList.contains('show')) w.hidden = true; }, 180); return; }
+    w.hidden = false; place(); requestAnimationFrame(() => w.classList.add('show')); open();
+  }
+  (() => {
+    const w = win(), bar = w.querySelector('.mm-fbar');
+    w.querySelector('.mm-close').onclick = () => setOpen(false);
+    bar.onpointerdown = e => {
+      if (e.target.closest('button') || innerWidth < 760) return; e.preventDefault();
+      const r = { left: parseFloat(w.style.left), top: parseFloat(w.style.top), width: w.offsetWidth }, dx = e.clientX - r.left, dy = e.clientY - r.top; bar.setPointerCapture(e.pointerId); w.classList.add('dragging');
+      bar.onpointermove = m => { w.style.left = Math.min(Math.max(8 - r.width + 120, m.clientX - dx), innerWidth - 120) + 'px'; w.style.top = Math.min(Math.max(8, m.clientY - dy), innerHeight - 48) + 'px'; };
+      bar.onpointerup = () => { bar.onpointermove = bar.onpointerup = null; w.classList.remove('dragging'); remember(); };
+    };
+    new ResizeObserver(() => { if (!w.hidden && w.classList.contains('show')) { clearTimeout(w.rt); w.rt = setTimeout(remember, 300); } }).observe(w);
+    addEventListener('resize', () => { if (!w.hidden) place(); });
+  })();
+  window.MemoHub = { open, leave: flush, toggle: () => setOpen(win().hidden), close: () => setOpen(false) };
 })();
