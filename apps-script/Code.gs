@@ -60,6 +60,7 @@ function doPost(e) { try { return doPost_(e); } catch (err) { return json({ erro
 function doPost_(e) {
   var body = JSON.parse(e.postData.contents || '{}');
   if (!memberFor_(body.code)) return json({ error: 'unauthorized' });
+  if (body.action === 'feedback') { try { return json(feedback_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } } // 건의·제보
   if (body.action === 'memo') { try { return json(memo_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } } // 개인 메모장(본인 것만)
   if (revenueOnly_(memberFor_(body.code)) && ['revenueArchive', 'revenueRows', 'revenue'].indexOf(body.action) < 0) return json({ error: '매출표 전용 계정입니다' });
   if (body.action === 'revenueArchive') { try { return json(revenueArchive_(body, memberFor_(body.code))); } catch (err) { return json({ error: err.message }); } }
@@ -925,7 +926,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-18.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-18.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1086,3 +1087,30 @@ function memo_(b, me) {
   } finally { lock.releaseLock(); }
 }
 function str_(v, n) { return String(v == null ? '' : v).slice(0, n); }
+
+/* ---------- 건의·제보: 공통 시트 'feedback' 탭. 누구나 보내고 자기 것만 본다. 관리자(ADMIN)는 전부 보고 상태·답변을 단다 ---------- */
+var FB_KINDS = ['건의', '오류 제보', '질문'], FB_STATUS = ['접수', '확인 중', '처리됨'];
+function feedbackSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('feedback');
+  if (!sh) { sh = ss.insertSheet('feedback'); sh.getRange('A:G').setNumberFormat('@'); sh.appendRow(['id', '시각', '이름', '종류', '내용', '상태', '답변']); sh.setFrozenRows(1); }
+  return sh;
+}
+function feedback_(b, me) {
+  if (!me) throw new Error('unauthorized');
+  var admin = me === ADMIN, sh = feedbackSheet_(), now = new Date().toISOString();
+  if (b.op === 'add') {
+    var kind = FB_KINDS.indexOf(b.kind) >= 0 ? b.kind : '건의', text = String(b.text || '').trim().slice(0, 2000);
+    if (!text) throw new Error('내용을 적어 주세요');
+    sh.appendRow(['F' + Date.now().toString(36), now, me, kind, text, '접수', '']);
+  } else if (b.op === 'reply') {
+    if (!admin) throw new Error('답변은 관리자만 달 수 있습니다');
+    var n = sh.getLastRow(), ids = n > 1 ? sh.getRange(2, 1, n - 1, 1).getDisplayValues() : [];
+    for (var i = 0; i < ids.length; i++) if (ids[i][0] === String(b.id)) {
+      if (FB_STATUS.indexOf(b.status) >= 0) sh.getRange(i + 2, 6).setValue(b.status);
+      if (b.reply != null) sh.getRange(i + 2, 7).setValue(String(b.reply).slice(0, 1000));
+    }
+  }
+  var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 7).getDisplayValues() : [];
+  return { admin: admin, items: rows.filter(function (r) { return admin || r[2] === me; }).reverse()
+    .map(function (r) { return { id: r[0], at: r[1], who: r[2], kind: r[3], text: r[4], status: r[5] || '접수', reply: r[6] }; }) };
+}
