@@ -1398,3 +1398,5 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
   .mm.open .mm-side{width:min(86vw,320px)}.mm-side-in{width:min(86vw,320px)}
   .mm-main{padding:12px 16px 32px}.mm-title{font-size:20px}.mm-status{display:none}
 }
+.home-logout{display:flex;align-items:center;justify-content:center;gap:12px;margin:28px auto 8px;color:var(--muted);font-size:14px}
+.home-logout button{background:var(--card);min-height:44px;padding:0 18px;font-size:14px;color:var(--sub);border:1px solid var(--line)}

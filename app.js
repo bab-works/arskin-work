@@ -1164,6 +1164,7 @@
     setView(b.dataset.view);
   });
   $('brandHome').onclick = () => setView('home');
+  $('navLogout').onclick = logout;
   $('brandHome').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('home'); } };
   document.querySelectorAll('[data-team]').forEach(b => b.onclick = () => { state.teamPage = b.dataset.team; setView('team'); });
   document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => b.dataset.dir === 'sheet' ? openDirSheet() : setView('director'));
@@ -1746,6 +1747,15 @@
 
     };
     clearInterval(renderHome.t); tick(); renderHome.t = setInterval(tick, 1000);
+    const who = disp(state.dir.me || ''), lo = el(`<div class="home-logout"><span>${who ? `<b>${esc(who)}</b> 코드로 접속 중` : '접속 중'}</span><button type="button">로그아웃</button></div>`);
+    lo.querySelector('button').onclick = logout; box.append(lo);
+  }
+  // 로그아웃: 이 기기에 저장된 접속 코드와 개인 데이터(매출 비밀번호·매출 캐시·메모 위치)를 지우고 코드 입력부터 다시
+  function logout() {
+    if (!confirm('로그아웃할까요? 다시 쓰려면 접속 코드를 입력해야 해요.')) return;
+    window.MemoHub?.leave?.();
+    try { ['accessCode', 'revenueKey', 'rvLast', 'memoCur', 'memoFolder', 'person'].forEach(k => localStorage.removeItem(k)); } catch {}
+    location.reload();
   }
 
 
