@@ -1440,3 +1440,8 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .sidefoot-row .nav-edit{white-space:nowrap;padding:0 6px;font-size:13px}.sidefoot-row #navLogout{flex:none}
 .hp-send .primary{flex:none;white-space:nowrap}
 .task-list .pc-line>.cat{min-width:5.2em;text-align:center}html.printing .task-list .pc-line>.cat{min-width:0}
+.save-state{background:none!important;font-size:12px!important;font-weight:600;color:var(--text-2);padding:6px 10px;min-height:36px;border-radius:999px;white-space:nowrap}
+.save-state::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--st-done);margin-right:6px;vertical-align:1px}
+.save-state.busy::before{background:var(--blue);animation:mmPulse 1s ease-in-out infinite}
+.save-state.bad{background:#fff0f1!important;color:#c4161c}.save-state.bad::before{background:var(--red)}
+html.printing .save-state{display:none!important}

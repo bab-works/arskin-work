@@ -73,6 +73,7 @@
     d.showModal();
   }
   const checkAuth = j => { if (j.error === 'unauthorized') askCode(accessCode() ? '코드가 맞지 않습니다. 다시 입력해 주세요.' : '팀에서 받은 접속 코드를 입력해 주세요.'); };
+  const saveState = { busy: 0, failed: new Map(), at: null };
   const api = {
     async get(params, ms = 0) { // ms: 그 시간 안에 답이 없으면 포기(첫 화면이 서버를 무한정 기다리지 않게)
       const u = new URL(C.API_URL);
@@ -81,17 +82,40 @@
       checkAuth(j); if (j.error) throw new Error(j.error);
       return j;
     },
-    async post(body) { // text/plain body → CORS preflight 없이 Apps Script 로 전달
-      const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ code: accessCode(), who: state.person, ...body }) })).json();
-      checkAuth(j); if (j.error) throw new Error(j.error);
-      return j;
+    async post(body) { // text/plain body → CORS preflight 없이 Apps Script 로 전달. 진행 중·마지막 저장 시각은 상단 저장 표시에
+      saveState.busy++; paintSave();
+      try {
+        const j = await (await fetch(C.API_URL, { method: 'POST', body: JSON.stringify({ code: accessCode(), who: state.person, ...body }) })).json();
+        checkAuth(j); if (j.error) throw new Error(j.error);
+        saveState.at = new Date(); return j;
+      } finally { saveState.busy--; paintSave(); }
     },
   };
   // 저장: 네트워크가 끊기거나 서버가 잠깐 바쁘면 두 번까지 자동 재시도(같은 id로 덮어써서 중복 없음)
   const NET_ERR = /Failed to fetch|NetworkError|Load failed|잠시 밀렸/i;
-  const save = (rows, who = state.person) => { const go = n => api.post({ action: 'upsert', rows, who }).catch(e => {
+  const save = (rows, who = state.person) => { const go = n => api.post({ action: 'upsert', rows, who }).then(j => { rows.forEach(r => saveState.failed.delete(r.id)); paintSave(); return j; }).catch(e => {
     if (n < 2 && NET_ERR.test(e.message)) return new Promise(r => setTimeout(r, 1500 * (n + 1))).then(() => go(n + 1));
-    toast('저장 실패: ' + (NET_ERR.test(e.message) ? '서버가 잠시 응답하지 않아요. 잠시 후 다시 해 주세요.' : e.message)); }); return go(0); };
+    rows.forEach(r => saveState.failed.set(r.id, { r, who })); paintSave(); // Ctrl+S 또는 상단 표시를 누르면 다시 보냄
+    toast('저장 실패: ' + (NET_ERR.test(e.message) ? '서버가 잠시 응답하지 않아요. Ctrl+S 로 다시 저장해 주세요.' : e.message)); }); return go(0); };
+  // 저장 상태: 저장 중 / 실패 n건 / 저장됨 시각. Ctrl+S = 편집 중인 칸 확정 + 실패분 재전송 + 메모 저장
+  function paintSave() {
+    const b = $('saveState'); if (!b) return; const n = saveState.failed.size, t = saveState.at;
+    b.className = 'save-state' + (n ? ' bad' : saveState.busy ? ' busy' : '');
+    b.textContent = n ? `저장 실패 ${n}건 · 다시 저장` : saveState.busy ? '저장 중…' : t ? `저장됨 ${pad(t.getHours())}:${pad(t.getMinutes())}` : '저장됨';
+    b.title = n ? '눌러서(또는 Ctrl+S) 다시 저장' : 'Ctrl+S 로 바로 저장';
+  }
+  async function manualSave() {
+    const a = document.activeElement; if (a && (a.isContentEditable || /^(INPUT|TEXTAREA)$/.test(a.tagName)) && !a.closest('.mm-float')) a.blur(); // 고치던 칸 확정(저장은 blur 에서)
+    const jobs = [window.MemoHub?.leave?.()];
+    const byWho = {}; saveState.failed.forEach(({ r, who }) => (byWho[who] ||= []).push(r));
+    Object.entries(byWho).forEach(([who, rows]) => jobs.push(save(rows, who)));
+    await Promise.allSettled(jobs);
+    for (let i = 0; i < 100 && saveState.busy > 0; i++) await new Promise(r => setTimeout(r, 150)); // 보내는 중인 저장이 끝날 때까지(최대 15초)
+    toast(saveState.failed.size ? `저장 실패 ${saveState.failed.size}건이 남아 있어요. 잠시 후 다시 Ctrl+S 를 눌러 주세요.` : saveState.busy ? '아직 저장 중이에요. 잠시 뒤 다시 확인해 주세요.' : '모두 저장했어요 ✓');
+  }
+  addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); e.stopPropagation(); manualSave(); } }, true); // 브라우저 '페이지 저장' 대신
+  document.getElementById('saveState').onclick = manualSave;
+  addEventListener('beforeunload', e => { if (saveState.busy || saveState.failed.size) { e.preventDefault(); e.returnValue = ''; } }); // 저장 전 닫기 경고
   const removeIds = (ids, who = state.person) => api.post({ action: 'delete', ids, who }).catch(e => toast('삭제 실패: ' + e.message));
 
   function addRow(o) {
@@ -1616,7 +1640,7 @@
   function openShortcuts() {
     if (document.querySelector('.keys-dlg')) return;
     const dlg = el(`<dialog class="code-dlg keys-dlg" aria-labelledby="keysTitle"><h2 id="keysTitle">단축키</h2><dl>
-      <dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>지금 바로 저장 (실패한 저장 다시 보내기)</dd><dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
       <dt><kbd>C</kbd></dt><dd>완료 업무 접기 / 펼치기</dd><dt><kbd>Esc</kbd></dt><dd>수정 취소, 창·메뉴 닫기</dd><dt><kbd>Space</kbd></dt><dd>상태 버튼에서 다음 상태로</dd><dt><kbd>Shift</kbd>+<kbd>F10</kbd></dt><dd>상태 선택 메뉴</dd><dt><kbd>?</kbd></dt><dd>이 도움말</dd></dl>
       <button type="button" class="primary">닫기</button></dialog>`);
     dlg.querySelector('button').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove();
