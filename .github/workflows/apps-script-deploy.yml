@@ -1,0 +1,43 @@
+# apps-script/Code.gs 가 main 에 올라오면 Apps Script 에 올리고, 같은 배포(같은 주소)를 새 버전으로 갱신한다.
+# 필요한 저장소 Secrets: CLASPRC_JSON(clasp 로그인 정보), SCRIPT_ID(스크립트 ID), DEPLOYMENT_ID(웹 앱 배포 ID)
+name: Apps Script 배포
+on:
+  push:
+    branches: [main]
+    paths: ['apps-script/Code.gs']
+  workflow_dispatch: {}
+concurrency: apps-script-deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install -g @google/clasp@2.4.2
+      - name: 로그인 정보·프로젝트 설정
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          test -n "$CLASPRC_JSON" && test -n "$SCRIPT_ID" || { echo "CLASPRC_JSON / SCRIPT_ID Secret 이 없습니다"; exit 1; }
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          mkdir -p "$RUNNER_TEMP/remote" "$RUNNER_TEMP/push"
+          printf '{"scriptId":"%s","rootDir":"%s"}' "$SCRIPT_ID" "$RUNNER_TEMP/remote" > "$RUNNER_TEMP/remote/.clasp.json"
+          printf '{"scriptId":"%s","rootDir":"%s"}' "$SCRIPT_ID" "$RUNNER_TEMP/push" > .clasp.json
+      # 지금 올라가 있는 파일(appsscript.json·다른 파일)을 받아 두고 Code 만 바꿔 올린다 → 다른 파일·권한 설정이 지워지지 않음
+      - name: 현재 프로젝트 받기
+        run: cd "$RUNNER_TEMP/remote" && clasp pull
+      - name: Code.gs 교체 후 올리기
+        run: |
+          cp "$RUNNER_TEMP/remote"/* "$RUNNER_TEMP/push"/
+          rm -f "$RUNNER_TEMP/push/Code.js" "$RUNNER_TEMP/push/Code.gs"
+          cp apps-script/Code.gs "$RUNNER_TEMP/push/Code.gs"
+          ls "$RUNNER_TEMP/push"
+          clasp push --force
+      - name: 같은 주소로 새 버전 배포
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          test -n "$DEPLOYMENT_ID" || { echo "DEPLOYMENT_ID Secret 이 없어 올리기만 했습니다(배포는 안 함)"; exit 0; }
+          clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "auto $(git rev-parse --short HEAD) $(grep -o "SERVER_VERSION = '[^']*'" apps-script/Code.gs)"
