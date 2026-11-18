@@ -234,7 +234,7 @@
     });
     (items.find(x => x.dataset.k === current) || items[0]).focus();
   }
-  const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date);
+  const childrenOf = r => state.rows.filter(x => x.section === '하위업무' && x.col === r.id && x.date === r.date).sort((a, b) => (ord(a) - ord(b)) || 0);
   let applyMainW = () => {};
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   const NESTABLE = new Set([...SUBTASKABLE, '주간고정']); // 하위 업무를 가질 수 있는 칸 (주간고정은 제자리에 남음)
@@ -300,14 +300,14 @@
     if (!open && !state.printAll) return card; // 인쇄할 때는 하위 업무까지 모두 펼쳐서
     const list = el('<div class="subtasks"></div>');
     childrenOf(r).forEach(child => {
-      const sub = el('<div class="subtask"></div>');
+      const sub = el('<div class="subtask"></div>'); sub.dataset.id = child.id;
       const check = el('<input type="checkbox">'); check.checked = isDone(child); check.setAttribute('aria-label', child.text + ' 완료');
       check.onchange = () => changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' });
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
       const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
-      const grip = el(`<button type="button" class="drag sub-grip" aria-label="${esc(child.text)} 타임라인으로 끌기" title="끌어서 타임라인에 넣기">${icon('drag', 14)}</button>`);
+      const grip = el(`<button type="button" class="drag sub-grip" aria-label="${esc(child.text)} 순서 바꾸기·타임라인으로 끌기" title="위아래로 끌어 순서 바꾸기 · 타임라인으로 끌어 넣기">${icon('drag', 14)}</button>`);
       grip.onpointerdown = e => startDrag(e, sub, child, { tlOnly: true });
       sub.append(grip, check, text, remove); list.append(sub);
     });
@@ -436,7 +436,9 @@
         tlGhost.firstChild.textContent = `${toTime(s)} ~ ${toTime(s + 60)} · ${r.text}`; return;
       }
       tlAt = null; tlGhost.remove();
-      if (opts.tlOnly) { if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12); return; }
+      if (opts.tlOnly) { // 하위 업무: 같은 목록 안에서는 순서 이동
+        const st = under?.closest('.subtask[data-id]'); if (st && st !== node && st.parentElement === node.parentElement) { const t = st.getBoundingClientRect(); st[ev.clientY < t.top + t.height / 2 ? 'before' : 'after'](ph); }
+        if (ev.clientY < 80) scrollBy(0, -12); else if (ev.clientY > innerHeight - 80) scrollBy(0, 12); return; }
       const target = under?.closest('.task-list .row[data-id], .task-list .project-card[data-id]');
       const list = under?.closest('.task-list');
       // 다른 업무 가운데에 0.7초 머무르면 그 업무의 하위 업무로 넣을 준비 (테두리 표시). 가장자리로 가면 순서 이동.
@@ -472,6 +474,11 @@
         updateRow(r, { status: 'done', completed: d });
         addRow({ date: d, section: '원장님일정', text: '✅ ' + r.text.replace(/\s*\n\s*/g, ' / ').trim(), status: 'done', _who: DIRECTOR_WHO });
         toast(`${d.slice(5).replace('-', '/')} 완료로 캘린더에 넣었습니다`); confetti(handle); renderShared(); return render();
+      }
+      if (opts.tlOnly && moved && ph.parentElement === node.parentElement) {
+        ph.replaceWith(node); const ch = [];
+        [...node.parentElement.querySelectorAll(':scope > .subtask[data-id]')].forEach((n, i) => { const x = state.rows.find(y => y.id === n.dataset.id); if (x && x.order !== String(i + 1)) { x.order = String(i + 1); ch.push(x); } });
+        if (ch.length) save(ch); return render();
       }
       if (!moved || opts.tlOnly) { ph.remove(); if (!moved && r.section === '팔로업' && handle) dupMenu(handle, r); return; } // 짧게 누르거나 꾹 눌렀다 떼면: 복제 메뉴
       const list = ph.closest('.task-list[data-section]'); if (!list) { ph.remove(); return; }
