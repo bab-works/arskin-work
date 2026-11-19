@@ -1118,16 +1118,24 @@
       state.contentData = slim; cacheSet('contentLinks', slim); renderReport(); } catch {}
   }
   // 이번 주(월~일) 발행 예정: 날짜와 내용만 한 줄씩 (콘텐츠 캘린더 시트에서)
+  // 실제 발행 글(채널 시트: 날짜·제목·링크)도 함께 → 캘린더 시트를 안 채운 주에도 보인다
+  const PUB_LABEL = { won: '💜 원개블', jasa: '💚 자사블', hongzz: '@hongzz', global: '@hongzz_global', figo: '@figo', arskin: '@arskin' };
   function publishingFor(d) {
-    const c = state.calendar; if (!c) return null;
-    const ws = weekStart(d), lines = [];
+    const c = state.calendar, cd = state.contentData; if (!c && !cd) return null;
+    const ws = weekStart(d), items = [];
     for (let i = 0; i < 7; i++) {
-      const day = shiftDate(ws, i), [, m, dd] = day.split('-').map(Number); if (m !== c.month) continue;
-      (c.days[dd] || []).forEach(t => { const txt = t.replace(/^[^\p{L}\p{N}@]+/u, ''), url = pubLink(day, txt);
-        lines.push(`<li><span class="pub-date">${m}/${dd} (${WD[new Date(day + 'T00:00:00').getDay()]})</span>${url ? `<a class="pub-text" href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)} ↗</a>` : `<span class="pub-text">${esc(txt)}</span>`}</li>`); });
+      const day = shiftDate(ws, i), [y, m, dd] = day.split('-').map(Number), seen = new Set();
+      if (c && m === c.month) (c.days[dd] || []).forEach(t => { const txt = t.replace(/^[^\p{L}\p{N}@]+/u, ''), url = pubLink(day, txt); if (url) seen.add(url); items.push({ day, txt, url }); });
+      if (cd) Object.keys(PUB_LABEL).forEach(ch => (cd[ch] || []).forEach(r => {
+        if (String(r[0]).trim() !== `${y}. ${m}. ${dd}` || !/^https?:/.test(r[2]) || seen.has(r[2])) return;
+        seen.add(r[2]); items.push({ day, txt: `${PUB_LABEL[ch].replace(/^[^\p{L}\p{N}@]+/u, '')} | ${String(r[1]).trim()}`, url: r[2] });
+      }));
     }
-    return el(`<ul class="week-pub">${lines.join('') || '<li class="note-empty">이번 주 발행 예정이 없습니다</li>'}</ul>`);
+    const lines = items.map(({ day, txt, url }) => { const [, m, dd] = day.split('-').map(Number);
+      return `<li><span class="pub-date">${m}/${dd} (${WD[new Date(day + 'T00:00:00').getDay()]})</span>${url ? `<a class="pub-text" href="${esc(url)}" target="_blank" rel="noopener">${esc(txt)} ↗</a>` : `<span class="pub-text">${esc(txt)}</span>`}</li>`; });
+    return el(`<ul class="week-pub">${lines.join('') || '<li class="note-empty">이번 주 발행 예정·발행 글이 없습니다</li>'}</ul>`);
   }
+
 
   /* ---------- print-only layout: 시트처럼 좌/우 항목을 한 줄씩 짝지은 표 (행 단위로만 페이지 분할) ---------- */
 
