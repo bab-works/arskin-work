@@ -1535,7 +1535,7 @@
   function applyBoot(j) {
     setHolidays(j.holidays); state.tags = Object.fromEntries((j.tags || []).map(t => [t.tag, t])); state.deletedTags = j.deletedTags || []; state.leaves = j.leaves || [];
     document.querySelectorAll('[data-team="check"]').forEach(b => { b.hidden = j.me === DIRECTOR_WHO; });
-    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.admin = !!j.admin; state.sv = j.sv || ''; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.staff = j.staff || []; state.members = (j.members?.length ? j.members : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
+    state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.nudge = j.nudgeText || (j.marketer === false ? false : null); state.admin = !!j.admin; state.sv = j.sv || ''; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.staff = j.staff || []; state.members = (j.members?.length ? j.members : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   // 권한·휴일 등은 창으로 돌아올 때(5분마다 최대 1번) 다시 받아 새로고침 없이 반영
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
@@ -1617,7 +1617,7 @@
     const head = box.querySelector('.dir-head');
     if (isDir) {
       if ('Notification' in window && Notification.permission === 'default') { const b = el('<button type="button" class="primary nag-perm">🔔 알림 켜기</button>'); b.onclick = () => Notification.requestPermission().then(() => renderDirector()); head.append(b); }
-    } else if (me) { const b = el('<button type="button" class="nudge-btn">🔥 원장님 재촉하기</button>'); b.onclick = nudgeBoss; head.append(b); }
+    } else if (isMarketer()) { const b = el(`<button type="button" class="nudge-btn">${esc(nudgeText().label)}</button>`); b.onclick = nudgeBoss; head.append(b); }
     box.querySelector('form').onsubmit = e => { e.preventDefault(); const f = e.target; saveDirector({ action: 'directorSave', task: { text: f.text.value, due: f.due.value } }); };
     [['pending', '대기 중'], ['approved', '승인됨'], ['done', '완료'], ['rejected', '거절됨']].forEach(([k, label]) => {
       const list = tasks.filter(t => t.status === k).sort((a, b) => (b.updated > a.updated ? 1 : -1));
@@ -1769,7 +1769,7 @@
         </svg>
         <p class="clock-date"></p>
         <p class="clock-time" aria-live="off"></p>
-        ${state.dir.me && !isBoss() ? '<button type="button" class="nudge-hero" data-nudge>🔥 원장님 재촉하기</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다</p>' : ''}
+        ${isMarketer() ? `<button type="button" class="nudge-hero" data-nudge>${esc(nudgeText().label)}</button><p class="nudge-sub">원장님 창에 바로 경고가 뜹니다 · <button type="button" class="nudge-edit" data-nudge-edit>문구 수정</button></p>` : ''}
       </section>
       <section class="ext-meet" aria-live="polite"></section>
       <div class="home-cards"><div class="home-logo" aria-hidden="true"><span class="deboss"></span></div>
@@ -1777,7 +1777,7 @@
         <section class="home-card"><h2>바로가기</h2><nav class="home-links" aria-label="바로가기"><button type="button" data-go="daily"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h12M4 10h12M4 14h8"/></svg><span>일간보고서</span><i aria-hidden="true">›</i></button><button type="button" data-go="calendar"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2"/><path d="M3 8h14M7 2v4M13 2v4"/></svg><span>콘텐츠 스튜디오</span><i aria-hidden="true">›</i></button><button type="button" data-go="sheet"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="15" rx="2"/><path d="M7 8h6M7 11h6M7 14h3"/></svg><span>원장님 워크시트</span><i aria-hidden="true">›</i></button><button type="button" data-go="team"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="8" r="3"/><circle cx="14" cy="9" r="2.5"/><path d="M2 17c0-3 2.5-5 5-5s5 2 5 5M12 16c.3-2 1.6-3.5 3.5-3.5S18 14 18 16"/></svg><span>마케팅 공용</span><i aria-hidden="true">›</i></button></nav></section>
       </div>`;
     box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'sheet' ? openDirSheet() : setView(b.dataset.go));
-    box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss);
+    box.querySelector('[data-nudge]')?.addEventListener('click', nudgeBoss); box.querySelector('[data-nudge-edit]')?.addEventListener('click', editNudge);
     { const k = new Date(Date.now() + 9 * 36e5), sec = k.getUTCSeconds() + k.getUTCMilliseconds() / 1000, min = k.getUTCMinutes() * 60 + sec, hr = (k.getUTCHours() % 12) * 3600 + min;
       [['.ac-s', sec], ['.ac-m', min], ['.ac-h', hr]].forEach(([c, t]) => box.querySelector(c).style.animationDelay = `-${t}s`); }
     loadExtMeets().then(() => paintExt(box));
@@ -1982,9 +1982,10 @@
 
 
   /* ---------- 원장님 알림: 원장님 접속 코드로 연 창에서만. 재촉(마케터 버튼)과 미달성 경고 ---------- */
-  const NAG = '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥';
+  const NAG_DEFAULT = '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥';
   const isBoss = () => state.dir.me === DIRECTOR_WHO;
-  function nag(reason, ackAt) { // ackAt: 재촉으로 뜬 경고면 닫을 때 '확인'을 서버에 기록
+  function nag(reason, ackAt, msg) { // ackAt: 재촉으로 뜬 경고면 닫을 때 '확인'을 서버에 기록. msg: 마케터가 정한 재촉 문구
+    const NAG = msg || NAG_DEFAULT;
     try { if ('Notification' in window && Notification.permission === 'granted') new Notification('아르스킨 대시보드', { body: NAG, icon: 'assets/arskin-icon.png', tag: 'arskin-nag' }); } catch {}
     if (document.querySelector('.nag-dlg')) return;
     const dlg = el(`<dialog class="code-dlg nag-dlg" role="alertdialog" aria-labelledby="nagT"><h2 id="nagT">${esc(NAG)}</h2><p>${esc(reason)}</p><div class="tr-acts"><button type="button" class="nag-later">나중에</button><button type="button" class="primary nag-go">워크시트 열기</button></div></dialog>`);
@@ -2005,7 +2006,7 @@
     try { // 1) 재촉 받은 것
       const since = localStorage.nudgeSeen || new Date(Date.now() - 864e5).toISOString();
       const j = await api.get({ action: 'nudges', since });
-      if (j.nudges?.length) { const lastAt = j.nudges[j.nudges.length - 1].at; localStorage.nudgeSeen = lastAt; nag(`${[...new Set(j.nudges.map(n => disp(n.from)))].join(', ')}님이 재촉했습니다.`, lastAt); return; }
+      if (j.nudges?.length) { const last = j.nudges[j.nudges.length - 1]; localStorage.nudgeSeen = last.at; nag(`${[...new Set(j.nudges.map(n => disp(n.from)))].join(', ')}님이 재촉했습니다.`, last.at, last.msg); return; }
     } catch {}
     try { // 2) 배치한 날 끝내지 못한 업무 (전날에서 넘어온 미완료) / 오후 6시 이후 오늘 미완료
       const d = todayKst(), rows = (await api.get({ who: DIRECTOR_WHO, from: d, to: d })).rows.filter(r => r.section === '원장님리스트' && !isDone(r));
@@ -2027,6 +2028,19 @@
     const n = el(`<div class="big-notice" role="status" aria-live="assertive"><div>${esc(text)}</div></div>`);
     const off = () => { n.classList.add('out'); setTimeout(() => n.remove(), 250); };
     n.onclick = off; document.body.append(n); setTimeout(off, 3000);
+  }
+  // 재촉 버튼은 마케터 계정에만. 문구(버튼 이름·보낼 메시지)는 사람마다 서버에 저장
+  const isMarketer = () => !!state.dir.me && state.nudge !== false && C.PEOPLE.some(p => p.name === state.dir.me && !p.director);
+  const nudgeText = () => state.nudge || { label: '🔥 원장님 재촉하기', msg: NAG_DEFAULT };
+  function editNudge() {
+    const t = nudgeText(), dlg = el(`<dialog class="code-dlg nudge-dlg" aria-labelledby="nuT"><form method="dialog"><h2 id="nuT">재촉 버튼 문구</h2>
+      <label>버튼 이름<input name="label" maxlength="40" value="${esc(t.label)}" required></label>
+      <label>원장님께 보낼 메시지 <small class="muted">원장님 창 경고·잔디 알림에 그대로 나가요</small><textarea name="msg" rows="3" maxlength="300" required>${esc(t.msg)}</textarea></label>
+      <div class="tr-acts"><button type="button" data-reset>기본 문구로</button><button type="button" data-x>취소</button><button class="primary">저장</button></div></form></dialog>`);
+    const f = dlg.querySelector('form'), send = async (label, msg) => { try { state.nudge = (await api.post({ action: 'nudgeTextSave', label, msg })).nudgeText; toast('재촉 문구를 바꿨어요'); dlg.close(); if (state.view === 'home') renderHome(); if (state.view === 'director') renderDirector(); } catch (e) { toast(e.message); } };
+    f.onsubmit = e => { e.preventDefault(); send(f.label.value, f.msg.value); };
+    dlg.querySelector('[data-reset]').onclick = () => send('', '');
+    dlg.querySelector('[data-x]').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove(); document.body.append(dlg); dlg.showModal(); f.label.select();
   }
   async function nudgeBoss() {
     try { await api.post({ action: 'nudge' }); bigNotice('원장님을 재촉 했습니다! ✅'); } catch (e) { toast(e.message); }

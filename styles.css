@@ -1445,3 +1445,7 @@ html.printing .prio-head{margin:2px 0 0;font-size:9px}
 .save-state.busy::before{background:var(--blue);animation:mmPulse 1s ease-in-out infinite}
 .save-state.bad{background:#fff0f1!important;color:#c4161c}.save-state.bad::before{background:var(--red)}
 html.printing .save-state{display:none!important}
+.nudge-edit{background:none;padding:0 2px;min-height:auto;font-size:13px;color:var(--blue-text);text-decoration:underline;text-underline-offset:3px}
+.nudge-dlg form{display:flex;flex-direction:column;gap:12px}.nudge-dlg label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
+.nudge-dlg input,.nudge-dlg textarea{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;font:inherit;font-weight:400;font-size:15px}
+.nudge-dlg [data-reset]{margin-right:auto;background:none;color:var(--text-2)}

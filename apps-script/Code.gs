@@ -45,7 +45,7 @@ function doGet_(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_() }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -80,7 +80,8 @@ function doPost_(e) {
   if (body.action === 'tagDelete' || body.action === 'tagRestore') { try { tagTrash_(body.action, String(body.tag || ''), memberFor_(body.code)); return json({ tags: tagList_(), deletedTags: tagTrashList_() }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
-  if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (me === DIRECTOR) throw new Error('원장님은 재촉할 수 없습니다'); nudgeSheet_().appendRow([new Date().toISOString(), me]); jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (!isMarketer_(me)) throw new Error('재촉은 마케터만 할 수 있습니다'); var nt = nudgeText_(me); nudgeSheet_().appendRow([new Date().toISOString(), me, '', nt.msg]); jandiSend_(nt.msg, me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'nudgeTextSave') { try { return json({ nudgeText: nudgeTextSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trialSync') { try { return json(trialSync_(body.date)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'staffSave') { try { if (denyFor_(memberFor_(body.code)).indexOf('hospital') >= 0 && memberFor_(body.code) !== ADMIN) throw new Error('아르스킨 연월차 캘린더 권한이 없습니다'); return json({ staff: staffSave_(body.staff) }); } catch (err) { return json({ error: err.message }); } }
@@ -630,16 +631,11 @@ function dailyGenerate() {
 function setupDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'dailyGenerate') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('dailyGenerate').timeBased().everyDays(1).atHour(0).nearMinute(5).inTimezone('Asia/Seoul').create();
-  // 원장님 정기 재촉: 13·15·18시 잔디로 (브라우저가 꺼져 있어도 휴대폰 잔디 알림으로 감)
-  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'scheduledNag') ScriptApp.deleteTrigger(t); });
-  [13, 15, 18].forEach(function (h) { ScriptApp.newTrigger('scheduledNag').timeBased().everyDays(1).atHour(h).nearMinute(0).inTimezone('Asia/Seoul').create(); });
+  stopScheduledNag();
 }
-function scheduledNag() {
-  var d = todayKst_(); if (!isWorkday_(d, DIRECTOR)) return;
-  var left = listRows(DIRECTOR, d, d).filter(function (r) { return (r.section === '원장님리스트' || r.section === '원장님숙제') && r.status !== 'done'; }).length;
-  var h = Utilities.formatDate(new Date(), 'Asia/Seoul', 'H');
-  jandiSend_('🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥', '정기 재촉 · ' + h + '시' + (left ? ' · 남은 업무 ' + left + '개' : ''));
-}
+// 잔디 정기 재촉(13·15·18시)은 껐다. 남아 있던 트리거가 한 번 실행되면 메시지 없이 스스로 지운다.
+function scheduledNag() { stopScheduledNag(); }
+function stopScheduledNag() { ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'scheduledNag') ScriptApp.deleteTrigger(t); }); }
 // 잔디 수신 웹훅(스크립트 속성 JANDI_WEBHOOK)이 있으면 메시지를 보낸다. 결과(성공 여부·응답)를 돌려준다.
 function jandiSend_(title, body) {
   var url = String(PropertiesService.getScriptProperties().getProperty('JANDI_WEBHOOK') || '').trim();
@@ -773,8 +769,20 @@ function nudgeAcks_(me, since) { // 내가 보낸 재촉 중 since 이후에 확
 function nudgeList_(since) {
   var sh = nudgeSheet_(), last = sh.getLastRow(); if (last < 2) return [];
   var from = Math.max(2, last - 49); // 최근 50건만 본다
-  return sh.getRange(from, 1, last - from + 1, 2).getDisplayValues().filter(function (r) { return r[0] && (!since || r[0] > since); })
-    .map(function (r) { return { at: r[0], from: r[1] }; });
+  return sh.getRange(from, 1, last - from + 1, 4).getDisplayValues().filter(function (r) { return r[0] && (!since || r[0] > since); })
+    .map(function (r) { return { at: r[0], from: r[1], msg: r[3] }; });
+}
+// 재촉 버튼 문구: 마케터마다 따로(스크립트 속성 NUDGE_TEXT = {"이름":{label,msg}}). 비어 있으면 기본 문구
+var NUDGE_DEFAULT = { label: '🔥 원장님 재촉하기', msg: '🔥 원장님!! 블로그 쓰셨어요? 숙제는요??  워크시트 확인해주세요!! 🔥' };
+function isMarketer_(me) { return !!me && me !== DIRECTOR && me !== '공통' && Object.prototype.hasOwnProperty.call(REPORT_SHEETS, me); }
+function nudgeTextAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('NUDGE_TEXT') || '{}'); } catch (e) { return {}; } }
+function nudgeText_(me) { var t = nudgeTextAll_()[me] || {}; return { label: t.label || NUDGE_DEFAULT.label, msg: t.msg || NUDGE_DEFAULT.msg }; }
+function nudgeTextSave_(me, b) {
+  if (!isMarketer_(me)) throw new Error('재촉 문구는 마케터만 바꿀 수 있습니다');
+  var all = nudgeTextAll_(), label = String(b.label || '').trim().slice(0, 40), msg = String(b.msg || '').trim().slice(0, 300);
+  if (label || msg) all[me] = { label: label, msg: msg }; else delete all[me]; // 둘 다 비우면 기본 문구로
+  PropertiesService.getScriptProperties().setProperty('NUDGE_TEXT', JSON.stringify(all));
+  return nudgeText_(me);
 }
 
 /* ---------- 영상 기획: 삭제(휴지통 보관 후 행 비우기), 여러 개 한 번에 추가 ---------- */
@@ -926,7 +934,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-18.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-19.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
