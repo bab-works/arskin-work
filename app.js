@@ -265,7 +265,8 @@
   const SUBTASKABLE = new Set(['배치예정', '변동업무', '팔로업']);
   const NESTABLE = new Set([...SUBTASKABLE, '주간고정']); // 하위 업무를 가질 수 있는 칸 (주간고정은 제자리에 남음)
   // 자동 배치: 하위 업무가 있으면 팔로업, 시작 전이면 배치예정, 진행·완료면 변동업무 (데일리·주간·릴스는 제자리)
-  const placeFor = (r, code) => !SUBTASKABLE.has(r.section) ? r.section : isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
+  const placeFor = (r, code) => !SUBTASKABLE.has(r.section) || isDirector() ? r.section : // 원장님 워크시트엔 팔로업만 있어 제자리
+    isProject(r) ? '팔로업' : code === 'todo' ? '배치예정' : '변동업무';
   // 완료 축하: 작은 색종이가 잠깐 터지고 사라짐 (동작 줄이기 설정이면 생략)
   function confetti(at) {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -750,6 +751,7 @@
     const g = el('<div class="dir-lists dir-stack"></div>');
     DIR_COLS.forEach(([col, label]) => { const c = el(`<div class="cell"><h4>${esc(label)}</h4></div>`); c.append(itemList(d, '원장님리스트', col, { doneLast: true, defaultStatus: 'todo' })); g.append(c); });
     cards.dlist = sec('원장님 업무리스트업', g);
+    cards.dfu = taskSection(d, { key: '팔로업', L: '팔로업 리스트' }); // 일간보고서와 같은 방식(하위 업무·진행률·메모)
     // 원장님 숙제: 위 = 그날 배치된 숙제(시트 행, 미완료는 다음 날로 이월) / 아래 = 영상 기획 '숙제' 전체 목록(끌어 올리거나 '배치')
     const HW_COLS = [['영어', '영상숙제(영어)'], ['영상', '영상숙제']], colOf = p => p.kind === '영어' ? '영어' : '영상';
     const hw = el('<div class="dir-lists dir-stack dir-hw"></div>');
@@ -775,7 +777,7 @@
     cards.dhw = sec('원장님 숙제', hw);
     const memo = sec('메모', textarea('memo', cellText(d, '메모', ''), v => setCellText(d, '메모', '', v), '메모')); memo.classList.add('memo-sec'); cards.dmemo = memo;
     Object.entries(cards).forEach(([k, n]) => { n.id = 'sec-' + k; });
-    box.append(cardColumns(cards, { L: ['dprog', 'dlist'], R: ['dhw', 'dmemo'] }));
+    box.append(cardColumns(cards, { L: ['dprog', 'dlist', 'dfu'], R: ['dhw', 'dmemo'] }));
     box.querySelectorAll('textarea').forEach(autosize);
   }
 

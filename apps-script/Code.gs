@@ -588,7 +588,7 @@ function generateDay_(who, d, force) {
     // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
     var newWeek = isoWeek_(d) !== isoWeek_(src);
     var parents = srcRows.filter(function (r) {
-      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !((r.section === '원장님리스트' || r.section === '원장님숙제') && isDone(r)); // 원장님: 끝난 리스트·숙제·일정은 넘기지 않음
+      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !((r.section === '원장님리스트' || r.section === '원장님숙제' || r.section === '팔로업') && isDone(r)); // 원장님: 끝난 리스트·숙제·일정은 넘기지 않음
       if (NO_CARRY_.indexOf(r.section) >= 0) return false;
       if (r.section === '데일리고정' || r.section === '주간고정') return true;
       return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));
@@ -598,7 +598,7 @@ function generateDay_(who, d, force) {
       ids[r.id] = newId_(d, n++);
       var st = r.section === '데일리고정' || (r.section === '주간고정' && newWeek) ? 'todo' : r.status;
       var c = copyOf_(r, ids[r.id], d, st, r.col);
-      if (FLOW_.indexOf(r.section) >= 0) // 자동 배치: 하위 업무 있으면 팔로업, 시작 전이면 배치예정, 진행 중이면 변동업무
+      if (who !== DIRECTOR && FLOW_.indexOf(r.section) >= 0) // 원장님 팔로업은 제자리. 자동 배치: 하위 업무 있으면 팔로업, 시작 전이면 배치예정, 진행 중이면 변동업무
         c.section = srcRows.some(function (x) { return x.section === '하위업무' && x.col === r.id; }) ? '팔로업' : (st === 'todo' || !st) ? '배치예정' : '변동업무';
       if (st === r.status && isDone(r)) c.completed = r.completed; // 같은 주 주간업무는 완료일도 유지
       copies.push(c);
@@ -934,7 +934,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-19.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-20.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
