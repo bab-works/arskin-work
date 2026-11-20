@@ -1173,7 +1173,7 @@
   function leaveDirSheet() { state.person = state.prevPerson || C.DEFAULT_PERSON; state.rows = []; state.sel = null; state.sharedAnchor = null; load(); }
 
   function setView(v) {
-    if (v === 'leaves') { state.hospTab = state.hospTab === 'cal' || !state.hospTab ? 'leave' : state.hospTab; v = 'hospital'; } // 연월차는 아르스킨 연월차 캘린더 안으로 합침
+    if (v === 'leaves') v = 'hospital'; // 연월차는 아르스킨 연월차 캘린더 안으로 합침
     if (state.revOnly && v !== 'revenue') v = 'revenue';
     state.view = v;
     const navV = v === 'daily' && isDirector() ? 'director' : v;
@@ -1836,10 +1836,8 @@
   }
   // 아르스킨 캘린더: 병원 전 직원 연월차만 (마케팅 공용 캘린더 월간 보기와 같은 모양)
   function renderHospital() {
-    const tab = state.hospTab || 'cal', hb = $('hospitalHub');
-    const head = `<header class="lv-head"><div><h1>아르스킨 연월차 캘린더</h1></div><div class="seg lv-tabs" role="tablist">${[['cal', '캘린더'], ['leave', '연월차']].map(([k, l]) => `<button role="tab" data-ht="${k}" aria-selected="${tab === k}" class="${tab === k ? 'active' : ''}">${l}</button>`).join('')}</div></header>`;
-    hb.onclick = e => { const b = e.target.closest('[data-ht]'); if (b) { state.hospTab = b.dataset.ht; renderHospital(); } };
-    if (tab !== 'cal') { hb.innerHTML = head; state.lvTab = 'leave'; renderLeaves(hb); return; }
+    // 한 화면: 사람별 큰 카드 → 캘린더 → 등록 → 월별 사용(잔여) → 예정·지난 내역
+    const hb = $('hospitalHub'), head = `<header class="lv-head"><div><h1>아르스킨 연월차 캘린더</h1></div></header>`;
     const box = hb, today = todayKst(), anchor = state.hospAnchor || today, month = anchor.slice(0, 7);
     const first = month + '-01', start = weekStart(first), ppl = staffAll(), who = state.hospWho || '';
     const lastDay = new Date(+month.slice(0, 4), +month.slice(5, 7), 0).getDate();
@@ -1865,6 +1863,10 @@
       const lv = e.target.closest('.hosp-leave'); if (lv) { const l = state.leaves.find(x => x.id === lv.dataset.id); if (l) ask(`${staffOf(l.who).label} · ${l.date.slice(5).replace('-', '/')} ${l.kind}`, { title: '연월차를 취소할까요?', ok: '취소하기', danger: true }).then(ok => ok && leaveEdit({ action: 'leaveDelete', id: l.id })); return; }
       const add = e.target.closest('.sc-add'); if (add) hospAdd(add, add.closest('.sc-day').dataset.date);
     };
+    const cal = box.querySelector('.hosp-cal'); renderLeaves(box);
+    const people = box.querySelector('.lv-people'); people.after(cal); cal.after(...box.querySelectorAll(':scope > .lv-form, :scope > .lv-staff'));
+    people.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); people.onclick(e); } };
+    people.onclick = e => { const c = e.target.closest('.lv-card[data-who]'); if (!c) return; state.hospWho = state.hospWho === c.dataset.who ? '' : c.dataset.who; renderHospital(); $('hospitalHub').querySelector('.hosp-cal')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   }
   function hospAdd(anchor, date) { // 날짜의 +: 직원·종류를 골라 등록
     document.querySelector('.hosp-pop')?.remove();
@@ -1903,7 +1905,6 @@
     const list = state.leaves.filter(l => l.date.startsWith(y)).sort((a, b) => a.date.localeCompare(b.date));
     const col = n => staffOf(n).color, sum = a => a.reduce((t, l) => t + days(l), 0);
     const fmtD = d => `${+d.slice(5, 7)}/${+d.slice(8)} (${WD[new Date(d + 'T00:00:00').getDay()]})`;
-    const tab = state.lvTab || 'leave';
     box.append(el(`<p class="lv-sub">${y}년 병원 전 직원 · 입사일을 넣으면 발생 연차가 자동 계산돼요. 연차 1일, 반차 0.5일.</p>`));
     const form = el(`<form class="lv-form"><select name="who" aria-label="직원" required>${ppl.map(p => `<option value="${esc(p.name)}">${esc(p.label)}${p.team ? ' · ' + esc(p.team) : ''}</option>`).join('')}</select><input type="date" name="date" required aria-label="날짜" value="${today}"><select name="kind" aria-label="종류">${LEAVE_KINDS.map(k => `<option>${k}</option>`).join('')}</select><input name="memo" placeholder="메모 (선택)" maxlength="60" aria-label="메모"><button class="primary">등록</button><button type="button" class="lv-staff-btn" aria-expanded="false">직원 명단 관리</button></form>`);
     form.onsubmit = e => { e.preventDefault(); const f = e.target; leaveEdit({ action: 'leaveAdd', who: f.who.value, date: f.date.value, kind: f.kind.value, memo: f.memo.value.trim() }); };
@@ -1931,16 +1932,20 @@
     };
     form.querySelector('.lv-staff-btn').onclick = e => { mgr.hidden = !mgr.hidden; e.currentTarget.setAttribute('aria-expanded', !mgr.hidden); };
     box.append(form, mgr);
-    box.append(el(`<div class="lv-people">${ppl.map(p => { const mine = list.filter(l => l.who === p.name), next = mine.find(l => l.date >= today);
-      return `<section class="lv-card" style="--pc:${col(p.name)}"><div class="lv-who"><span class="lv-av">${esc(p.label.slice(0, 1))}</span><b>${esc(p.label)}</b>${p.team ? `<small class="lv-team">${esc(p.team)}</small>` : ''}</div>
-        ${(() => { const st = (state.staff || []).find(x => x.name === p.name), en = entitle(st?.hired, today); if (!en) return `<div class="lv-big"><strong>${sum(mine)}</strong><span>일 사용</span></div><p class="lv-ent muted">입사일을 넣으면 잔여 연차가 계산돼요</p>`;
-          const used = sum(state.leaves.filter(l => l.who === p.name && l.date >= en.from && l.date <= today)), left = en.days - used;
-          return `<div class="lv-big"><strong class="${left < 0 ? 'neg' : ''}">${left}</strong><span>일 남음</span></div><div class="lv-ent-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${en.days}" aria-valuenow="${used}" aria-label="연차 ${en.days}일 중 ${used}일 사용"><i style="width:${Math.min(100, en.days ? used / en.days * 100 : 0)}%"></i></div><p class="lv-ent">발생 ${en.days}일 · 사용 ${used}일 · ${en.years ? `근속 ${en.years}년` : `입사 ${en.months}개월`}</p>`; })()}
-        <div class="lv-split"><span>연차 <b>${mine.filter(l => l.kind === '연차').length}</b></span><span>반차 <b>${mine.filter(l => l.kind !== '연차').length}</b></span></div>
-        <p class="lv-next">${next ? `다음 휴가 <b>${fmtD(next.date)}</b> ${esc(next.kind)}` : '예정된 휴가 없음'}</p></section>`; }).join('')}</div>`));
+    // 잔여: 입사일 기준 발생 연차 - 발생 시작일부터 오늘까지 쓴 날 (앞으로 예정된 휴가는 따로 '예정'으로)
+    const balance = n => { const st = (state.staff || []).find(x => x.name === n), en = entitle(st?.hired, today); if (!en) return null; const used = sum(state.leaves.filter(l => l.who === n && l.date >= en.from && l.date <= today)); return { en, used, left: en.days - used }; };
     const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), curM = today.slice(5, 7);
-    box.append(el(`<section class="lv-panel"><h2>월별 사용</h2><div class="lv-table-wrap"><table class="lv-table"><thead><tr><th scope="col">이름</th>${months.map(m => `<th scope="col"${m === curM ? ' class="cur"' : ''}>${+m}월</th>`).join('')}<th scope="col">합계</th></tr></thead><tbody>${ppl.map(p => { const mine = list.filter(l => l.who === p.name);
-      return `<tr style="--pc:${col(p.name)}"><th scope="row"><i class="lv-dot"></i>${esc(p.label)}</th>${months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<td class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}">${v ? `<span style="--a:${Math.min(1, .25 + v * .25)}">${v}</span>` : ''}</td>`; }).join('')}<td class="lv-total">${sum(mine)}</td></tr>`; }).join('')}</tbody></table></div></section>`));
+    box.append(el(`<div class="lv-people">${ppl.map(p => { const mine = list.filter(l => l.who === p.name), up = mine.filter(l => l.date >= today), b = balance(p.name), on = state.hospWho === p.name;
+      const mm = months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<i class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}" style="--a:${Math.min(1, .3 + v * .3)}" title="${+m}월 ${v}일"><b>${v || ''}</b><small>${+m}</small></i>`; }).join('');
+      return `<section class="lv-card lv-card-big${on ? ' on' : ''}" style="--pc:${col(p.name)}" data-who="${esc(p.name)}" role="button" tabindex="0" aria-pressed="${on}" title="눌러서 캘린더에서 ${esc(p.label)}만 보기">
+        <div class="lv-who"><span class="lv-av">${esc(p.label.slice(0, 1))}</span><div><b>${esc(p.label)}</b>${p.team ? `<small class="lv-team">${esc(p.team)}</small>` : ''}</div></div>
+        <div class="lv-stats"><div class="lv-big">${b ? `<strong class="${b.left < 0 ? 'neg' : ''}">${b.left}</strong><span>일 남음</span>` : `<strong>${sum(mine)}</strong><span>일 사용</span>`}</div>
+          <dl class="lv-mini">${b ? `<div><dt>발생</dt><dd>${b.en.days}</dd></div><div><dt>사용</dt><dd>${b.used}</dd></div>` : `<div><dt>연차</dt><dd>${mine.filter(l => l.kind === '연차').length}</dd></div><div><dt>반차</dt><dd>${mine.filter(l => l.kind !== '연차').length}</dd></div>`}<div><dt>예정</dt><dd>${sum(up)}</dd></div></dl></div>
+        ${b ? `<div class="lv-ent-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${b.en.days}" aria-valuenow="${b.used}" aria-label="연차 ${b.en.days}일 중 ${b.used}일 사용"><i style="width:${Math.min(100, b.en.days ? b.used / b.en.days * 100 : 0)}%"></i></div><p class="lv-ent">${b.en.years ? `근속 ${b.en.years}년` : `입사 ${b.en.months}개월`} · 연차 ${mine.filter(l => l.kind === '연차').length} · 반차 ${mine.filter(l => l.kind !== '연차').length}</p>` : '<p class="lv-ent muted">입사일을 넣으면 잔여 연차가 계산돼요</p>'}
+        <div class="lv-mm" aria-label="${y}년 월별 사용">${mm}</div>
+        <ul class="lv-upnext">${up.slice(0, 3).map(l => `<li><span>${fmtD(l.date)}</span><em class="k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</em></li>`).join('') || '<li class="muted">예정된 휴가 없음</li>'}${up.length > 3 ? `<li class="muted">외 ${up.length - 3}건</li>` : ''}</ul></section>`; }).join('')}</div>`));
+    box.append(el(`<section class="lv-panel"><h2>월별 사용 · 잔여</h2><div class="lv-table-wrap"><table class="lv-table"><thead><tr><th scope="col">이름</th>${months.map(m => `<th scope="col"${m === curM ? ' class="cur"' : ''}>${+m}월</th>`).join('')}<th scope="col">합계</th><th scope="col" class="lv-leftcol">잔여</th></tr></thead><tbody>${ppl.map(p => { const mine = list.filter(l => l.who === p.name);
+      return `<tr style="--pc:${col(p.name)}"><th scope="row"><i class="lv-dot"></i>${esc(p.label)}</th>${months.map(m => { const v = sum(mine.filter(l => l.date.slice(5, 7) === m)); return `<td class="${m === curM ? 'cur' : ''}${v ? ' on' : ''}">${v ? `<span style="--a:${Math.min(1, .25 + v * .25)}">${v}</span>` : ''}</td>`; }).join('')}<td class="lv-total">${sum(mine)}</td>${(() => { const b = balance(p.name); return `<td class="lv-left${b && b.left < 0 ? ' neg' : ''}" title="${b ? `발생 ${b.en.days}일 - 사용 ${b.used}일` : '입사일을 넣으면 계산돼요'}">${b ? b.left : '—'}</td>`; })()}</tr>`; }).join('')}</tbody></table></div></section>`));
     const item = l => `<li class="lv-item" style="--pc:${col(l.who)}"><span class="lv-date">${fmtD(l.date)}</span><span class="lv-person"><i class="lv-dot"></i>${esc(staffOf(l.who).label)}</span><span class="lv-kind k-${LEAVE_KINDS.indexOf(l.kind)}">${esc(l.kind)}</span><span class="lv-memo">${esc(l.memo || '')}</span><button type="button" class="del" data-id="${esc(l.id)}" aria-label="${esc(disp(l.who))} ${l.date} ${esc(l.kind)} 삭제">${icon('x', 14)}</button></li>`;
     const up = list.filter(l => l.date >= today), past = list.filter(l => l.date < today).reverse();
     const panel = el(`<div class="lv-lists"><section class="lv-panel"><h2>예정 <small>${up.length}</small></h2><ul class="lv-ul">${up.map(item).join('') || '<li class="lv-empty">예정된 휴가가 없어요</li>'}</ul></section><section class="lv-panel"><h2>지난 내역 <small>${past.length}</small></h2><ul class="lv-ul">${past.map(item).join('') || '<li class="lv-empty">아직 사용한 휴가가 없어요</li>'}</ul></section></div>`);

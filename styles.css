@@ -1449,3 +1449,20 @@ html.printing .save-state{display:none!important}
 .nudge-dlg form{display:flex;flex-direction:column;gap:12px}.nudge-dlg label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600}
 .nudge-dlg input,.nudge-dlg textarea{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;font:inherit;font-weight:400;font-size:15px}
 .nudge-dlg [data-reset]{margin-right:auto;background:none;color:var(--text-2)}
+/* 연월차: 사람별 큰 카드(한눈에) */
+.lv-people:has(.lv-card-big){grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.lv-card-big{padding:20px 20px 16px;gap:12px;border-top:0;border-left:5px solid var(--pc);border-radius:var(--r-lg);cursor:pointer;transition:box-shadow var(--dur) var(--ease),transform var(--dur-fast) var(--ease)}
+.lv-card-big:hover{box-shadow:0 8px 24px rgba(0,27,55,.08)}.lv-card-big.on{box-shadow:0 0 0 2px var(--pc)}
+.lv-card-big:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.lv-card-big .lv-who{gap:10px}.lv-card-big .lv-who b{font-size:17px;display:block}.lv-card-big .lv-av{width:40px;height:40px;font-size:17px}
+.lv-stats{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.lv-card-big .lv-big strong{font-size:44px}
+.lv-mini{display:flex;gap:14px;margin:0}.lv-mini div{text-align:center}.lv-mini dt{font-size:11px;color:var(--text-2)}.lv-mini dd{margin:2px 0 0;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.lv-mm{display:grid;grid-template-columns:repeat(12,1fr);gap:3px}
+.lv-mm i{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:38px;border-radius:6px;background:var(--grey50);font-style:normal;padding-bottom:2px}
+.lv-mm i.on{background:color-mix(in srgb,var(--pc) calc(var(--a)*100%),#fff)}.lv-mm i.cur{outline:1.5px solid var(--blue)}
+.lv-mm b{font-size:11px;line-height:1.2;font-weight:700}.lv-mm i.on b{color:#fff;text-shadow:0 0 2px rgba(0,0,0,.35)}.lv-mm small{font-size:10px;color:var(--text-2)}.lv-mm i.on small{color:var(--text-1)}
+.lv-upnext{list-style:none;margin:0;padding:10px 0 0;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:4px;font-size:13px}
+.lv-upnext li{display:flex;justify-content:space-between;gap:8px}.lv-upnext em{font-style:normal;font-weight:600;font-size:12px;color:var(--text-2)}
+.lv-table .lv-leftcol,.lv-table .lv-left{border-left:2px solid var(--line);font-weight:700}.lv-table .lv-left{color:var(--blue-text)}.lv-table .lv-left.neg{color:#c92a2a}
+.hosp-cal{margin:4px 0 16px}
