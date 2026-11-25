@@ -1325,7 +1325,7 @@ html.printing .subtask-text{font-size:10px}
 html.printing .prio-head{margin:2px 0 0;font-size:9px}
 
 /* ---------- 개인 메모장: 목록 패널은 폭이 0↔300px 로 밀려 나오고, 본문은 옆에 같이 보인다 ---------- */
-.mm-float{position:fixed;z-index:50;right:24px;bottom:24px;width:780px;height:640px;min-width:440px;min-height:320px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.22),0 0 0 1px rgba(0,27,55,.06);overflow:hidden;resize:both;opacity:0;transform:translateY(12px) scale(.98);transform-origin:bottom right;transition:opacity 180ms var(--ease),transform 220ms var(--ease)}
+.mm-float{position:fixed;z-index:50;right:24px;bottom:24px;width:780px;height:640px;min-width:440px;min-height:320px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);display:flex;flex-direction:column;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.22),0 0 0 1px rgba(0,27,55,.06);overflow:hidden;opacity:0;transform:translateY(12px) scale(.98);transform-origin:bottom right;transition:opacity 180ms var(--ease),transform 220ms var(--ease)}
 .mm-float[hidden]{display:none}.mm-float.show{opacity:1;transform:none}.mm-float.dragging{transition:none;user-select:none}
 .mm-fbar{flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 8px 6px 18px;border-bottom:1px solid var(--line);cursor:grab;background:var(--grey50)}
 .mm-float.dragging .mm-fbar{cursor:grabbing}.mm-fbar b{font-size:14px}
@@ -1483,3 +1483,26 @@ html.printing .row-link{display:none!important}
 .hw-how{margin:2px 0 8px;font-size:12px;color:var(--text-2)}
 .card-new{width:100%;min-height:52px;border:1.5px dashed var(--line);background:none;border-radius:var(--r-lg);color:var(--blue-text);font-weight:700;margin-top:4px}.card-new:hover{background:var(--blue-weak);border-color:var(--blue)}
 .card-own{display:inline-flex;gap:4px}.card-own button{font-size:12px;min-height:30px;padding:0 8px;background:var(--grey100)}.card-own .danger{color:var(--red)}
+/* 메모 사진 보기: PC = 떠 있는 창, 휴대폰 = 전체 화면 */
+.iv{position:fixed;z-index:55;display:flex;flex-direction:column;background:var(--card);border-radius:var(--r-lg);box-shadow:0 24px 64px rgba(0,27,55,.3),0 0 0 1px rgba(0,27,55,.06);overflow:hidden;min-width:320px;min-height:240px;max-width:calc(100vw - 8px);max-height:calc(100vh - 8px);opacity:0;transform:scale(.97);transition:opacity 160ms var(--ease),transform 200ms var(--ease)}
+.iv.show{opacity:1;transform:none}
+.iv-bar{flex:none;display:flex;align-items:center;gap:4px;padding:6px 8px 6px 16px;border-bottom:1px solid var(--line);background:var(--grey50);cursor:grab;user-select:none}
+.iv-bar b{flex:1;min-width:0;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.iv-z{font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+.iv-bar button,.iv-bar a{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;padding:0 8px;border-radius:var(--r-sm);background:none;color:var(--sub);font-size:15px;text-decoration:none}
+.iv-bar button:hover,.iv-bar a:hover{background:var(--grey100)}.iv-bar [data-z="0"]{font-size:13px}
+.iv-body{flex:1;min-height:0;overflow:auto;display:grid;place-items:center;background:#111;scrollbar-width:thin}
+.iv-body img{display:block;max-width:none;height:auto;cursor:zoom-in;user-select:none;-webkit-user-drag:none}
+.iv.zoomed .iv-body{place-items:start}.iv.zoomed .iv-body img{cursor:grab;margin:auto}.iv.panning .iv-body img{cursor:grabbing}
+.iv-full{inset:0;width:auto!important;height:auto!important;border-radius:0;resize:none;max-width:none;max-height:none;background:#000}
+.iv-full .iv-bar{background:rgba(0,0,0,.6);border:0;color:#fff;cursor:default;padding-top:calc(6px + env(safe-area-inset-top))}.iv-full .iv-bar b,.iv-full .iv-z{color:#fff}
+.iv-full .iv-bar button,.iv-full .iv-bar a{color:#fff;min-width:44px;height:44px}.iv-full .iv-body{background:#000;touch-action:pinch-zoom pan-x pan-y}
+.mm-ed img.mm-img{cursor:zoom-in}
+@media (prefers-reduced-motion:reduce){.iv{transition:none}}
+/* 떠 있는 창: 네 변·모서리 크기 조절 손잡이 */
+.rz{position:absolute;z-index:3;font-style:normal}
+.rz-n,.rz-s{left:12px;right:12px;height:8px;cursor:ns-resize}.rz-n{top:-2px}.rz-s{bottom:-2px}
+.rz-e,.rz-w{top:12px;bottom:12px;width:8px;cursor:ew-resize}.rz-e{right:-2px}.rz-w{left:-2px}
+.rz-ne,.rz-nw,.rz-se,.rz-sw{width:16px;height:16px}.rz-ne{top:-2px;right:-2px;cursor:nesw-resize}.rz-sw{bottom:-2px;left:-2px;cursor:nesw-resize}.rz-nw{top:-2px;left:-2px;cursor:nwse-resize}.rz-se{bottom:-2px;right:-2px;cursor:nwse-resize}
+.mm-float.resizing,.iv.resizing{transition:none;user-select:none}
+.iv-full .rz{display:none}
+@media (max-width:760px){.mm-float .rz{display:none}}

@@ -176,7 +176,7 @@
       if (/\n/.test(t.trim()) || /^(#{1,6} |[-*] |\d+\. |> |```)/m.test(t)) { cmd('insertHTML', window.MemoMD.render(t)); loadImages(ed); } else cmd('insertText', t); changed(); };
     ed.ondragover = e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); };
     ed.ondrop = e => { const fs = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')); if (fs.length || e.dataTransfer.types.includes('text/html')) { e.preventDefault(); if (fs.length) upload(fs); else cmd('insertText', e.dataTransfer.getData('text/plain')); } };
-    ed.onclick = e => { const a = e.target.closest('a'); if (a && (e.ctrlKey || e.metaKey)) window.open(a.href, '_blank'); };
+    ed.onclick = e => { const img = e.target.closest('img.mm-img'); if (img && img.src && !img.classList.contains('loading')) { e.preventDefault(); return viewImage(img.src, img.alt); } const a = e.target.closest('a'); if (a && (e.ctrlKey || e.metaKey)) window.open(a.href, '_blank'); };
     main.querySelectorAll('[data-t]').forEach(b => { b.onmousedown = e => e.preventDefault(); b.onclick = () => tool(b.dataset.t); });
     main.querySelector('.mm-photo input').onchange = e => { upload([...e.target.files]); e.target.value = ''; };
   }
@@ -245,6 +245,7 @@
   (() => {
     const w = win(), bar = w.querySelector('.mm-fbar');
     w.querySelector('.mm-close').onclick = () => setOpen(false);
+    edgeResize(w, 440, 320, remember);
     bar.onpointerdown = e => {
       if (e.target.closest('button') || innerWidth < 760) return; e.preventDefault();
       const r = { left: parseFloat(w.style.left), top: parseFloat(w.style.top), width: w.offsetWidth }, dx = e.clientX - r.left, dy = e.clientY - r.top; bar.setPointerCapture(e.pointerId); w.classList.add('dragging');
@@ -254,5 +255,62 @@
     new ResizeObserver(() => { if (!w.hidden && w.classList.contains('show')) { clearTimeout(w.rt); w.rt = setTimeout(remember, 300); } }).observe(w);
     addEventListener('resize', () => { if (!w.hidden) place(); });
   })();
+  // 떠 있는 창 크기 조절: 네 변과 네 모서리 어디서든(휴대폰 전체 화면에서는 숨김)
+  function edgeResize(w, minW, minH, onEnd) {
+    ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].forEach(d => {
+      const h = document.createElement('i'); h.className = 'rz rz-' + d; h.setAttribute('aria-hidden', 'true'); w.append(h);
+      h.onpointerdown = e => {
+        e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId); w.classList.add('resizing');
+        const x0 = e.clientX, y0 = e.clientY, L = parseFloat(w.style.left) || w.getBoundingClientRect().left, T = parseFloat(w.style.top) || w.getBoundingClientRect().top, W = w.offsetWidth, H = w.offsetHeight;
+        h.onpointermove = m => {
+          const dx = m.clientX - x0, dy = m.clientY - y0; let l = L, t = T, ww = W, hh = H;
+          if (d.includes('e')) ww = Math.min(innerWidth - L - 4, Math.max(minW, W + dx));
+          if (d.includes('s')) hh = Math.min(innerHeight - T - 4, Math.max(minH, H + dy));
+          if (d.includes('w')) { ww = Math.max(minW, Math.min(W - dx, L + W - 4)); l = L + W - ww; }
+          if (d.includes('n')) { hh = Math.max(minH, Math.min(H - dy, T + H - 4)); t = T + H - hh; }
+          Object.assign(w.style, { left: l + 'px', top: t + 'px', width: ww + 'px', height: hh + 'px' });
+        };
+        h.onpointerup = () => { h.onpointermove = h.onpointerup = null; w.classList.remove('resizing'); onEnd && onEnd(); };
+      };
+    });
+  }
+  // 사진 보기: PC는 대시보드 안 떠 있는 창(끌어 옮기기·크기 조절·확대), 휴대폰은 전체 화면
+  function viewImage(src, alt) {
+    document.querySelector('.iv')?.remove();
+    const phone = innerWidth < 760, v = document.createElement('div');
+    v.className = 'iv' + (phone ? ' iv-full' : ''); v.setAttribute('role', 'dialog'); v.setAttribute('aria-label', '사진 보기');
+    v.innerHTML = `<div class="iv-bar"><b>${esc(alt || '사진')}</b><span class="iv-z">100%</span><button type="button" data-z="-1" aria-label="축소">−</button><button type="button" data-z="1" aria-label="확대">+</button><button type="button" data-z="0" title="창에 맞추기">맞춤</button><a href="${esc(src)}" target="_blank" rel="noopener" download="${esc(alt || 'photo')}.jpg" title="저장" aria-label="사진 저장">⤓</a><button type="button" class="iv-x" aria-label="닫기">✕</button></div><div class="iv-body"><img alt="${esc(alt || '')}"></div>`;
+    document.body.append(v);
+    const img = v.querySelector('img'), body = v.querySelector('.iv-body'), zl = v.querySelector('.iv-z'); let z = 1, fit = 1;
+    const apply = () => { img.style.width = img.naturalWidth * z + 'px'; zl.textContent = Math.round(z * 100) + '%'; v.classList.toggle('zoomed', z > fit + .01); };
+    const setZ = (nz, cx, cy) => { const r = body.getBoundingClientRect(), px = (cx ?? r.left + r.width / 2) - r.left + body.scrollLeft, py = (cy ?? r.top + r.height / 2) - r.top + body.scrollTop, k = nz / z;
+      z = Math.min(8, Math.max(fit * .5, nz)); apply(); body.scrollLeft = px * k - ((cx ?? r.left + r.width / 2) - r.left); body.scrollTop = py * k - ((cy ?? r.top + r.height / 2) - r.top); };
+    const fitNow = () => { const r = body.getBoundingClientRect(); fit = Math.min(1, (r.width - 8) / img.naturalWidth, (r.height - 8) / img.naturalHeight) || 1; z = fit; apply(); };
+    img.onload = () => {
+      if (!phone) { const W = Math.min(innerWidth - 32, Math.max(420, Math.min(img.naturalWidth + 16, innerWidth * .7))), H = Math.min(innerHeight - 32, Math.max(320, Math.min(img.naturalHeight + 60, innerHeight * .8)));
+        Object.assign(v.style, { width: W + 'px', height: H + 'px', left: (innerWidth - W) / 2 + 'px', top: (innerHeight - H) / 2 + 'px' }); }
+      requestAnimationFrame(() => { fitNow(); v.classList.add('show'); });
+    };
+    img.src = src;
+    const close = () => { v.remove(); removeEventListener('keydown', key, true); };
+    const key = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } else if (e.key === '+' || e.key === '=') setZ(z * 1.25); else if (e.key === '-') setZ(z / 1.25); else if (e.key === '0') fitNow(); };
+    addEventListener('keydown', key, true);
+    v.querySelector('.iv-x').onclick = close;
+    v.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { const d = +b.dataset.z; d ? setZ(z * (d > 0 ? 1.25 : 0.8)) : fitNow(); });
+    body.onwheel = e => { if (phone) return; e.preventDefault(); setZ(z * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); }; // 휠 = 확대·축소
+    img.ondblclick = e => z > fit + .01 ? fitNow() : setZ(Math.max(1, fit * 2.5), e.clientX, e.clientY); // 두 번 누르면 확대 ↔ 맞춤
+    body.onpointerdown = e => { // 확대된 사진은 끌어서 이동
+      if (z <= fit + .01 || e.button) return; const sx = e.clientX, sy = e.clientY, l = body.scrollLeft, t = body.scrollTop; body.setPointerCapture(e.pointerId); v.classList.add('panning');
+      body.onpointermove = m => { body.scrollLeft = l - (m.clientX - sx); body.scrollTop = t - (m.clientY - sy); };
+      body.onpointerup = () => { body.onpointermove = body.onpointerup = null; v.classList.remove('panning'); };
+    };
+    if (phone) { body.onclick = e => { if (e.target === body) close(); }; return; } // 휴대폰: 사진 밖을 누르면 닫힘, 확대는 두 번 탭·손가락
+    const bar = v.querySelector('.iv-bar');
+    bar.onpointerdown = e => { if (e.target.closest('button,a')) return; e.preventDefault(); const dx = e.clientX - parseFloat(v.style.left), dy = e.clientY - parseFloat(v.style.top); bar.setPointerCapture(e.pointerId);
+      bar.onpointermove = m => { v.style.left = Math.min(innerWidth - 120, Math.max(8 - v.offsetWidth + 120, m.clientX - dx)) + 'px'; v.style.top = Math.min(innerHeight - 48, Math.max(8, m.clientY - dy)) + 'px'; };
+      bar.onpointerup = () => { bar.onpointermove = bar.onpointerup = null; }; };
+    edgeResize(v, 320, 240);
+    new ResizeObserver(() => { if (v.isConnected && z <= fit + .01) fitNow(); }).observe(v);
+  }
   window.MemoHub = { open, leave: flush, toggle: () => setOpen(win().hidden), close: () => setOpen(false) };
 })();
