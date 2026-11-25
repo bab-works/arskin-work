@@ -167,6 +167,7 @@ function showPost(id){
   h += '</div><div class="p-body">';
   if (c.type==='ig' && p.code) h += '<div class="preview-placeholder"><div>릴스는 원본에서 바로 열 수 있어요.</div><button data-preview="'+esc(p.code)+'">여기서 미리보기 불러오기</button></div><a class="open" href="'+esc(p.url)+'" target="_blank" rel="noopener">인스타그램에서 열기 ↗</a>';
   else h += '<div class="blogcard"><p>'+esc(p.title)+'</p>'+(p.kw&&p.kw.length?'키워드<div class="kw">'+p.kw.map(function(k){return '<span>'+esc(k)+'</span>';}).join('')+'</div>':'키워드 미입력')+'</div><a class="open" href="'+esc(p.url)+'" target="_blank" rel="noopener">' + (p.kind === '발행 일정' ? '원본 시트에서 보기 ↗' : c.type === 'ig' ? '인스타그램에서 열기 ↗' : '블로그 글 열기 ↗') + '</a>';
+  if (p.ch === 'jasa' && p.kind !== '발행 일정' && /^https?:/.test(p.url||'')) h += '<button class="copy-blog" data-copy="'+p.id+'">📋 복사하기 <small>날짜·키워드·제목·링크·해시태그</small></button>';
   h += '<div class="pn"><button data-id="'+(idx>0?list[idx-1].id:'')+'"'+(idx>0?'':' disabled')+'>← 이전 게시물</button><button data-id="'+(idx<list.length-1?list[idx+1].id:'')+'"'+(idx<list.length-1?'':' disabled')+'>다음 게시물 →</button></div></div>';
   $('panel').innerHTML = h;
   if (p.date.getFullYear()!==cur.y || p.date.getMonth()!==cur.m) { cur = {y:p.date.getFullYear(), m:p.date.getMonth()}; }
@@ -287,10 +288,25 @@ $('bkAdd').onclick = function(){
 };
 $('planAdd').onclick = function(){ if (root.querySelector('tr.dirty')) return toast('수정 중인 행을 먼저 저장해 주세요.', true); adding = true; planFilter = 'all'; renderPlan(); var f = $('planBody').querySelector('.idea'); if (f) f.focus(); };
 
+// 자사블 복사 양식: "26. 11. 25 홍대 피부과 써마지" / 제목 / 링크 / 하단 해시태그(블로그에서 읽어 옴)
+function copyBlog(p, btn){
+  if (!p) return; var d = p.date, head = String(d.getFullYear()).slice(2)+'. '+(d.getMonth()+1)+'. '+d.getDate();
+  var topic = p.title.split(/[,，]/)[0].trim(); if (topic === p.title.trim() && p.kw && p.kw.length) topic = '홍대 피부과 ' + p.kw[0];
+  var done = function(tags){
+    var text = head+' '+topic+'\n\n'+p.title.trim()+'\n\n'+p.url+(tags.length ? '\n\n'+tags.map(function(t){ return '#'+t; }).join(' ') : '');
+    var ok = function(){ toast(tags.length ? '복사했어요 (해시태그 '+tags.length+'개 포함)' : '복사했어요. 해시태그는 블로그에서 못 읽어 빠졌어요.'); btn.disabled = false; };
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(ok).catch(function(){ var ta = window.document.createElement('textarea'); ta.value = text; root.append(ta); ta.select(); try { window.document.execCommand('copy'); ok(); } catch (er) { toast('복사하지 못했어요', true); btn.disabled = false; } ta.remove(); });
+  };
+  btn.disabled = true;
+  if (copyBlog.cache[p.url]) return done(copyBlog.cache[p.url]);
+  request({ action: 'blogTags', url: p.url }).then(function(j){ copyBlog.cache[p.url] = j.tags || []; done(copyBlog.cache[p.url]); }).catch(function(){ done([]); });
+}
+copyBlog.cache = {};
 function setView(v){ if (!['cal','ana','plan'].includes(v) || $('v-'+v).disabled) return; if (view === 'plan' && (adding || root.querySelector('tr.dirty'))) { toast('수정 중인 영상 기획을 먼저 저장해 주세요.', true); return; } view = v; ['cal','ana','plan'].forEach(function(k){ $('v-'+k).setAttribute('aria-pressed', v===k); $(k+'View').hidden = v!==k; }); $('calTools').hidden = v==='plan'; render(); syncNavigation(); }
 function render(){ if (view==='plan') return renderPlan(); $('month').textContent = cur.y+'.'+String(cur.m+1).padStart(2,'0'); renderChips(); if (view==='cal') renderCal(); else renderAna(); }
 
 root.addEventListener('click', function(e){
+  var cp = e.target.closest('[data-copy]'); if (cp) { e.preventDefault(); return copyBlog(posts[+cp.dataset.copy], cp); }
   const preview = e.target.closest('[data-preview]'); if (preview) { const frame = window.document.createElement('iframe'); frame.className = 'embed'; frame.title = 'Instagram 게시물 미리보기'; frame.loading = 'lazy'; frame.referrerPolicy = 'strict-origin-when-cross-origin'; frame.src = 'https://www.instagram.com/p/' + encodeURIComponent(preview.dataset.preview) + '/embed/captioned/'; preview.parentElement.replaceWith(frame); return; }
   var t = e.target.closest('[data-id]'); if (t && t.dataset.id!=='') { e.preventDefault(); return showPost(+t.dataset.id); }
   var pf = e.target.closest('[data-pf]'); if (pf) { var k = pf.dataset.pf; if (k === 'all') planSel.clear(); else if (planSel.has(k)) planSel.delete(k); else planSel.add(k); try { localStorage.planSel = JSON.stringify([...planSel]); } catch (er) {} return renderPlan(); }

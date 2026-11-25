@@ -47,6 +47,7 @@ function doGet_(e) {
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
     try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), cards: cardsAll_(), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
   }
+  if (p.action === 'blogTags') { try { return json({ tags: blogTags_(p.url) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
@@ -935,7 +936,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-25.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-25.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1134,4 +1135,23 @@ function cardsSave_(me, who, cards) {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try { var all = cardsAll_(); if (list.length) all[who] = list; else delete all[who]; PropertiesService.getScriptProperties().setProperty('CUSTOM_CARDS', JSON.stringify(all)); return all; }
   finally { lock.releaseLock(); }
+}
+
+/* ---------- 자사블 복사용: 블로그 글 하단 해시태그(병원 블로그 주소만, 6시간 캐시) ---------- */
+function blogTags_(url) {
+  var m = String(url || '').match(/^https:\/\/(?:m\.)?blog\.naver\.com\/(arskin_hongdae|drhongadrian)\/(\d{6,20})/);
+  if (!m) throw new Error('병원 블로그 글 주소가 아닙니다');
+  var key = 'tags-' + m[2], ch = CacheService.getScriptCache(), hit = ch.get(key); if (hit) return JSON.parse(hit);
+  var tags = [], opt = { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://blog.naver.com/' + m[1] } };
+  try { // 1) 태그 목록 API: {"taglist":[{"logno":"…","tagName":"%ED%99%8D…,…"}]}
+    var r = UrlFetchApp.fetch('https://blog.naver.com/BlogTagListInfo.naver?blogId=' + m[1] + '&logNoList=' + m[2] + '&logType=mylog', opt);
+    var j = JSON.parse(r.getContentText() || '{}'); (j.taglist || []).forEach(function (t) { String(t.tagName || '').split(',').forEach(function (x) { x = decodeURIComponent(x).trim(); if (x) tags.push(x); }); });
+  } catch (e) {}
+  if (!tags.length) try { // 2) 모바일 글 화면에서 태그 찾기
+    var html = UrlFetchApp.fetch('https://m.blog.naver.com/' + m[1] + '/' + m[2], opt).getContentText(), seen = {}, re = /class="[^"]*(?:tag_name|item_tag|ell)[^"]*"[^>]*>\s*#?([^<#]{1,40})</g, x;
+    while ((x = re.exec(html))) { var t = x[1].trim(); if (t && !seen[t]) { seen[t] = 1; tags.push(t); } }
+  } catch (e) {}
+  tags = tags.map(function (t) { return t.replace(/^#/, '').replace(/\s+/g, ''); }).filter(Boolean).slice(0, 10);
+  if (tags.length) ch.put(key, JSON.stringify(tags), 21600);
+  return tags;
 }
