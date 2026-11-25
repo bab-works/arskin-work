@@ -1481,3 +1481,5 @@ html.printing .row-link{display:none!important}
 .hw-new{display:flex;gap:6px;margin:8px 0 4px;flex-wrap:wrap}.hw-new input{flex:1;min-width:180px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;font:inherit;font-size:14px}
 .hw-new select{border:1px solid var(--line);border-radius:var(--r-sm);padding:8px;font:inherit;font-size:14px;background:var(--card)}.hw-new button{min-height:38px;font-size:13px}
 .hw-how{margin:2px 0 8px;font-size:12px;color:var(--text-2)}
+.card-new{width:100%;min-height:52px;border:1.5px dashed var(--line);background:none;border-radius:var(--r-lg);color:var(--blue-text);font-weight:700;margin-top:4px}.card-new:hover{background:var(--blue-weak);border-color:var(--blue)}
+.card-own{display:inline-flex;gap:4px}.card-own button{font-size:12px;min-height:30px;padding:0 8px;background:var(--grey100)}.card-own .danger{color:var(--red)}

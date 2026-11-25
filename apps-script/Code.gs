@@ -45,7 +45,7 @@ function doGet_(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), cards: cardsAll_(), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
@@ -81,6 +81,7 @@ function doPost_(e) {
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (!isMarketer_(me)) throw new Error('재촉은 마케터만 할 수 있습니다'); var nt = nudgeText_(me); nudgeSheet_().appendRow([new Date().toISOString(), me, '', nt.msg]); jandiSend_(nt.msg, me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'cardsSave') { try { return json({ cards: cardsSave_(memberFor_(body.code), body.who, body.cards) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeTextSave') { try { return json({ nudgeText: nudgeTextSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trialSync') { try { return json(trialSync_(body.date)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'generate') { try { return json(generateDay_(body.who, body.date, body.force === true)); } catch (err) { return json({ error: err.message }); } }
@@ -588,10 +589,10 @@ function generateDay_(who, d, force) {
     // 이월 규칙: 데일리=매일 시작 전으로 / 주간=같은 주엔 상태 유지, 새 주엔 시작 전으로 / 그 외 업무=완료되면 끝
     var newWeek = isoWeek_(d) !== isoWeek_(src);
     var parents = srcRows.filter(function (r) {
-      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !((r.section === '원장님리스트' || r.section === '원장님숙제' || r.section === '팔로업') && isDone(r)); // 원장님: 끝난 리스트·숙제·일정은 넘기지 않음
+      if (who === DIRECTOR) return ['타임라인', '원장님일정', '원장님완료'].indexOf(r.section) < 0 && !((r.section === '원장님리스트' || r.section === '원장님숙제' || r.section === '팔로업' || String(r.section).indexOf('카드:') === 0) && isDone(r)); // 원장님: 끝난 리스트·숙제·일정은 넘기지 않음
       if (NO_CARRY_.indexOf(r.section) >= 0) return false;
       if (r.section === '데일리고정' || r.section === '주간고정') return true;
-      return !(TASK_KEYS_.indexOf(r.section) >= 0 && isDone(r));
+      return !((TASK_KEYS_.indexOf(r.section) >= 0 || String(r.section).indexOf('카드:') === 0) && isDone(r)); // 직접 만든 카드도 완료되면 끝
     });
     var ids = {}, n = 0, copies = [];
     parents.forEach(function (r) {
@@ -934,7 +935,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-25.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-25.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1121,4 +1122,16 @@ function feedback_(b, me) {
   var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 7).getDisplayValues() : [];
   return { admin: admin, items: rows.filter(function (r) { return admin || r[2] === me; }).reverse()
     .map(function (r) { return { id: r[0], at: r[1], who: r[2], kind: r[3], text: r[4], status: r[5] || '접수', reply: r[6] }; }) };
+}
+
+/* ---------- 직접 만든 카드: 시트 주인별 목록(스크립트 속성 CUSTOM_CARDS = {"이름":[{id,name}]}). 업무 행의 구분은 '카드:id' ---------- */
+function cardsAll_() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('CUSTOM_CARDS') || '{}'); } catch (e) { return {}; } }
+function cardsSave_(me, who, cards) {
+  who = String(who || ''); if (!me || !sheetIdFor(who) || who === '공통') throw new Error('카드를 만들 시트가 올바르지 않습니다');
+  if (who !== me && who !== DIRECTOR) throw new Error('다른 사람의 보고서에는 카드를 만들 수 없습니다');
+  var seen = {}, list = (cards || []).filter(function (c) { return c && /^[a-z0-9]{3,16}$/.test(String(c.id)) && !seen[c.id] && (seen[c.id] = 1); }).slice(0, 20)
+    .map(function (c) { return { id: String(c.id), name: String(c.name || '').trim().slice(0, 30) || '새 카드' }; });
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try { var all = cardsAll_(); if (list.length) all[who] = list; else delete all[who]; PropertiesService.getScriptProperties().setProperty('CUSTOM_CARDS', JSON.stringify(all)); return all; }
+  finally { lock.releaseLock(); }
 }
