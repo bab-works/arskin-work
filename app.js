@@ -118,10 +118,18 @@
   addEventListener('beforeunload', e => { if (saveState.busy || saveState.failed.size) { e.preventDefault(); e.returnValue = ''; } }); // 저장 전 닫기 경고
   const removeIds = (ids, who = state.person) => api.post({ action: 'delete', ids, who }).catch(e => toast('삭제 실패: ' + e.message));
 
+  // 체험단)·리얼모델) 업무에 1600 같은 시각이 있으면 바로 타임라인 1시간 블록 (서버 하루 1번 동기화를 기다리지 않음, 같은 원본id로 중복 방지)
+  function trialTimeline(r) {
+    if (r._who || r.section !== '변동업무' || !/^(체험단|리얼모델)\)/.test(r.text || '')) return;
+    const m = r.text.match(/(?:^|\s)(\d{1,2})(\d{2})(?=\s|$)/), h = m && +m[1], mi = m && +m[2]; if (!m || h > 22 || mi > 59) return;
+    if (state.rows.some(x => x.section === '타임라인' && x.origin === 'tl-' + r.id)) return;
+    addRow({ date: r.date, section: '타임라인', start: `${pad(h)}:${pad(mi)}`, end: `${pad(h + 1)}:${pad(mi)}`, text: r.text, origin: 'tl-' + r.id });
+    toast(`${pad(h)}:${pad(mi)} 타임라인에 넣었어요`); if (r.date === state.sel) setTimeout(renderTimeline, 0);
+  }
   function addRow(o) {
     if (!(o.text || '').trim()) return null;
     const r = { id: newId(o.date), status: '', col: '', text: '', start: '', end: '', ...o };
-    (r._who ? state.shared : state.rows).push(r); save([r], r._who);
+    (r._who ? state.shared : state.rows).push(r); save([r], r._who); trialTimeline(r);
     // 주간고정을 이번 주 지난 날짜에 뒤늦게 넣으면, 같은 주의 그 뒤 날짜(오늘까지)에도 함께 넣는다
     const today = todayKst();
     if (r.section === '주간고정' && !o._wk && r.date < today && weekStart(r.date) === weekStart(today)) {
@@ -131,7 +139,7 @@
     }
     return r; // _who='공통' 이면 공통 시트
   }
-  function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); }
+  function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); if ('text' in patch || 'section' in patch) trialTimeline(r); }
   const deleteRow = r => deleteRows([r]);
   // 화면에서 바로 빼고 5초 뒤 시트에서 지운다(서버가 휴지통에 14일 보관). 되돌리기를 누르면 시트는 건드리지 않는다.
   // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽)
@@ -186,6 +194,29 @@
   }
   // '분류) 내용' → 칩 + 내용 (업무 행·팔로업 프로젝트 제목 공통)
   function paintCat(r, chip, tx) { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; if (m) chip.dataset.tag = m[1]; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; }
+  // 행 링크: 링크가 있으면 아이콘(누르면 새 탭), 옆 ✎로 수정. 없으면 + 아이콘으로 넣기. 값은 행의 '종료' 칸(end)에 저장
+  const LINK_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 11.4a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.4 8.6a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/></svg>';
+  function linkBtn(r) {
+    const w = el('<span class="row-link"></span>');
+    const paint = () => { const ok = /^https?:\/\//i.test(r.end || '');
+      w.innerHTML = ok ? `<a class="rl-open" href="${esc(r.end)}" target="_blank" rel="noopener" title="${esc(r.end)}" aria-label="${esc(r.text)} 링크 열기">${LINK_SVG}</a>${readOnly() ? '' : `<button type="button" class="rl-edit" aria-label="${esc(r.text)} 링크 수정" title="링크 수정">✎</button>`}`
+        : readOnly() ? '' : `<button type="button" class="rl-add" aria-label="${esc(r.text)} 링크 넣기" title="링크 넣기">${LINK_SVG}<small aria-hidden="true">+</small></button>`; };
+    paint();
+    w.onclick = e => { const b = e.target.closest('.rl-edit,.rl-add'); if (b) { e.preventDefault(); linkPop(b, r, paint); } };
+    return w;
+  }
+  function linkPop(anchor, r, done) {
+    document.querySelector('.link-pop')?.remove();
+    const pop = el(`<form class="link-pop" role="dialog" aria-label="링크" novalidate><input type="text" inputmode="url" autocomplete="off" placeholder="https:// 링크 붙여넣기" value="${esc(/^https?:/i.test(r.end || '') ? r.end : '')}" aria-label="링크 주소"><div class="lp-acts">${r.end ? '<button type="button" class="danger" data-del>삭제</button>' : ''}<button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
+    const inp = pop.querySelector('input'), close = () => { pop.remove(); removeEventListener('pointerdown', off, true); }, off = e => { if (!pop.contains(e.target)) close(); };
+    const put = v => { updateRow(r, { end: v }); done(); close(); toast(v ? '링크를 저장했어요' : '링크를 지웠어요'); };
+    pop.onsubmit = e => { e.preventDefault(); let v = inp.value.trim(); if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v; try { if (v) new URL(v); } catch { return toast('링크 주소가 올바르지 않아요'); } put(v); };
+    pop.querySelector('[data-x]').onclick = close; pop.querySelector('[data-del]')?.addEventListener('click', () => put(''));
+    pop.onkeydown = e => { if (e.key === 'Escape') close(); };
+    document.body.append(pop); const b = anchor.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(innerWidth - 320, b.right - 300)) + 'px'; pop.style.top = (b.bottom + 6 + scrollY) + 'px';
+    setTimeout(() => addEventListener('pointerdown', off, true), 0); inp.focus(); inp.select();
+  }
   function itemRow(r, opts = {}) {
     if (NESTABLE.has(r.section) && isProject(r)) return projectCard(r);
     if (r.section === '릴스업무' && String(r.col).startsWith('plan:')) return reelRow(r);
@@ -208,6 +239,7 @@
     const del = opts.noStatus ? el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`) : el(`<button class="del" title="메뉴" aria-label="업무 메뉴: 상태 변경, 삭제" aria-haspopup="menu">${icon('more', 18)}</button>`);
     del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); }, r.section === '공통업무' ? [{ label: '↻ 반복 업무로 옮기기', run: () => { updateRow(r, { section: '공통반복' }); toast('반복 업무로 옮겼습니다'); render(); } }] : r.section === '공통반복' ? [{ label: '→ 변동 업무로 옮기기', run: () => { updateRow(r, { section: '공통업무' }); toast('변동 업무로 옮겼습니다'); render(); } }] : []);
     row.append(chip, tx);
+    if (r.section === '원장님리스트' && r.col === '릴스촬영') row.append(linkBtn(r)); // 촬영 레퍼런스 링크(아이콘 누르면 바로 열림)
     if (isDone(r) && !opts.noStatus && TASK_KEYS.has(r.section)) { // 완료일: 연한 회색, 눌러서 날짜 수정
       const c = String(r.completed || r.date).slice(0, 10), dd = el(`<label class="done-date" title="완료일 수정">${c.slice(5).replace('-', '/')}<input type="date" value="${c}" max="${todayKst()}" aria-label="완료일 수정"></label>`);
       dd.querySelector('input').onchange = e => { if (!e.target.value) return; updateRow(r, { completed: e.target.value }); toast(`완료일을 ${e.target.value.slice(5).replace('-', '/')}로 바꿨습니다`); render(); loadDone(); };
@@ -495,7 +527,8 @@
       clearNest();
       if (tlAt != null) { // 타임라인에 놓음: 업무 이름으로 1시간 블록 추가, 목록은 그대로
         tlGhost.remove(); ph.remove();
-        addRow({ date: state.sel, section: '타임라인', start: toTime(tlAt), end: toTime(tlAt + 60), text: r.text.replace(CAT_RE, '') || r.text });
+        if (r.section === '변동업무') state.rows = state.rows.filter(x => !(x.section === '타임라인' && x.origin === 'tl-' + r.id && (removeIds([x.date + '|' + x.id]), true))); // 자동으로 들어간 블록은 옮겨 놓은 자리로 대체
+        addRow({ date: state.sel, section: '타임라인', start: toTime(tlAt), end: toTime(tlAt + 60), text: r.text.replace(CAT_RE, '') || r.text, ...(TASK_KEYS.has(r.section) && { origin: 'tl-' + r.id }) });
         toast(`${toTime(tlAt)}~${toTime(tlAt + 60)} 타임라인에 넣었습니다`); return render();
       }
       if (calDay) { // 원장님 캘린더에 완료 배치: 항목은 그날 완료, 캘린더엔 ✅ 일정
