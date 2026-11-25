@@ -188,6 +188,7 @@
     row.append(dragHandle(r), statusButton(r, code => { const was = isDone(r); setStatus(r, code); if (plan && was !== (code === 'done')) homeworkShot({ row: plan, title: r.text, ref: p?.ref || '' }, code === 'done'); }));
     if (plan) { const a = el('<a class="tx hw-link" target="_blank" rel="noopener" title="레퍼런스 열기"></a>'); a.textContent = r.text; a.href = planLink(plan, p?.ref); row.append(a); }
     else { const tx = el('<div class="tx" contenteditable="plaintext-only"></div>'); tx.textContent = r.text; tx.onblur = () => { const v = tx.textContent.trim(); if (v && v !== r.text) updateRow(r, { text: v }); }; row.append(tx); }
+    row.append(linkBtn(r, 'start')); // 영상 링크(아이콘 누르면 새 탭)
     if (isDone(r)) row.append(el(`<small class="hw-done">${(r.completed || r.date).slice(5).replace('-', '/')} 완료</small>`));
     const del = el(`<button class="del" title="삭제" aria-label="삭제">${icon('x', 14)}</button>`); del.onclick = () => { deleteRow(r); render(); }; row.append(del);
     return row;
@@ -196,20 +197,20 @@
   function paintCat(r, chip, tx) { const m0 = r.text.match(CAT_RE), m = m0 && !state.deletedTags.some(t => t.tag === m0[1]) ? m0 : null, rest = m && r.text.slice(m[0].length); chip.hidden = !rest; if (m) chip.dataset.tag = m[1]; chip.textContent = rest ? tagLabel(m[1]) : ''; chip.style.cssText = rest ? tagStyle(m[1]) : ''; chip.title = rest ? (state.tags[m[1]]?.desc || '') : ''; tx.textContent = rest || r.text; }
   // 행 링크: 링크가 있으면 아이콘(누르면 새 탭), 옆 ✎로 수정. 없으면 + 아이콘으로 넣기. 값은 행의 '종료' 칸(end)에 저장
   const LINK_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.6 11.4a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/><path d="M11.4 8.6a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/></svg>';
-  function linkBtn(r) {
+  function linkBtn(r, key = 'end') { // 숙제 행은 end 에 기획 행 표시가 있어 start 에 저장
     const w = el('<span class="row-link"></span>');
-    const paint = () => { const ok = /^https?:\/\//i.test(r.end || '');
-      w.innerHTML = ok ? `<a class="rl-open" href="${esc(r.end)}" target="_blank" rel="noopener" title="${esc(r.end)}" aria-label="${esc(r.text)} 링크 열기">${LINK_SVG}</a>${readOnly() ? '' : `<button type="button" class="rl-edit" aria-label="${esc(r.text)} 링크 수정" title="링크 수정">✎</button>`}`
+    const paint = () => { const u = r[key] || '', ok = /^https?:\/\//i.test(u);
+      w.innerHTML = ok ? `<a class="rl-open" href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}" aria-label="${esc(r.text)} 링크 열기">${LINK_SVG}</a>${readOnly() ? '' : `<button type="button" class="rl-edit" aria-label="${esc(r.text)} 링크 수정" title="링크 수정">✎</button>`}`
         : readOnly() ? '' : `<button type="button" class="rl-add" aria-label="${esc(r.text)} 링크 넣기" title="링크 넣기">${LINK_SVG}<small aria-hidden="true">+</small></button>`; };
     paint();
-    w.onclick = e => { const b = e.target.closest('.rl-edit,.rl-add'); if (b) { e.preventDefault(); linkPop(b, r, paint); } };
+    w.onclick = e => { const b = e.target.closest('.rl-edit,.rl-add'); if (b) { e.preventDefault(); linkPop(b, r, paint, key); } };
     return w;
   }
-  function linkPop(anchor, r, done) {
+  function linkPop(anchor, r, done, key = 'end') {
     document.querySelector('.link-pop')?.remove();
-    const pop = el(`<form class="link-pop" role="dialog" aria-label="링크" novalidate><input type="text" inputmode="url" autocomplete="off" placeholder="https:// 링크 붙여넣기" value="${esc(/^https?:/i.test(r.end || '') ? r.end : '')}" aria-label="링크 주소"><div class="lp-acts">${r.end ? '<button type="button" class="danger" data-del>삭제</button>' : ''}<button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
+    const pop = el(`<form class="link-pop" role="dialog" aria-label="링크" novalidate><input type="text" inputmode="url" autocomplete="off" placeholder="https:// 링크 붙여넣기" value="${esc(/^https?:/i.test(r[key] || '') ? r[key] : '')}" aria-label="링크 주소"><div class="lp-acts">${/^https?:/i.test(r[key] || '') ? '<button type="button" class="danger" data-del>삭제</button>' : ''}<button type="button" data-x>취소</button><button class="primary">저장</button></div></form>`);
     const inp = pop.querySelector('input'), close = () => { pop.remove(); removeEventListener('pointerdown', off, true); }, off = e => { if (!pop.contains(e.target)) close(); };
-    const put = v => { updateRow(r, { end: v }); done(); close(); toast(v ? '링크를 저장했어요' : '링크를 지웠어요'); };
+    const put = v => { updateRow(r, { [key]: v }); done(); close(); toast(v ? '링크를 저장했어요' : '링크를 지웠어요'); };
     pop.onsubmit = e => { e.preventDefault(); let v = inp.value.trim(); if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v; try { if (v) new URL(v); } catch { return toast('링크 주소가 올바르지 않아요'); } put(v); };
     pop.querySelector('[data-x]').onclick = close; pop.querySelector('[data-del]')?.addEventListener('click', () => put(''));
     pop.onkeydown = e => { if (e.key === 'Escape') close(); };
