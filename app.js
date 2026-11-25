@@ -1498,7 +1498,8 @@
       });
       if (state.leaveMode && !dir) { col.classList.add('leave-pick'); col.onclick = e => { if (e.target.closest('.sc-leave')) return; leaveEdit({ action: 'leaveAdd', date: d, kind: state.leaveMode, who: state.person }); state.leaveMode = ''; }; }
       col.querySelector('.sc-date').onclick = () => { // 캘린더 → 그날 보고서
-        if (!state.dates.includes(d)) return toast('보고서는 최근 근무일 5일만 볼 수 있습니다');
+        if (d > todayKst()) return toast('아직 오지 않은 날짜예요');
+        if (!state.dates.includes(d)) { goDay(d); return $('report').scrollIntoView({ behavior: 'smooth', block: 'start' }); } // 지난 날짜: 그날까지 근무일 5일로 열기
         state.sel = d; render(); $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
       };
       if (state.holidays[d] || dt.getDay() === 0) col.classList.add('holiday'); if (dt.getDay() === 6) col.classList.add('sat');
