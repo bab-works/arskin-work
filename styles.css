@@ -1506,3 +1506,8 @@ html.printing .row-link{display:none!important}
 .mm-float.resizing,.iv.resizing{transition:none;user-select:none}
 .iv-full .rz{display:none}
 @media (max-width:760px){.mm-float .rz{display:none}}
+.datestrip .ds-pick{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card);border-radius:var(--r-md);padding:8px 14px;min-width:60px;line-height:1.25;cursor:pointer;color:var(--text-2)}
+.datestrip .ds-pick small{color:var(--muted);font-size:12px;font-weight:500}.datestrip .ds-pick b{font-size:17px}
+.datestrip .ds-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+.datestrip .ds-pick:hover,.datestrip .ds-today:hover{box-shadow:0 0 0 2px var(--blue-weak)}
+.datestrip .ds-today{color:var(--blue-text)}.datestrip .ds-today b{font-size:14px}

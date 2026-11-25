@@ -34,8 +34,8 @@
   const disp = n => C.PEOPLE.find(p => p.name === n)?.label || n; // 화면 표시 이름
   const isDirector = () => !!C.PEOPLE.find(p => p.name === state.person)?.director;
   const isWorkday = d => { const wd = new Date(d + 'T00:00:00Z').getUTCDay(); return wd !== 0 && (wd !== 6 || isDirector()) && !state.holidays[d]; }; // 마케터 월~금, 원장님 월~토
-  function workDates(n) { // 당일 + 이전 근무일(월~금, 공휴일 제외)
-    const out = [todayKst()]; let d = out[0];
+  function workDates(n) { // 기준일(기본 오늘, 날짜 고르기로 바꿈) + 이전 근무일(월~금, 공휴일 제외)
+    const out = [state.dayAnchor && state.dayAnchor < todayKst() ? state.dayAnchor : todayKst()]; let d = out[0];
     while (out.length < n) { d = shiftDate(d, -1); if (isWorkday(d)) out.push(d); }
     return out.reverse();
   }
@@ -1247,7 +1247,18 @@
       b.title = d; b.onclick = () => { state.sel = d; state.sharedAnchor = d; render(); loadShared(); };
       s.append(b);
     });
+    // 지난 날짜 보고서 열기: 고른 날까지 근무일 5일을 보여 준다(서버에서 그 기간을 새로 불러옴)
+    const past = state.dayAnchor && state.dayAnchor < todayKst();
+    if (past) { const t = el('<button type="button" class="ds-today" title="오늘이 있는 주로 돌아가기"><small>돌아가기</small><b>오늘로</b></button>'); t.onclick = () => goDay(''); s.append(t); }
+    const pick = el(`<label class="ds-pick" title="다른 날짜 보고서 열기"><small>날짜</small><b>📅</b><input type="date" max="${todayKst()}" value="${state.sel || ''}" aria-label="열어 볼 날짜"></label>`);
+    pick.querySelector('input').onchange = e => { if (e.target.value) goDay(e.target.value); };
+    pick.onclick = e => { const i = pick.querySelector('input'); if (e.target !== i) { e.preventDefault(); try { i.showPicker(); } catch { i.focus(); i.click(); } } };
+    s.append(pick);
     requestAnimationFrame(() => { s.scrollLeft = s.scrollWidth; }); // 좁은 화면: 오늘이 보이게
+  }
+  function goDay(d) {
+    const today = todayKst(); if (d > today) d = today;
+    state.dayAnchor = d && d < today ? d : ''; state.sel = d || today; state.sharedAnchor = state.sel; state.rows = []; load();
   }
   const personInfo = () => C.PEOPLE.find(p => p.name === state.person);
   function renderPeople() {
@@ -1676,7 +1687,7 @@
   }
   function afterLoad(asked) {
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
-    if (isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
+    if (!state.dayAnchor && isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
     api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
     loadContentLinks();
