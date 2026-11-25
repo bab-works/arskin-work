@@ -73,7 +73,7 @@ function doPost_(e) {
   if (body.action === 'directorSave' || body.action === 'directorDelete') { try { return json({ tasks: directorEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trashRestore') { var lk = LockService.getScriptLock(); lk.waitLock(10000); try { return json({ restored: trashRestore_(body.keys || []) }); } catch (err) { return json({ error: err.message }); } finally { lk.releaseLock(); } }
   if (body.action === 'reelsStep') { try { return json(reelsStep_(body.row, body.step, body.on === true)); } catch (err) { return json({ error: err.message }); } }
-  if (body.action === 'reelsAdd') { try { return json(reelsAdd_(body.title, body.kind)); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'reelsAdd') { try { return json(reelsAdd_(body.title, body.kind, body.type)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsReject') { try { return json({ ok: reelsShot_(body.row, '기각') }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'reelsShot') { try { return json({ ok: reelsShot_(body.row, body.undo ? '' : undefined) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'leaveAdd' || body.action === 'leaveDelete') { try { return json({ leaves: leaveEdit_(body, memberFor_(body.code)) }); } catch (err) { return json({ error: err.message }); } }
@@ -892,9 +892,9 @@ function fillUploadLinks_() {
   return filled;
 }
 // 릴스 업무에 직접 추가 → 영상 기획 시트 빈 행에 새 기획(방식: 내부촬영)으로 쓰고 행 번호를 돌려준다
-function reelsAdd_(title, kind) {
+function reelsAdd_(title, kind, type) { // type: '숙제'(원장님 숙제 리스트로) 또는 기본 '내부촬영'
   title = String(title || '').trim().slice(0, 200); if (!title) throw new Error('제목을 입력해 주세요');
-  var plan = contentPlanAddMany_([[kind === '영어' ? '영어' : '국내', '내부촬영', title, '', '', '', '']]);
+  var plan = contentPlanAddMany_([[kind === '영어' ? '영어' : '국내', type === '숙제' ? '숙제' : '내부촬영', title, '', '', '', '']]);
   var hit = plan.filter(function (r) { return String(r.v[2]).trim() === title; }).pop();
   return { row: hit ? hit.row : 0, ref: '' };
 }
@@ -934,7 +934,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-20.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-25.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }

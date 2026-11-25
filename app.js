@@ -118,6 +118,24 @@
   addEventListener('beforeunload', e => { if (saveState.busy || saveState.failed.size) { e.preventDefault(); e.returnValue = ''; } }); // 저장 전 닫기 경고
   const removeIds = (ids, who = state.person) => api.post({ action: 'delete', ids, who }).catch(e => toast('삭제 실패: ' + e.message));
 
+  // 되돌리기(Ctrl+Z): 추가·수정·삭제·순서 이동·하위 업무를 최근 50개까지. 한 번의 동작에서 생긴 변경은 한 묶음으로
+  const undoStack = []; let undoGroup = null, undoing = false;
+  function record(label, fn) {
+    if (undoing) return;
+    if (!undoGroup) { undoGroup = { label, fns: [] }; undoStack.push(undoGroup); if (undoStack.length > 50) undoStack.shift(); setTimeout(() => { undoGroup = null; }, 0); }
+    undoGroup.fns.push(fn);
+  }
+  function undo() {
+    const g = undoStack.pop(); if (!g) return toast('되돌릴 작업이 없어요');
+    undoing = true; try { g.fns.slice().reverse().forEach(f => f()); } finally { undoing = false; }
+    render(); toast(`되돌렸어요 · ${g.label}`);
+  }
+  addEventListener('keydown', e => { // 입력칸 안에서는 브라우저 기본(글자 되돌리기)
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+    const a = document.activeElement; if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+    if (document.querySelector('dialog[open]') || !$('memoFloat').hidden && $('memoFloat').contains(a)) return;
+    e.preventDefault(); undo();
+  });
   // 체험단)·리얼모델) 업무에 1600 같은 시각이 있으면 바로 타임라인 1시간 블록 (서버 하루 1번 동기화를 기다리지 않음, 같은 원본id로 중복 방지)
   function trialTimeline(r) {
     if (r._who || r.section !== '변동업무' || !/^(체험단|리얼모델)\)/.test(r.text || '')) return;
@@ -129,7 +147,9 @@
   function addRow(o) {
     if (!(o.text || '').trim()) return null;
     const r = { id: newId(o.date), status: '', col: '', text: '', start: '', end: '', ...o };
-    (r._who ? state.shared : state.rows).push(r); save([r], r._who); trialTimeline(r);
+    (r._who ? state.shared : state.rows).push(r); save([r], r._who);
+    record('추가', () => { const k = r._who ? 'shared' : 'rows'; state[k] = state[k].filter(x => x !== r); removeIds([r.date + '|' + r.id], r._who); });
+    trialTimeline(r);
     // 주간고정을 이번 주 지난 날짜에 뒤늦게 넣으면, 같은 주의 그 뒤 날짜(오늘까지)에도 함께 넣는다
     const today = todayKst();
     if (r.section === '주간고정' && !o._wk && r.date < today && weekStart(r.date) === weekStart(today)) {
@@ -139,7 +159,7 @@
     }
     return r; // _who='공통' 이면 공통 시트
   }
-  function updateRow(r, patch) { Object.assign(r, patch); save([r], r._who); if ('text' in patch || 'section' in patch) trialTimeline(r); }
+  function updateRow(r, patch) { const prev = Object.fromEntries(Object.keys(patch).map(k => [k, r[k]])); record('수정', () => { Object.assign(r, prev); save([r], r._who); }); Object.assign(r, patch); save([r], r._who); if ('text' in patch || 'section' in patch) trialTimeline(r); }
   const deleteRow = r => deleteRows([r]);
   // 화면에서 바로 빼고 5초 뒤 시트에서 지운다(서버가 휴지통에 14일 보관). 되돌리기를 누르면 시트는 건드리지 않는다.
   // shortcut: 5초 안에 창을 닫으면 삭제가 전송되지 않아 항목이 남음(안전한 쪽)
@@ -149,15 +169,21 @@
     const gone = [...list, ...related], snap = { rows: [...state.rows], shared: [...state.shared] };
     state.rows = state.rows.filter(x => !gone.includes(x)); state.shared = state.shared.filter(x => !gone.includes(x));
     state.selected.clear();
-    const timer = setTimeout(() => {
+    let fired = false, restored = false;
+    const timer = setTimeout(() => { fired = true;
       const mine = gone.filter(x => !x._who), shared = gone.filter(x => x._who);
       if (mine.length) removeIds(mine.map(x => x.date + '|' + x.id));
       if (shared.length) removeIds(shared.map(x => x.date + '|' + x.id), shared[0]._who);
     }, 5000);
-    toast(list.length > 1 ? `${list.length}개 삭제했습니다` : '삭제했습니다', { label: '되돌리기', ms: 5000, run: () => {
+    const restore = () => { if (restored) return; restored = true;
       clearTimeout(timer);
       state.rows = [...state.rows, ...snap.rows.filter(x => gone.includes(x))]; state.shared = [...state.shared, ...snap.shared.filter(x => gone.includes(x))];
-      state.rows.sort((a, b) => snap.rows.indexOf(a) - snap.rows.indexOf(b)); render();
+      state.rows.sort((a, b) => snap.rows.indexOf(a) - snap.rows.indexOf(b));
+      if (fired) { const mine = gone.filter(x => !x._who), sh = gone.filter(x => x._who); if (mine.length) save(mine); if (sh.length) save(sh, sh[0]._who); } // 이미 지워졌으면 다시 저장
+    };
+    record(list.length > 1 ? `${list.length}개 삭제` : '삭제', restore);
+    toast(list.length > 1 ? `${list.length}개 삭제했습니다` : '삭제했습니다', { label: '되돌리기', ms: 5000, run: () => {
+      restore(); undoStack.splice(undoStack.findIndex(g => g.fns.includes(restore)) >>> 0, 1); render();
     } });
   }
 
@@ -325,6 +351,12 @@
   // 하위 업무: 화면을 먼저 바꾸고(바로 반영) 저장은 뒤에서 순서대로 보낸다. 실패하면 알리고 다시 불러온다.
   function changeSubtask(parent, child, patch, deleting = false) {
     const who = state.person, isNew = !deleting && !state.rows.some(x => x.id === child.id), next = { ...child, ...patch };
+    { const pPrev = { status: parent.status, section: parent.section }, cur = state.rows.find(x => x.id === child.id), cPrev = cur && Object.fromEntries(Object.keys(patch).map(k => [k, cur[k]])), gone = deleting && cur;
+      record(isNew ? '하위 업무 추가' : deleting ? '하위 업무 삭제' : '하위 업무 수정', () => {
+        if (isNew) { state.rows = state.rows.filter(x => x.id !== child.id); removeIds([child.date + '|' + child.id], who); }
+        else if (gone) { state.rows.push(gone); save([gone], who); }
+        else if (cur) { Object.assign(cur, cPrev); save([cur], who); }
+        Object.assign(parent, pPrev); save([parent], who); }); }
     if (deleting) state.rows = state.rows.filter(x => x.id !== child.id);
     else if (isNew) state.rows.push(next); else Object.assign(state.rows.find(x => x.id === child.id), patch);
     const children = childrenOf(parent), before = parent.status;
@@ -540,7 +572,8 @@
       }
       if (opts.tlOnly && moved && ph.parentElement === node.parentElement) {
         ph.replaceWith(node); const ch = [];
-        [...node.parentElement.querySelectorAll(':scope > .subtask[data-id]')].forEach((n, i) => { const x = state.rows.find(y => y.id === n.dataset.id); if (x && x.order !== String(i + 1)) { x.order = String(i + 1); ch.push(x); } });
+        const prevs = []; [...node.parentElement.querySelectorAll(':scope > .subtask[data-id]')].forEach((n, i) => { const x = state.rows.find(y => y.id === n.dataset.id); if (x && x.order !== String(i + 1)) { prevs.push([x, x.order]); x.order = String(i + 1); ch.push(x); } });
+        if (prevs.length) record('하위 업무 순서', () => { prevs.forEach(([x, o]) => { x.order = o; }); save(prevs.map(([x]) => x)); });
         if (ch.length) save(ch); return render();
       }
       if (!moved || opts.tlOnly) { ph.remove(); if (!moved && r.section === '팔로업' && handle) dupMenu(handle, r); return; } // 짧게 누르거나 꾹 눌렀다 떼면: 복제 메뉴
@@ -548,7 +581,9 @@
       ph.replaceWith(node);
       const key = list.dataset.section, col = list.dataset.col, ids = [...list.querySelectorAll(':scope > [data-id]')].map(n => n.dataset.id);
       const changed = [];
-      ids.forEach((id, i) => { const x = state.rows.find(y => y.id === id); if (!x) return; const patch = { order: String(i + 1), section: key, ...(col !== undefined && { col }) }; if (Object.keys(patch).some(k => x[k] !== patch[k])) { Object.assign(x, patch); changed.push(x); } });
+      const prevs = [];
+      ids.forEach((id, i) => { const x = state.rows.find(y => y.id === id); if (!x) return; const patch = { order: String(i + 1), section: key, ...(col !== undefined && { col }) }; if (Object.keys(patch).some(k => x[k] !== patch[k])) { prevs.push([x, { order: x.order, section: x.section, col: x.col }]); Object.assign(x, patch); changed.push(x); } });
+      if (prevs.length) record('순서 이동', () => { prevs.forEach(([x, p]) => Object.assign(x, p)); save(prevs.map(([x]) => x)); });
       if (changed.length) save(changed);
       render();
     };
@@ -798,7 +833,13 @@
       hw.append(c);
     });
     const assigned = new Set(state.rows.filter(r => r.date === d && r.section === '원장님숙제').map(r => r.end)), pool = state.reelPlan.filter(p => p.type === '숙제' && !p.shot && !assigned.has('plan:' + p.row));
-    const back = el(`<div class="cell hw-pool"><h4>숙제 리스트 · 영상 기획 <small>${pool.length}개 · 위로 끌어 올리거나 '배치'를 누르세요</small></h4></div>`);
+    const back = el(`<div class="cell hw-pool"><h4>숙제 리스트 · 영상 기획 <small>${pool.length}개 · 위로 끌어 올리거나 '배치'를 누르세요</small></h4>
+      <form class="hw-new"><input name="title" placeholder="새 숙제 영상 제목 (영상 기획에 '숙제'로 추가돼요)" maxlength="200" aria-label="새 숙제 영상 제목" required><select name="kind" aria-label="타겟팅"><option>국내</option><option>영어</option></select><button class="primary">숙제 추가</button></form>
+      <p class="hw-how">콘텐츠 스튜디오 → 영상 기획에서 <b>방식</b>을 「숙제」로 고른 영상(아직 촬영·업로드 전)도 여기에 모여요.</p></div>`);
+    back.querySelector('.hw-new').onsubmit = async e => { e.preventDefault(); const f = e.target, btn = f.querySelector('button'); btn.disabled = true;
+      try { const j = await api.post({ action: 'reelsAdd', title: f.title.value.trim(), kind: f.kind.value, type: '숙제' }); if (!j.row) throw new Error('기획 행을 찾지 못했습니다');
+        state.reelPlan.push({ row: j.row, title: f.title.value.trim(), kind: f.kind.value, type: '숙제', shot: false, ref: '' }); cacheSet('reelsPlan', state.reelPlan); toast('영상 기획에 숙제로 추가했어요. 위로 끌어 올리거나 「배치」를 누르세요'); renderReport(); }
+      catch (err) { toast('추가하지 못했어요: ' + err.message); btn.disabled = false; } };
     pool.forEach(p => {
       const it = el(`<div class="hw-item" draggable="true"><span class="drag" aria-hidden="true">${icon('drag', 16)}</span><a class="tx" target="_blank" rel="noopener"></a><small class="hw-kind">${esc(p.kind || '국내')}</small><button type="button" class="hw-assign">배치</button></div>`);
       const a = it.querySelector('a'); a.textContent = p.title; a.href = planLink(p.row, p.ref);
@@ -1684,7 +1725,7 @@
   function openShortcuts() {
     if (document.querySelector('.keys-dlg')) return;
     const dlg = el(`<dialog class="code-dlg keys-dlg" aria-labelledby="keysTitle"><h2 id="keysTitle">단축키</h2><dl>
-      <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>지금 바로 저장 (실패한 저장 다시 보내기)</dd><dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
+      <dt><kbd>Ctrl</kbd>+<kbd>S</kbd></dt><dd>지금 바로 저장 (실패한 저장 다시 보내기)</dd><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>방금 한 작업 되돌리기 (추가·수정·삭제·이동)</dd><dt><kbd>N</kbd></dt><dd>변동업무에 새 업무 입력</dd><dt><kbd>Enter</kbd></dt><dd>입력·수정 저장</dd><dt><kbd>Shift</kbd>+<kbd>Enter</kbd></dt><dd>업무 내용 줄바꿈</dd>
       <dt><kbd>C</kbd></dt><dd>완료 업무 접기 / 펼치기</dd><dt><kbd>Esc</kbd></dt><dd>수정 취소, 창·메뉴 닫기</dd><dt><kbd>Space</kbd></dt><dd>상태 버튼에서 다음 상태로</dd><dt><kbd>Shift</kbd>+<kbd>F10</kbd></dt><dd>상태 선택 메뉴</dd><dt><kbd>?</kbd></dt><dd>이 도움말</dd></dl>
       <button type="button" class="primary">닫기</button></dialog>`);
     dlg.querySelector('button').onclick = () => dlg.close(); dlg.onclose = () => dlg.remove();
