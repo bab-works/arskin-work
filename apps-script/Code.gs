@@ -48,6 +48,7 @@ function doGet_(e) {
     try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), cards: cardsAll_(), prefs: prefsGet_(me), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'blogTags') { try { return json({ tags: blogTags_(p.url) }); } catch (err) { return json({ error: err.message }); } }
+  if (p.action === 'notifs') { try { return json(notifList_(memberFor_(p.code))); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudgeAcks') { try { return json({ acks: nudgeAcks_(memberFor_(p.code), p.since) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'nudges') { try { return json({ nudges: memberFor_(p.code) === DIRECTOR ? nudgeList_(p.since) : [] }); } catch (err) { return json({ error: err.message }); } }
@@ -82,6 +83,7 @@ function doPost_(e) {
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (!isMarketer_(me)) throw new Error('재촉은 마케터만 할 수 있습니다'); var nt = nudgeText_(me); nudgeSheet_().appendRow([new Date().toISOString(), me, '', nt.msg]); jandiSend_(nt.msg, me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'notify' || body.action === 'notifRead') { try { return json(body.action === 'notify' ? notify_(memberFor_(body.code), body) : notifRead_(memberFor_(body.code), body)); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'prefsSave') { try { return json({ prefs: prefsSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'cardsSave') { try { return json({ cards: cardsSave_(memberFor_(body.code), body.who, body.cards) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeTextSave') { try { return json({ nudgeText: nudgeTextSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
@@ -937,7 +939,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-27.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1178,4 +1180,41 @@ function prefsSave_(me, b) {
     for (var i = 0; i < names.length; i++) if (names[i][0] === me) { sh.getRange(i + 2, 2, 1, 3).setValues([[txt, at, dev]]); return { at: at }; }
     sh.appendRow([me, txt, at, dev]); return { at: at };
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 업무 요청 알림: @태그로 요청하면 받는 사람 알림 + 그 사람 '업무 배치 예정'(원장님은 '추가 업무')에 자동 입력. 공통 시트 '알림' 탭 ---------- */
+function notifSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('알림');
+  if (!sh) { sh = ss.insertSheet('알림'); sh.getRange('A:H').setNumberFormat('@'); sh.appendRow(['id', '시각', '받는 사람', '보낸 사람', '내용', '읽은 시각', '연결 업무', '날짜']); sh.setFrozenRows(1); }
+  return sh;
+}
+function notify_(me, b) {
+  if (!me) throw new Error('unauthorized');
+  var text = String(b.text || '').replace(/\s+/g, ' ').trim().slice(0, 300), from = String(b.fromLabel || me).replace(/[()\s]/g, '').slice(0, 10) || me;
+  if (!text) throw new Error('요청 내용을 적어 주세요');
+  var to = (b.to || []).map(String).filter(function (n, i, a) { return a.indexOf(n) === i && n !== me && n !== '공통' && sheetIdFor(n); });
+  if (!to.length) throw new Error('받는 사람을 골라 주세요');
+  var d = todayKst_(), now = new Date().toISOString(), sh = notifSheet_(), out = [];
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    to.forEach(function (who, k) {
+      var nid = 'N' + Date.now().toString(36) + k, rid = newId_(d, 800 + k);
+      upsertRow(who, { id: rid, date: d, section: who === DIRECTOR ? '원장님리스트' : '배치예정', col: who === DIRECTOR ? '그외' : '', status: 'todo', text: '요청·' + from + ') ' + text, start: '', end: '', created: d, origin: 'req-' + nid, order: '' });
+      sh.appendRow([nid, now, who, me, text, '', rid, d]); out.push({ id: nid, to: who, row: rid });
+    });
+  } finally { lock.releaseLock(); }
+  return { sent: out };
+}
+function notifList_(me) {
+  if (!me) throw new Error('unauthorized');
+  var sh = notifSheet_(), n = sh.getLastRow(); if (n < 2) return { items: [], sent: [] };
+  var from = Math.max(2, n - 499), v = sh.getRange(from, 1, n - from + 1, 8).getDisplayValues(), obj = function (r) { return { id: r[0], at: r[1], to: r[2], from: r[3], text: r[4], read: r[5], row: r[6], date: r[7] }; };
+  return { items: v.filter(function (r) { return r[2] === me; }).map(obj).reverse().slice(0, 60), sent: v.filter(function (r) { return r[3] === me; }).map(obj).reverse().slice(0, 30) };
+}
+function notifRead_(me, b) {
+  if (!me) throw new Error('unauthorized');
+  var ids = (b.ids || []).map(String), all = b.all === true, sh = notifSheet_(), n = sh.getLastRow(); if (n < 2) return notifList_(me);
+  var v = sh.getRange(2, 1, n - 1, 6).getDisplayValues(), now = new Date().toISOString();
+  v.forEach(function (r, i) { if (r[2] === me && !r[5] && (all || ids.indexOf(r[0]) >= 0)) sh.getRange(i + 2, 6).setValue(now); });
+  return notifList_(me);
 }
