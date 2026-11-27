@@ -93,7 +93,7 @@
   const toB64 = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(f); });
   async function saveOriginal(key, file, adminKey) {
     try { await archive('saveFile', { month: key, name: file.name, mime: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: await toB64(file), adminKey }); }
-    catch (e) { if ($('rvStatus')) $('rvStatus').textContent = '분석은 보관했지만 원본 파일 보관은 실패했어요: ' + e.message; }
+    catch (e) { if ($('rvStatus')) $('rvStatus').textContent = ''; rvAlert('분석은 보관했지만 원본 파일은 보관하지 못했어요', e.message + '\n\n같은 파일을 한 번 더 올리면 원본도 함께 보관돼요.'); }
   }
   async function downloadOriginal(month) {
     const st = $('rvStatus'); if (st) st.textContent = '원본 파일 받는 중…';

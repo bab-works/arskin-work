@@ -2283,6 +2283,14 @@
       if (mine?.director) { openDirSheet(); } else if (mine) { state.person = mine.name; state.dayAnchor = ''; state.sel = null; state.rows = []; setView('daily'); load(); }
       setTimeout(() => document.querySelector(`#sec-배치예정, #sec-dlist`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 900); };
   }
+  // 새 버전 알림: 10분마다(그리고 창으로 돌아올 때) 배포된 index.html 의 버전을 확인해, 지금 열린 화면보다 새것이면 새로고침 안내
+  const myVer = (document.querySelector('script[src*="app.js?v="]')?.getAttribute('src') || '').split('v=')[1] || '';
+  async function checkVersion() {
+    if (!myVer || document.querySelector('.ver-bar')) return;
+    try { const html = await (await fetch('index.html?_=' + Date.now(), { cache: 'no-store' })).text(), v = (html.match(/app\.js\?v=(\d+)/) || [])[1];
+      if (v && v > myVer) { const b = el('<div class="ver-bar" role="status">대시보드가 업데이트됐어요 <button type="button" class="primary">새로고침</button></div>'); b.querySelector('button').onclick = () => { window.MemoHub?.leave?.(); location.reload(); }; document.body.append(b); } } catch {}
+  }
+  setInterval(() => { if (!document.hidden) checkVersion(); }, 600000); addEventListener('focus', checkVersion);
   async function nudgeBoss() {
     try { await api.post({ action: 'nudge' }); bigNotice('원장님을 재촉 했습니다! ✅'); } catch (e) { toast(e.message); }
   }
