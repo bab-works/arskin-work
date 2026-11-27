@@ -10,14 +10,16 @@
   let host, data, sourceMode = '', busy = false, chartMode = 'daily', selectedDay;
   const $ = id => document.getElementById(id);
   // 오른쪽 위: 볼 달 선택만 보이고 나머지는 ☰ 메뉴 안으로 (원본 링크는 메뉴 맨 아래)
-  const header = () => `<div class="rv-heading"><div><h1>월간 매출표</h1></div><div class="rv-actions">${data ? `<select id="rvMonth" aria-label="볼 달 선택">${months.slice().sort().reverse().map(m => `<option value="${m}"${m === shownMonth ? ' selected' : ''}>${+m.slice(0, 4)}년 ${+m.slice(5)}월</option>`).join('')}<option value=""${!shownMonth ? ' selected' : ''}>구글 시트 연동 (원본)</option></select>` : ''}<div class="rv-menu-wrap"><button type="button" class="icon-btn rv-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="매출표 메뉴">☰</button><div class="rv-menu" role="menu" hidden>${data ? `<label class="rv-upload" role="menuitem" title="일일마감 엑셀(통합데이터 탭) 또는 월간요약 파일">파일로 달 추가<input type="file" id="rvUpload" accept=".xlsx,.xls,.csv" hidden></label>` + (sourceMode ? '<button id="rvRefresh" role="menuitem">새로고침</button>' : '') + '<button id="rvLock" role="menuitem">닫기 (잠금)</button>' : ''}<a href="${sourceURL}" target="_blank" rel="noopener" role="menuitem" class="tool-quiet">원본 요약 시트 ↗</a></div></div></div></div>`;
+  const header = () => `<div class="rv-heading"><div><h1>월간 매출표</h1></div><div class="rv-actions">${data ? `<select id="rvMonth" aria-label="볼 달 선택">${months.slice().sort().reverse().map(m => `<option value="${m}"${m === shownMonth ? ' selected' : ''}>${+m.slice(0, 4)}년 ${+m.slice(5)}월</option>`).join('')}<option value=""${!shownMonth ? ' selected' : ''}>구글 시트 연동 (원본)</option></select>` : ''}<div class="rv-menu-wrap"><button type="button" class="icon-btn rv-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="매출표 메뉴">☰</button><div class="rv-menu" role="menu" hidden>${data ? `<label class="rv-upload" role="menuitem" title="일일마감 엑셀(통합데이터 탭) 또는 월간요약 파일">파일로 달 추가<input type="file" id="rvUpload" accept=".xlsx,.xls,.csv" hidden></label>` + (sourceMode ? '<button id="rvRefresh" role="menuitem">새로고침</button>' : '') + (files[shownMonth || curKey()] ? `<button id="rvOrig" role="menuitem" title="${esc(files[shownMonth || curKey()])}">⤓ 원본 다운로드 (${+String(shownMonth || curKey()).slice(5)}월)</button>` : '') + '<button id="rvLock" role="menuitem">닫기 (잠금)</button>' : ''}<a href="${sourceURL}" target="_blank" rel="noopener" role="menuitem" class="tool-quiet">원본 요약 시트 ↗</a></div></div></div></div>`;
   let months = [], shownMonth = '';
+  const curKey = () => data ? `${data.year}-${String(data.month).padStart(2, '0')}` : '';
   // 보관함: 달별 분석 결과를 원본 매출 시트의 '_분석보관' 탭에 저장(매출 비밀번호 필요)
   const archive = async (op, extra = {}) => {
     const res = await (await fetch(window.CONFIG.API_URL, { method: 'POST', body: JSON.stringify({ code: localStorage.accessCode || '', action: 'revenueArchive', op, revenueKey: savedKey(), ...extra }) })).json();
     if (res.error) throw new Error(res.error); return res;
   };
-  const loadMonths = () => archive('list').then(r => { months = r.months || []; if (data) render(); }).catch(() => {});
+  let files = {}, savedAt = {}; // 보관된 달의 원본 파일 이름·저장 시각
+  const loadMonths = () => archive('list').then(r => { months = r.months || []; files = r.files || {}; savedAt = r.saved || {}; if (data) render(); }).catch(() => {});
   // 엑셀(.xlsx)은 필요할 때만 SheetJS 를 불러 읽는다
   const loadXLSX = () => window.XLSX ? Promise.resolve(window.XLSX) : new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; sc.onload = () => ok(window.XLSX); sc.onerror = () => no(new Error('엑셀 읽기 도구를 불러오지 못했습니다')); document.head.append(sc); });
   // 일일마감 파일(통합데이터 탭) 우선, 없으면 월간요약
@@ -87,13 +89,25 @@
     let k = ''; try { k = localStorage.revenueAdminKey || ''; } catch {}
     return k || (prompt(`${label} 보관하려면 업로드 토큰을 입력하세요 (관리자에게 받은 값)`) || '').trim();
   }
+  // 원본 엑셀도 함께 보관(모두가 '원본 다운로드'로 받을 수 있게)
+  const toB64 = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(f); });
+  async function saveOriginal(key, file, adminKey) {
+    try { await archive('saveFile', { month: key, name: file.name, mime: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: await toB64(file), adminKey }); }
+    catch (e) { if ($('rvStatus')) $('rvStatus').textContent = '분석은 보관했지만 원본 파일 보관은 실패했어요: ' + e.message; }
+  }
+  async function downloadOriginal(month) {
+    const st = $('rvStatus'); if (st) st.textContent = '원본 파일 받는 중…';
+    try { const r = await archive('file', { month }), bin = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)), url = URL.createObjectURL(new Blob([bin], { type: r.mime }));
+      const a = document.createElement('a'); a.href = url; a.download = r.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); if (st) st.textContent = `${r.name} 받았어요`; }
+    catch (e) { if (st) st.textContent = ''; rvAlert('원본 파일을 받지 못했어요', e.message); }
+  }
   async function uploadMonth(file) {
     const st = $('rvStatus'); if (st) st.textContent = '파일 분석 중…';
     let parsed = await fileParse(file);
     if (parsed.staffDaily) { // 담당자 일일마감 → 담당자별로 보관하고 그 달 전체를 다시 합친다
       const ym = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`, who = await pickStaff(); if (!who) return;
       const adminKey = await getAdminKey(`${parsed.month}월 ${who} 마감을`); if (!adminKey) return rvAlert('업로드 토큰이 필요해요', '토큰은 스크립트 속성 REVENUE_ADMIN_KEYS 에 넣은 값이에요.');
-      try { await archive('save', { month: `${ym}#${who}`, data: { rows: parsed.part, file: file.name, at: new Date().toISOString() }, adminKey }); try { localStorage.revenueAdminKey = adminKey; } catch {} }
+      try { await archive('save', { month: `${ym}#${who}`, data: { rows: parsed.part, file: file.name, at: new Date().toISOString() }, adminKey }); try { localStorage.revenueAdminKey = adminKey; } catch {} saveOriginal(`${ym}#${who}`, file, adminKey); }
       catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} return rvAlert(`${who} 마감 보관에 실패했어요`, e.message); }
       const parts = { [who]: parsed.part };
       try { const l = await archive('list'); for (const k of (l.parts || []).filter(k => k.startsWith(ym + '#') && k !== `${ym}#${who}`)) parts[k.split('#')[1]] = (await archive('get', { month: k })).data.rows || []; } catch {}
@@ -108,6 +122,7 @@
     if (!adminKey) return rvAlert(`${parsed.month}월 매출을 화면에만 띄웠어요`, '업로드 토큰을 넣지 않아 보관하지 않았어요. 새로고침하면 사라집니다. 토큰은 스크립트 속성 REVENUE_ADMIN_KEYS 에 넣은 값이에요.');
     try { await archive('save', { month, data: parsed, adminKey }); try { localStorage.revenueAdminKey = adminKey; } catch {} }
     catch (e) { if (/토큰/.test(e.message)) try { localStorage.removeItem('revenueAdminKey'); } catch {} return rvAlert(`${parsed.month}월 매출 보관에 실패했어요`, e.message + ' · 화면에는 보이지만 새로고침하면 사라집니다.'); }
+    await saveOriginal(month, file, adminKey);
     await loadMonths(); if ($('rvStatus')) $('rvStatus').textContent = `${file.name} · ${parsed.month}월 보관 완료`;
   }
   document.addEventListener('click', e => { // 매출표 ☰ 메뉴 열고 닫기
@@ -118,11 +133,12 @@
   // 가장 최신 보관 달을 바로 보여준다(이 기기에 마지막으로 본 달은 즉시, 서버 목록은 뒤에서 확인)
   async function openNewest() {
     try {
-      months = (await archive('list')).months || []; const newest = months.slice().sort().pop(); if (!newest) return;
+      const l = await archive('list'); months = l.months || []; files = l.files || {}; savedAt = l.saved || {}; const newest = months.slice().sort().pop(); if (!newest) return;
       const cur = data ? `${data.year}-${String(data.month).padStart(2, '0')}` : '';
-      if (cur && newest <= cur && shownMonth === cur) { render(); return; }
       if (cur && newest < cur) return;
-      const r = hist[newest] || (await archive('get', { month: newest })).data; hist[newest] = r;
+      // 보관된 달은 모두가 같은 결과를 본다: 기기에 남은 예전 결과가 아니라, 마지막으로 올린 분석을 다시 받아 온다
+      if (hist[newest] && hist[newest]._saved === savedAt[newest] && shownMonth === newest) { render(); return; }
+      const g = await archive('get', { month: newest }), r = g.data; r._saved = g.saved || savedAt[newest] || ''; hist[newest] = r;
       generation++; sourceMode = ''; data = r; shownMonth = newest; selectedDay = r.daily.at(-1)?.day; render();
       try { localStorage.rvLast = JSON.stringify({ m: newest, d: r }); } catch {}
     } catch {}
@@ -159,12 +175,14 @@
       sourceMode = 'sheet';
       result.updated = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium', hourCycle: 'h23' }).format(new Date());
       const liveM = `${result.year}-${String(result.month).padStart(2, '0')}`;
-      if (shownMonth && shownMonth > liveM) { loadMonths(); return; } // 더 최신 보관 달을 보고 있으면 시트(지난달)로 덮지 않음
+      await loadMonths(); if (requestGeneration !== generation) return;
+      if (months.includes(liveM) || (shownMonth && shownMonth > liveM)) { if (!data || !shownMonth) openNewest(); else render(); return; } // 올려 둔(보관된) 달은 시트보다 보관본을 모두에게 보여 줌
       data = result; shownMonth = ''; selectedDay = selectedDay || result.daily.at(-1)?.day; render();
       loadMonths().then(async () => { const live = `${result.year}-${String(result.month).padStart(2, '0')}`, newest = months.slice().sort().pop(); if (newest && newest > live && !shownMonth && requestGeneration === generation) { try { const r = hist[newest] || (await archive('get', { month: newest })).data; hist[newest] = r; generation++; sourceMode = ''; data = r; shownMonth = newest; selectedDay = r.daily.at(-1)?.day; render(); } catch {} } });
     } catch (error) {
       if (requestGeneration !== generation) return;
-      if (data) { $('rvStatus').textContent = '새로고침 실패 · 이전 확인 내용을 표시 중: ' + error.message; }
+      if (months.length) { openNewest(); return; } // 시트를 못 읽어도 보관된 달이 있으면 그걸 보여 줌
+      if (data) { const st = $('rvStatus'); if (st) st.textContent = '새로고침 실패 · 이전 확인 내용을 표시 중: ' + error.message; }
       else { sourceMode = ''; renderLocked(error.message); }
     } finally { busy = false; if (button?.isConnected) { button.disabled = false; button.textContent = data ? '새로고침' : '시트에서 불러오기'; } }
   }
@@ -252,6 +270,7 @@
       </section>`;
     if ($('rvRefresh')) $('rvRefresh').onclick = load;
     $('rvLock').onclick = () => { generation++; sourceMode = ''; renderLocked(); };
+    $('rvOrig')?.addEventListener('click', () => downloadOriginal(shownMonth || curKey()));
     $('rvMonth').onchange = async e => {
       const mo = e.target.value; shownMonth = mo;
       if (!mo) return load();

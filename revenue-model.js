@@ -115,7 +115,8 @@ function integratedParse_(rows) {
     var sn = String(r[C.staff] || '').trim() || '미상'; staff[sn] = staff[sn] || { count: 0, total: 0 }; staff[sn].count++; staff[sn].total += amt;
     payCols.forEach(function (p, k) { pays[k] += num(r[p.i]); });
     var nk = dom ? '국내' : nat; nations[nk] = (nations[nk] || 0) + amt;
-    var rt = String(r[C.route] || '').trim().replace(/^[A-Za-z]+$/, function (x) { return x.toUpperCase(); }) || '미상'; // 'sc' = 'SC' routes[rt] = routes[rt] || { count: 0, total: 0 }; routes[rt].count++; routes[rt].total += amt;
+    // 영문 경로는 대문자로 합침('sc' = 'SC')
+    var rt = String(r[C.route] || '').trim().replace(/^[A-Za-z]+$/, function (x) { return x.toUpperCase(); }) || '미상'; routes[rt] = routes[rt] || { count: 0, total: 0 }; routes[rt].count++; routes[rt].total += amt;
     var sx = sexOf(r); sexes[sx] = sexes[sx] || { count: 0, total: 0 }; sexes[sx].count++; sexes[sx].total += amt; // 성별 × 유입경로
     sexRoutes[rt] = sexRoutes[rt] || {}; sexRoutes[rt][sx] = sexRoutes[rt][sx] || { count: 0, total: 0 }; sexRoutes[rt][sx].count++; sexRoutes[rt][sx].total += amt;
     var vt = String(r[C.visit] || '').trim() === '초' ? '초진' : '재진'; visits[vt] = visits[vt] || { count: 0, total: 0 }; visits[vt].count++; visits[vt].total += amt;

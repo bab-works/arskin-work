@@ -412,19 +412,36 @@ function revenueArchive_(b, me) {
   revenueKeyCheck_(b.revenueKey);
   var ss = SpreadsheetApp.openById(REVENUE_SS_ID), sh = ss.getSheetByName('_분석보관');
   if (!sh) { sh = ss.insertSheet('_분석보관'); sh.getRange('A:D').setNumberFormat('@'); sh.appendRow(['월', '분석', '저장시각', '저장자']); sh.hideSheet(); }
-  var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 2).getValues() : [];
-  // 시트가 '2026-11'을 날짜로 바꿔 둔 경우도 'yyyy-MM'으로 읽는다
-  rows = rows.map(function (r) { return [r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM') : String(r[0]), r[1]]; });
+  var last = sh.getLastRow(), rows = last > 1 ? sh.getRange(2, 1, last - 1, 6).getValues() : [];
+  // 시트가 '2026-11'을 날짜로 바꿔 둔 경우도 'yyyy-MM'으로 읽는다. 5열 = 원본 파일 Drive id, 6열 = 원본 파일 이름
+  rows = rows.map(function (r) { return [r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM') : String(r[0]), r[1], r[2], r[3], String(r[4] || ''), String(r[5] || '')]; });
   // 'yyyy-MM' = 그 달 분석, 'yyyy-MM#담당자' = 그 담당자의 일일마감 원본 요약(이름 없이)
-  if (b.op === 'list') { var keys = rows.map(function (r) { return String(r[0]); }).filter(String); return { months: keys.filter(function (k) { return k.indexOf('#') < 0; }).sort().reverse(), parts: keys.filter(function (k) { return k.indexOf('#') > 0; }) }; }
+  if (b.op === 'list') { var keys = rows.map(function (r) { return String(r[0]); }).filter(String), files = {}; rows.forEach(function (r) { if (r[4]) files[r[0]] = r[5] || '원본.xlsx'; });
+    return { months: keys.filter(function (k) { return k.indexOf('#') < 0; }).sort().reverse(), parts: keys.filter(function (k) { return k.indexOf('#') > 0; }), files: files, saved: rows.reduce(function (o, r) { o[r[0]] = String(r[2] instanceof Date ? r[2].toISOString() : r[2]); return o; }, {}) }; }
   var month = String(b.month || ''); if (!/^\d{4}-\d{2}(#[^#]{1,20})?$/.test(month)) throw new Error('월 형식이 올바르지 않습니다');
   var idx = -1; for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === month) { idx = i + 2; break; }
-  if (b.op === 'get') { if (idx < 0) throw new Error('보관된 분석이 없습니다'); return { data: JSON.parse(sh.getRange(idx, 2).getValue()) }; }
-  if (b.op !== 'save') throw new Error('unknown op');
+  if (b.op === 'get') { if (idx < 0) throw new Error('보관된 분석이 없습니다'); return { data: JSON.parse(sh.getRange(idx, 2).getValue()), saved: String(rows[idx - 2][2] instanceof Date ? rows[idx - 2][2].toISOString() : rows[idx - 2][2]) }; }
+  if (b.op === 'file') { // 원본 파일 내려받기(매출 비밀번호 확인 후)
+    var fid = idx > 0 ? rows[idx - 2][4] : ''; if (!fid) throw new Error('이 달은 원본 파일이 보관되어 있지 않아요. (원본 보관 기능 이후에 올린 파일부터 저장돼요)');
+    var fb = DriveApp.getFileById(fid).getBlob(); return { name: rows[idx - 2][5] || fb.getName(), mime: fb.getContentType(), data: Utilities.base64Encode(fb.getBytes()) };
+  }
+  if (b.op !== 'save' && b.op !== 'saveFile') throw new Error('unknown op');
   // 올리기는 업로드 토큰(스크립트 속성 REVENUE_ADMIN_KEYS, 쉼표로 여러 개)이 있어야 한다
   var admins = String(PropertiesService.getScriptProperties().getProperty('REVENUE_ADMIN_KEYS') || '').split(',').map(function (x) { return x.trim(); }).filter(String);
   if (!admins.length) throw new Error('업로드 토큰이 아직 설정되지 않았습니다 (스크립트 속성 REVENUE_ADMIN_KEYS)');
   if (admins.indexOf(String(b.adminKey || '')) < 0) throw new Error('업로드 토큰이 맞지 않습니다');
+  if (b.op === 'saveFile') { // 원본 엑셀을 Drive '아르스킨 매출 원본' 폴더에 보관하고 그 달 줄 5·6열에 연결
+    if (idx < 0) throw new Error('먼저 분석을 보관해 주세요');
+    var bytes = Utilities.base64Decode(String(b.data || '')); if (bytes.length > 15 * 1024 * 1024) throw new Error('파일이 너무 큽니다 (15MB 이하)');
+    var P = PropertiesService.getScriptProperties(), rid = P.getProperty('REVENUE_FILES_ROOT'), root = null;
+    try { root = rid ? DriveApp.getFolderById(rid) : null; if (root && root.isTrashed()) root = null; } catch (e) { root = null; }
+    if (!root) { root = DriveApp.createFolder('아르스킨 매출 원본'); P.setProperty('REVENUE_FILES_ROOT', root.getId()); }
+    var name = String(b.name || '원본.xlsx').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120), old = rows[idx - 2][4];
+    var f = root.createFile(Utilities.newBlob(bytes, String(b.mime || 'application/octet-stream'), month.replace('#', '_') + ' ' + name));
+    sh.getRange(idx, 5, 1, 2).setValues([[f.getId(), name]]);
+    if (old) try { DriveApp.getFileById(old).setTrashed(true); } catch (e) {} // 같은 달 예전 원본은 휴지통으로
+    return { ok: true };
+  }
   var text = JSON.stringify(b.data || {}); if (text.length > 45000) throw new Error('분석 결과가 너무 큽니다');
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try { var row = [month, text, new Date().toISOString(), me]; sh.getRange('A:A').setNumberFormat('@'); if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row); } finally { lock.releaseLock(); }
@@ -940,7 +957,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-27.4'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.5'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
