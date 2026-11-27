@@ -117,7 +117,9 @@
   }
   function changed() {
     if (!ed.firstElementChild && !ed.textContent) ed.innerHTML = '<p><br></p>';
-    [...ed.childNodes].filter(n => n.nodeType === 3 && n.nodeValue.trim()).forEach(t => { const p = document.createElement('p'); t.replaceWith(p); p.append(t); }); // 맨바깥 글자는 문단으로
+    [...ed.childNodes].filter(n => n.nodeType === 3 && n.nodeValue.trim()).forEach(t => { // 맨바깥 글자는 문단으로(커서 위치는 그대로)
+      const sel = getSelection(), here = sel.rangeCount && sel.anchorNode === t ? sel.anchorOffset : -1, p = document.createElement('p'); t.replaceWith(p); p.append(t);
+      if (here >= 0) { const r = document.createRange(); r.setStart(t, Math.min(here, t.length)); r.collapse(true); sel.removeAllRanges(); sel.addRange(r); } });
     ed.querySelectorAll('li.task').forEach(li => { if (!li.querySelector(':scope > input[type=checkbox]')) li.prepend(checkbox(), ' '); });
     ed.querySelectorAll('li:not(.task) > input[type=checkbox]').forEach(c => c.parentElement.classList.add('task'));
     ed.classList.toggle('empty', !ed.textContent.trim() && !ed.querySelector('img,hr,li,table'));

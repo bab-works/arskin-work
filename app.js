@@ -43,6 +43,11 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const el = html => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
   const $ = id => document.getElementById(id);
+  // 입력 중 보호: 글을 쓰는 동안(편집 칸에 커서) 뒤에서 오는 화면 다시 그리기는 미뤘다가, 칸에서 나오면 한 번에 반영
+  const isTyping = () => { const a = document.activeElement; return !!a && (a.isContentEditable || a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /^(text|search|url|email|tel|number|)$/i.test(a.getAttribute('type') || ''))); };
+  const idleQueue = new Map();
+  const whenIdle = (key, fn) => { if (!isTyping()) return fn(); idleQueue.set(key, fn); };
+  document.addEventListener('focusout', () => setTimeout(() => { if (isTyping() || !idleQueue.size) return; const fns = [...idleQueue.values()]; idleQueue.clear(); fns.forEach(f => { try { f(); } catch (e) { console.error(e); } }); }, 0));
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const toTime = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
   // 확인 창: 화면 가운데, 뒤는 살짝 어둡게. confirm() 대신 (Enter=확인, Esc=취소)
@@ -1237,7 +1242,7 @@
     if (loadContentLinks.done) return; loadContentLinks.done = true;
     const c = cacheGet('contentLinks'); if (c) { state.contentData = c; renderReport(); }
     try { const j = await api.get({ action: 'content' }); const slim = {}; ['hongzz', 'global', 'figo', 'arskin', 'won', 'jasa'].forEach(k => { slim[k] = (j[k] || []).slice(-60).map(r => [r[0], String(r[1]).slice(0, 80), r[2]]); });
-      state.contentData = slim; cacheSet('contentLinks', slim); renderReport(); } catch {}
+      state.contentData = slim; cacheSet('contentLinks', slim); whenIdle('report', renderReport); } catch {}
   }
   // 이번 주(월~일) 발행 예정: 날짜와 내용만 한 줄씩 (콘텐츠 캘린더 시트에서)
   // 실제 발행 글(채널 시트: 날짜·제목·링크)도 함께 → 캘린더 시트를 안 채운 주에도 보인다
@@ -1419,12 +1424,12 @@
     const requested = anchor;
 
     const sk = `shared:${owner}:${from}:${to}`, sc = cacheGet(sk);
-    if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); renderShared(); }
+    if (sc && !state.shared.length) { state.shared = sc.map(r => ({ ...r, _who: owner })); whenIdle('shared', renderShared); }
     try { const result = await api.get({ who: owner, from, to }); if (requested !== (state.sharedAnchor || state.sel) || dir !== isDirector()) return; const rows = result.rows.filter(r => !dir || r.section === '원장님일정'); cacheSet(sk, rows); state.shared = rows.map(r => ({ ...r, _who: owner })); }
     catch (e) { if (e.message !== 'unauthorized') toast('공통 데이터 불러오기 실패: ' + e.message); return; } // 코드 문제는 코드 입력 창이 따로 뜸
     if (!dir) weeklySharedCleanup(); // 지난주까지 끝낸 공통 변동 업무는 주 단위로 정리
-    if (dir) api.get({ who: SHARED, from, to }).then(j => { if (!isDirector()) return; state.mktEvents = j.rows.filter(r => r.section === '일정').map(r => ({ ...r, _who: SHARED })); renderShared(); }).catch(() => {}); // 원장님 캘린더에 공용 일정도 (다른 색)
-    renderShared();
+    if (dir) api.get({ who: SHARED, from, to }).then(j => { if (!isDirector()) return; state.mktEvents = j.rows.filter(r => r.section === '일정').map(r => ({ ...r, _who: SHARED })); whenIdle('shared', renderShared); }).catch(() => {}); // 원장님 캘린더에 공용 일정도 (다른 색)
+    whenIdle('shared', renderShared);
   }
   // 캘린더 일정: 0.8초 꾹 누르면 들려서 다른 날짜 칸에 놓을 수 있다 (짧게 누르면 편집)
   function longPressMove(e, wrap, r) {
@@ -1673,7 +1678,7 @@
     state.dir = { tasks: j.tasks || [], me: j.me || '' }; state.nudge = j.nudgeText || (j.marketer === false ? false : null); state.customCards = j.cards || {}; state.admin = !!j.admin; state.sv = j.sv || ''; state.revOnly = !!j.revenueOnly; document.documentElement.classList.toggle('rev-only', state.revOnly); state.deny = j.deny || []; state.perms = j.perms || {}; state.staff = j.staff || []; state.members = (j.members?.length ? j.members : null) || C.PEOPLE.filter(p => p.name !== C.DEFAULT_PERSON || !j.admin).map(p => p.name).filter(n => n !== j.me); if (!state.members.includes(DIRECTOR_WHO) && j.admin) state.members.push(DIRECTOR_WHO); applyPerms(); document.querySelector('.gear').hidden = !state.admin; // 설정은 관리자(미스타전)만
   }
   // 권한·휴일 등은 창으로 돌아올 때(5분마다 최대 1번) 다시 받아 새로고침 없이 반영
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => whenIdle('boot', () => { applyBoot(j); cacheSet('boot', { ...j, prefs: undefined }); })).catch(() => {}); });
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
     try { const j = await api.get({ action: 'boot' }, c ? 8000 : 20000); boot.at = Date.now(); applyBoot(j); cacheSet('boot', { ...j, prefs: undefined }); if ('prefs' in j && syncPrefs(j.prefs)) return; }
@@ -1736,15 +1741,15 @@
   function loadCalendar() { // 이번 주 발행용 콘텐츠 캘린더 (실패 이유를 카드에 보여주고 다시 시도 가능)
     if (loadCalendar.busy) return; loadCalendar.busy = true;
     api.get({ action: 'calendar' }).then(j => { if (!j.grid) throw new Error(j.error || '빈 응답'); state.calendar = parseCalendar(j.grid); loadCalendar.err = ''; })
-      .catch(e => { loadCalendar.err = e.message || '알 수 없는 오류'; }).finally(() => { loadCalendar.busy = false; renderReport(); });
+      .catch(e => { loadCalendar.err = e.message || '알 수 없는 오류'; }).finally(() => { loadCalendar.busy = false; whenIdle('report', renderReport); });
   }
   function afterLoad(asked) {
     const today = todayKst(); // 00:05 트리거가 못 돌았을 때 보완 생성 (서버가 멱등 처리)
     if (!state.dayAnchor && isWorkday(today) && !state.rows.some(r => r.date === today)) api.post({ action: 'generate', date: today }).then(j => { if (j.rows?.length && asked === state.person) { state.rows.push(...j.rows); render(); } }).catch(() => {});
     const rp = cacheGet('reelsPlan'); if (rp && !state.reelPlan.length) { state.reelPlan = rp; renderReport(); }
-    api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) renderReport(); }).catch(() => {});
+    api.get({ action: 'reelsPlan' }).then(j => { state.reelPlan = j.items || []; cacheSet('reelsPlan', state.reelPlan); if (asked === state.person) whenIdle('report', renderReport); }).catch(() => {});
     if (state.person === C.REELS_OWNER && !isDirector()) api.get({ who: DIRECTOR_WHO, from: today, to: today }).then(j => { // 원장님 영상 숙제 ↔ 릴스 업무
-      state.dirHw = Object.fromEntries((j.rows || []).filter(r => r.section === '원장님숙제' && String(r.end).startsWith('plan:')).map(r => [r.end, r])); if (asked === state.person) renderReport(); }).catch(() => {});
+      state.dirHw = Object.fromEntries((j.rows || []).filter(r => r.section === '원장님숙제' && String(r.end).startsWith('plan:')).map(r => [r.end, r])); if (asked === state.person) whenIdle('report', renderReport); }).catch(() => {});
     loadContentLinks();
     loadCalendar();
     // 체험단·리얼모델 예약 → 오늘 변동업무(진행 중). 밤 00:05 자동 생성이 못 돌았을 때를 위해 하루 한 번 확인
@@ -2225,8 +2230,8 @@
       const j = await api.get({ action: 'notifs' }), seen = new Set(state.notifs.items.map(x => x.id)), news = (j.items || []).filter(x => !x.read && !seen.has(x.id)), fresh = news.filter(x => x.kind !== 'done');
       const dones = (j.items || []).filter(x => !x.read && x.kind === 'done'); // 동료 업무 완료 소식: 오른쪽 위에 잠깐 → 읽음
       if (dones.length) { dones.slice(0, 5).forEach((x, i) => setTimeout(() => peekDone(x), i * 1900)); api.post({ action: 'notifRead', ids: dones.map(x => x.id) }).catch(() => {}); dones.forEach(x => { x.read = 'shown'; }); }
-      state.notifs = { items: j.items || [], sent: j.sent || [] }; paintBell(); if (document.querySelector('.bell-pop')) paintBellPop();
-      if (loadNotifs.ready && fresh.length) { toast(`🔔 ${reqLabel(fresh[0].from).replace(/님$/, '')}님이 업무를 요청했어요${fresh.length > 1 ? ` 외 ${fresh.length - 1}건` : ''}`); if (state.view === 'daily' && state.person === state.dir.me) load(); }
+      state.notifs = { items: j.items || [], sent: j.sent || [] }; paintBell(); if (document.querySelector('.bell-pop')) whenIdle('bellpop', paintBellPop);
+      if (loadNotifs.ready && fresh.length) { toast(`🔔 ${reqLabel(fresh[0].from).replace(/님$/, '')}님이 업무를 요청했어요${fresh.length > 1 ? ` 외 ${fresh.length - 1}건` : ''}`); if (state.view === 'daily' && state.person === state.dir.me) whenIdle('load', load); }
       loadNotifs.ready = true;
     } catch {}
   }
