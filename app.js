@@ -1906,7 +1906,7 @@
   function logout() {
     if (!confirm('로그아웃할까요? 다시 쓰려면 접속 코드를 입력해야 해요.')) return;
     window.MemoHub?.leave?.();
-    try { ['accessCode', 'revenueKey', 'rvLast', 'memoCur', 'memoFolder', 'person'].forEach(k => localStorage.removeItem(k)); } catch {}
+    try { ['accessCode', 'revenueKey', 'rvLast'].forEach(k => localStorage.removeItem(k)); } catch {} // 화면 설정은 계정별 보관(profile.js)이라 지우지 않음
     location.reload();
   }
 
