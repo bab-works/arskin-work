@@ -268,7 +268,7 @@
     del.onclick = () => opts.noStatus ? (deleteRow(r), render()) : statusMenu(del, statusCode(r.status), code => setStatus(r, code), () => { deleteRow(r); render(); }, r.section === '공통업무' ? [{ label: '↻ 반복 업무로 옮기기', run: () => { updateRow(r, { section: '공통반복' }); toast('반복 업무로 옮겼습니다'); render(); } }] : r.section === '공통반복' ? [{ label: '→ 변동 업무로 옮기기', run: () => { updateRow(r, { section: '공통업무' }); toast('변동 업무로 옮겼습니다'); render(); } }] : []);
     row.append(chip, tx);
     if (r.section === '원장님리스트' && r.col === '릴스촬영') row.append(linkBtn(r)); // 촬영 레퍼런스 링크(아이콘 누르면 바로 열림)
-    if (isDone(r) && !opts.noStatus && isTaskSec(r.section)) { // 완료일: 연한 회색, 눌러서 날짜 수정
+    if (isDone(r) && !opts.noStatus && (isTaskSec(r.section) || r.section === '원장님리스트')) { // 완료일: 연한 회색, 눌러서 날짜 수정
       const c = String(r.completed || r.date).slice(0, 10), dd = el(`<label class="done-date" title="완료일 수정">${c.slice(5).replace('-', '/')}<input type="date" value="${c}" max="${todayKst()}" aria-label="완료일 수정"></label>`);
       dd.querySelector('input').onchange = e => { if (!e.target.value) return; updateRow(r, { completed: e.target.value }); toast(`완료일을 ${e.target.value.slice(5).replace('-', '/')}로 바꿨습니다`); render(); loadDone(); };
       row.append(dd);
