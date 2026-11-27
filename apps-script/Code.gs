@@ -939,7 +939,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-27.2'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1185,13 +1185,19 @@ function prefsSave_(me, b) {
 /* ---------- 업무 요청 알림: @태그로 요청하면 받는 사람 알림 + 그 사람 '업무 배치 예정'(원장님은 '추가 업무')에 자동 입력. 공통 시트 '알림' 탭 ---------- */
 function notifSheet_() {
   var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('알림');
-  if (!sh) { sh = ss.insertSheet('알림'); sh.getRange('A:H').setNumberFormat('@'); sh.appendRow(['id', '시각', '받는 사람', '보낸 사람', '내용', '읽은 시각', '연결 업무', '날짜']); sh.setFrozenRows(1); }
+  if (!sh) { sh = ss.insertSheet('알림'); sh.getRange('A:H').setNumberFormat('@'); sh.appendRow(['id', '시각', '받는 사람', '보낸 사람', '내용', '읽은 시각', '연결 업무', '날짜', '종류']); sh.setFrozenRows(1); }
+  else if (!sh.getRange(1, 9).getDisplayValue()) sh.getRange(1, 9).setValue('종류'); // 예전에 만든 탭에 '종류' 머리글 추가
   return sh;
 }
 function notify_(me, b) {
   if (!me) throw new Error('unauthorized');
   var text = String(b.text || '').replace(/\s+/g, ' ').trim().slice(0, 300), from = String(b.fromLabel || me).replace(/[()\s]/g, '').slice(0, 10) || me;
   if (!text) throw new Error('요청 내용을 적어 주세요');
+  if (b.kind === 'done') { // 업무 완료 소식: 나를 뺀 모두에게(업무 행은 만들지 않음)
+    var all = Object.keys(REPORT_SHEETS).filter(function (n) { return n !== '공통' && n !== me; }), now0 = new Date().toISOString(), sh0 = notifSheet_(), d0 = todayKst_();
+    all.forEach(function (who, k) { sh0.appendRow(['D' + Date.now().toString(36) + k, now0, who, me, text, '', '', d0, 'done']); });
+    return { sent: all.length };
+  }
   var to = (b.to || []).map(String).filter(function (n, i, a) { return a.indexOf(n) === i && n !== me && n !== '공통' && sheetIdFor(n); });
   if (!to.length) throw new Error('받는 사람을 골라 주세요');
   var d = todayKst_(), now = new Date().toISOString(), sh = notifSheet_(), out = [];
@@ -1200,7 +1206,7 @@ function notify_(me, b) {
     to.forEach(function (who, k) {
       var nid = 'N' + Date.now().toString(36) + k, rid = newId_(d, 800 + k);
       upsertRow(who, { id: rid, date: d, section: who === DIRECTOR ? '원장님리스트' : '배치예정', col: who === DIRECTOR ? '그외' : '', status: 'todo', text: '요청·' + from + ') ' + text, start: '', end: '', created: d, origin: 'req-' + nid, order: '' });
-      sh.appendRow([nid, now, who, me, text, '', rid, d]); out.push({ id: nid, to: who, row: rid });
+      sh.appendRow([nid, now, who, me, text, '', rid, d, 'req']); out.push({ id: nid, to: who, row: rid });
     });
   } finally { lock.releaseLock(); }
   return { sent: out };
@@ -1208,8 +1214,8 @@ function notify_(me, b) {
 function notifList_(me) {
   if (!me) throw new Error('unauthorized');
   var sh = notifSheet_(), n = sh.getLastRow(); if (n < 2) return { items: [], sent: [] };
-  var from = Math.max(2, n - 499), v = sh.getRange(from, 1, n - from + 1, 8).getDisplayValues(), obj = function (r) { return { id: r[0], at: r[1], to: r[2], from: r[3], text: r[4], read: r[5], row: r[6], date: r[7] }; };
-  return { items: v.filter(function (r) { return r[2] === me; }).map(obj).reverse().slice(0, 60), sent: v.filter(function (r) { return r[3] === me; }).map(obj).reverse().slice(0, 30) };
+  var from = Math.max(2, n - 499), v = sh.getRange(from, 1, n - from + 1, 9).getDisplayValues(), obj = function (r) { return { id: r[0], at: r[1], to: r[2], from: r[3], text: r[4], read: r[5], row: r[6], date: r[7], kind: r[8] || 'req' }; };
+  return { items: v.filter(function (r) { return r[2] === me; }).map(obj).reverse().slice(0, 80), sent: v.filter(function (r) { return r[3] === me && r[8] !== 'done'; }).map(obj).reverse().slice(0, 30) };
 }
 function notifRead_(me, b) {
   if (!me) throw new Error('unauthorized');

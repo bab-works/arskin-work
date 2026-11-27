@@ -339,7 +339,7 @@
       p.animate([{ transform: 'translate(-50%,-50%) scale(1) rotate(0)', opacity: 1 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy + 30}px)) scale(.6) rotate(${Math.random() * 540}deg)`, opacity: 0 }], { duration: 750 + Math.random() * 250, easing: 'cubic-bezier(.2,.7,.3,1)' }).onfinish = () => p.remove();
     }
   }
-  const setStatus = (r, code) => { updateRow(r, { status: code, section: placeFor(r, code), completed: code === 'done' ? (isDone(r) && r.completed || todayKst()) : '' }); if (isTaskSec(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') { const b = document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`); b?.classList.add('just-done'); confetti(b); } };
+  const setStatus = (r, code) => { if (code === 'done' && !isDone(r) && (isTaskSec(r.section) || String(r.section).startsWith('원장님'))) shareDone(r); updateRow(r, { status: code, section: placeFor(r, code), completed: code === 'done' ? (isDone(r) && r.completed || todayKst()) : '' }); if (isTaskSec(r.section) || r.section.startsWith('공통') || r.section.startsWith('원장님')) holdSort(r.id); render(); if (code === 'done') { const b = document.querySelector(`.st[data-rid="${CSS.escape(r.id)}"]`); b?.classList.add('just-done'); confetti(b); } };
   const isProject = r => state.rows.some(x => x.section === '하위업무' && x.col === r.id && x.date === r.date); // 하위 업무가 1개 이상일 때만 프로젝트
   function progressOf(r) {
     const children = childrenOf(r), done = children.filter(isDone).length;
@@ -1316,6 +1316,7 @@
     document.querySelectorAll('[data-team]').forEach(b => b.classList.toggle('active', v === 'team' && b.dataset.team === state.teamPage));
     if (v === 'director') { renderDirector(); loadDirector(); }
     window.document.querySelector('.topbar').classList.toggle('hidden', v !== 'daily');
+    { const bell = $('bellBtn'), act = document.querySelector('.topbar .actions'); if (v === 'daily') { act.append(bell); bell.classList.remove('floating'); } else { document.body.append(bell); bell.classList.add('floating'); } } // 일간보고서는 ☰ 오른쪽, 다른 화면은 오른쪽 위
     if (v === 'calendar') window.ContentHub.open();
     if (v === 'revenue') window.RevenueHub.open();
   }
@@ -2206,19 +2207,31 @@
   const reqLabel = n => reqPeople().find(p => p.name === n)?.label || n;
   const ago = s => { const m = Math.round((Date.now() - new Date(s)) / 6e4); return m < 1 ? '방금' : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.round(m / 60)}시간 전` : `${new Date(s).getMonth() + 1}/${new Date(s).getDate()}`; };
   function paintBell() {
-    const b = $('bellBtn'), n = state.notifs.items.filter(x => !x.read).length; b.hidden = state.revOnly || !state.dir.me;
+    const b = $('bellBtn'), n = state.notifs.items.filter(x => !x.read && x.kind !== 'done').length; b.hidden = state.revOnly || !state.dir.me;
     const c = b.querySelector('.bell-n'); c.hidden = !n; c.textContent = n > 9 ? '9+' : n; b.classList.toggle('has', !!n); b.setAttribute('aria-label', `알림 · 업무 요청${n ? ` (읽지 않은 ${n}개)` : ''}`);
   }
   async function loadNotifs() {
     if (state.revOnly || !state.dir.me) return paintBell();
     try {
-      const j = await api.get({ action: 'notifs' }), seen = new Set(state.notifs.items.map(x => x.id)), fresh = (j.items || []).filter(x => !x.read && !seen.has(x.id));
+      const j = await api.get({ action: 'notifs' }), seen = new Set(state.notifs.items.map(x => x.id)), news = (j.items || []).filter(x => !x.read && !seen.has(x.id)), fresh = news.filter(x => x.kind !== 'done');
+      const dones = (j.items || []).filter(x => !x.read && x.kind === 'done'); // 동료 업무 완료 소식: 오른쪽 위에 잠깐 → 읽음
+      if (dones.length) { dones.slice(0, 5).forEach((x, i) => setTimeout(() => peekDone(x), i * 1900)); api.post({ action: 'notifRead', ids: dones.map(x => x.id) }).catch(() => {}); dones.forEach(x => { x.read = 'shown'; }); }
       state.notifs = { items: j.items || [], sent: j.sent || [] }; paintBell(); if (document.querySelector('.bell-pop')) paintBellPop();
       if (loadNotifs.ready && fresh.length) { toast(`🔔 ${reqLabel(fresh[0].from).replace(/님$/, '')}님이 업무를 요청했어요${fresh.length > 1 ? ` 외 ${fresh.length - 1}건` : ''}`); if (state.view === 'daily' && state.person === state.dir.me) load(); }
       loadNotifs.ready = true;
     } catch {}
   }
-  setInterval(() => { if (!document.hidden) loadNotifs(); }, 60000); addEventListener('focus', () => loadNotifs());
+  setInterval(() => { if (!document.hidden) loadNotifs(); }, 30000); addEventListener('focus', () => loadNotifs());
+  function peekDone(x) { // 오른쪽 위에 1초 남짓 떴다가 사라지는 완료 소식
+    const n = el(`<div class="done-peek" role="status"><b>✓ ${esc(reqLabel(x.from).replace(/님$/, ''))}님 완료</b><span>${esc(x.text.replace(CAT_RE, ''))}</span></div>`);
+    document.body.append(n); requestAnimationFrame(() => n.classList.add('in')); setTimeout(() => { n.classList.remove('in'); setTimeout(() => n.remove(), 300); }, 1600);
+  }
+  // 내가 업무를 완료하면 동료에게 알림(종 안 토글로 끄고 켬, 기본 켬)
+  const doneShare = () => { try { return localStorage.notifyDone !== '0'; } catch { return true; } };
+  function shareDone(r) {
+    if (!doneShare() || !state.dir.me || state.person !== state.dir.me) return; // 내 보고서(원장님은 워크시트)의 업무만
+    api.post({ action: 'notify', kind: 'done', text: String(r.text || '').slice(0, 200), fromLabel: reqLabel(state.dir.me) }).catch(() => {});
+  }
   $('bellBtn').onclick = () => { const open = document.querySelector('.bell-pop'); if (open) { open.remove(); $('bellBtn').setAttribute('aria-expanded', 'false'); } else openBellPop(); };
   function openBellPop() {
     const pop = el('<div class="bell-pop" role="dialog" aria-label="알림 · 업무 요청"></div>'); document.body.append(pop); $('bellBtn').setAttribute('aria-expanded', 'true');
@@ -2230,14 +2243,15 @@
   function paintBellPop() {
     const pop = document.querySelector('.bell-pop'); if (!pop) return;
     const keep = pop.querySelector('textarea')?.value || '', picked = new Set([...pop.querySelectorAll('.bp-to [aria-pressed=true]')].map(b => b.dataset.n));
-    const others = reqPeople().filter(p => p.name !== state.dir.me), unread = state.notifs.items.filter(x => !x.read).length, tab = state.bellTab;
-    const list = tab === 'in' ? state.notifs.items : state.notifs.sent;
+    const others = reqPeople().filter(p => p.name !== state.dir.me), unread = state.notifs.items.filter(x => !x.read && x.kind !== 'done').length, tab = state.bellTab;
+    const list = tab === 'in' ? state.notifs.items.filter(x => x.kind !== 'done') : tab === 'done' ? state.notifs.items.filter(x => x.kind === 'done') : state.notifs.sent;
     pop.innerHTML = `<div class="bp-head"><b>알림 · 업무 요청</b>${unread ? `<button type="button" class="bp-all">모두 읽음</button>` : ''}</div>
+      <label class="bp-share"><span>✓ 업무를 완료하면 동료에게 알리기</span><input type="checkbox" role="switch"${doneShare() ? ' checked' : ''}><i aria-hidden="true"></i></label>
       <form class="bp-new"><div class="bp-to" role="group" aria-label="받는 사람">${others.map(p => `<button type="button" data-n="${esc(p.name)}" aria-pressed="${picked.has(p.name)}">@${esc(p.label)}</button>`).join('')}</div>
         <div class="bp-text"><textarea rows="2" maxlength="300" placeholder="@써니 블로그 원고 검수 부탁해요 (받는 사람을 누르거나 @이름)" aria-label="요청 내용"></textarea><div class="bp-suggest" hidden></div></div>
         <div class="bp-send"><small>받는 사람의 「업무 배치 예정」에 자동으로 들어가요</small><button class="primary">요청 보내기</button></div></form>
-      <div class="bp-tabs" role="tablist"><button type="button" role="tab" data-t="in" aria-selected="${tab === 'in'}">받은 요청${unread ? ` <i>${unread}</i>` : ''}</button><button type="button" role="tab" data-t="out" aria-selected="${tab === 'out'}">보낸 요청</button></div>
-      <ul class="bp-list">${list.map(x => `<li class="${tab === 'in' && !x.read ? 'unread' : ''}" data-id="${esc(x.id)}"><div><b>${esc(tab === 'in' ? reqLabel(x.from) + ' → 나' : '나 → ' + reqLabel(x.to))}</b><small>${ago(x.at)}${tab === 'out' ? (x.read ? ' · 확인함' : ' · 아직 안 읽음') : ''}</small></div><p>${esc(x.text)}</p></li>`).join('') || `<li class="bp-empty">${tab === 'in' ? '받은 요청이 없어요' : '보낸 요청이 없어요'}</li>`}</ul>`;
+      <div class="bp-tabs" role="tablist"><button type="button" role="tab" data-t="in" aria-selected="${tab === 'in'}">받은 요청${unread ? ` <i>${unread}</i>` : ''}</button><button type="button" role="tab" data-t="out" aria-selected="${tab === 'out'}">보낸 요청</button><button type="button" role="tab" data-t="done" aria-selected="${tab === 'done'}">완료 소식</button></div>
+      <ul class="bp-list">${list.map(x => `<li class="${tab === 'in' && !x.read ? 'unread' : ''}" data-id="${esc(x.id)}"><div><b>${esc(tab === 'done' ? '✓ ' + reqLabel(x.from) + ' 완료' : tab === 'in' ? reqLabel(x.from) + ' → 나' : '나 → ' + reqLabel(x.to))}</b><small>${ago(x.at)}${tab === 'out' ? (x.read ? ' · 확인함' : ' · 아직 안 읽음') : ''}</small></div><p>${esc(x.text)}</p></li>`).join('') || `<li class="bp-empty">${tab === 'in' ? '받은 요청이 없어요' : tab === 'done' ? '동료의 완료 소식이 아직 없어요' : '보낸 요청이 없어요'}</li>`}</ul>`;
     const ta = pop.querySelector('textarea'), sug = pop.querySelector('.bp-suggest'); ta.value = keep;
     const sync = () => { const t = ta.value; pop.querySelectorAll('.bp-to button').forEach(b => { if (t.includes('@' + reqLabel(b.dataset.n))) b.setAttribute('aria-pressed', 'true'); }); };
     pop.querySelectorAll('.bp-to button').forEach(b => b.onclick = () => b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'));
@@ -2252,6 +2266,7 @@
       try { await api.post({ action: 'notify', to, text, fromLabel: reqLabel(state.dir.me) }); toast(`${to.map(n => reqLabel(n).replace(/님$/, '') + '님').join(', ')}께 요청했어요 · 업무 배치 예정에 들어갔어요`); ta.value = ''; pop.querySelectorAll('.bp-to button').forEach(b => b.setAttribute('aria-pressed', 'false')); state.bellTab = 'out'; await loadNotifs(); if (to.includes(state.person)) load(); }
       catch (err) { toast('요청 실패: ' + err.message); } btn.disabled = false; };
     pop.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { state.bellTab = b.dataset.t; paintBellPop(); });
+    pop.querySelector('.bp-share input').onchange = e => { try { localStorage.notifyDone = e.target.checked ? '1' : '0'; } catch {} toast(e.target.checked ? '업무를 완료하면 동료에게 알려요' : '완료 알림을 껐어요'); };
     pop.querySelector('.bp-all')?.addEventListener('click', async () => { try { const j = await api.post({ action: 'notifRead', all: true }); state.notifs = { items: j.items || [], sent: j.sent || [] }; paintBell(); paintBellPop(); } catch (e) { toast(e.message); } });
     pop.querySelector('.bp-list').onclick = async e => { const li = e.target.closest('li[data-id]'); if (!li || tab !== 'in') return; const x = state.notifs.items.find(y => y.id === li.dataset.id);
       if (x && !x.read) { try { const j = await api.post({ action: 'notifRead', ids: [x.id] }); state.notifs = { items: j.items || [], sent: j.sent || [] }; paintBell(); } catch {} }

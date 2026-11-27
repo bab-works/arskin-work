@@ -1524,14 +1524,15 @@ html.printing .row-link{display:none!important}
 .reel-wait>summary small{font-weight:500;color:var(--text-2);margin-left:6px}
 html.printing .reel-next,html.printing .reel-more{display:none!important}
 /* 알림 · 업무 요청 */
-.bell{position:fixed;top:14px;right:16px;z-index:46;width:44px;height:44px;border-radius:50%;background:var(--card);box-shadow:0 4px 14px rgba(0,27,55,.12);display:grid;place-items:center;color:var(--sub);padding:0}
+.bell{position:relative;width:44px;height:44px;border-radius:var(--r-md);background:var(--card);display:grid;place-items:center;color:var(--sub);padding:0;flex:none}
+.bell.floating{position:fixed;top:14px;right:16px;z-index:46;border-radius:50%;box-shadow:0 4px 14px rgba(0,27,55,.12)}
 .bell[hidden]{display:none}.bell svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round}
 .bell.has{color:var(--text)}.bell.has svg{animation:bellRing 1.2s ease-in-out 2}
 @keyframes bellRing{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(8deg)}60%{transform:rotate(-4deg)}}
 @media (prefers-reduced-motion:reduce){.bell.has svg{animation:none}}
 .bell-n{position:absolute;top:2px;right:2px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
 .bell-n[hidden]{display:none}
-.topbar{padding-right:60px}.rv-heading,.lv-head,.home .clock-hero{padding-right:52px}
+.rv-heading,.lv-head{padding-right:52px}
 .bell-pop{position:fixed;top:66px;right:16px;z-index:47;width:min(380px,calc(100vw - 24px));max-height:min(640px,calc(100vh - 90px));display:flex;flex-direction:column;background:var(--card);border-radius:var(--r-lg);box-shadow:0 18px 48px rgba(0,27,55,.22),0 0 0 1px rgba(0,27,55,.06);overflow:hidden}
 .bp-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}.bp-head b{font-size:15px}.bp-all{background:none;font-size:12px;color:var(--blue-text);min-height:32px}
 .bp-new{padding:0 16px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
@@ -1548,5 +1549,14 @@ html.printing .reel-next,html.printing .reel-more{display:none!important}
 .bp-list li div{display:flex;justify-content:space-between;gap:8px}.bp-list li b{font-size:13px}.bp-list li small{font-size:11px;color:var(--text-2);white-space:nowrap}
 .bp-list li p{margin:3px 0 0;font-size:14px;color:var(--sub)}.bp-list li.unread{background:var(--blue-weak)}.bp-list li.unread b::before{content:'● ';color:var(--blue)}
 .bp-list .bp-empty{color:var(--muted);font-size:13px;cursor:default;text-align:center;padding:20px}
-@media (max-width:760px){.bell{top:10px;right:10px;width:40px;height:40px}.bell-pop{top:58px;right:12px}}
+@media (max-width:760px){.bell.floating{top:10px;right:10px;width:40px;height:40px}.bell-pop{top:58px;right:12px}}
 html.printing .bell,html.printing .bell-pop{display:none!important}
+/* 알림 안 '완료하면 알리기' 스위치 + 동료 완료 소식(오른쪽 위 잠깐) */
+.bp-share{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 16px 10px;padding:10px 12px;background:var(--grey50);border-radius:var(--r-md);font-size:13px;font-weight:600;cursor:pointer}
+.bp-share input{position:absolute;opacity:0;width:1px;height:1px}
+.bp-share i{flex:none;width:40px;height:24px;border-radius:999px;background:var(--grey200);position:relative;transition:background var(--dur) var(--ease)}
+.bp-share i::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform var(--dur) var(--ease)}
+.bp-share input:checked+i{background:var(--st-done)}.bp-share input:checked+i::after{transform:translateX(16px)}.bp-share input:focus-visible+i{outline:2px solid var(--blue);outline-offset:2px}
+.done-peek{position:fixed;top:16px;right:16px;z-index:70;max-width:320px;display:flex;flex-direction:column;gap:2px;padding:10px 14px;background:rgba(25,31,40,.94);color:#fff;border-radius:var(--r-md);box-shadow:0 10px 30px rgba(0,0,0,.2);opacity:0;transform:translateY(-8px);transition:opacity 220ms var(--ease),transform 260ms var(--ease);pointer-events:none}
+.done-peek.in{opacity:1;transform:none}.done-peek b{font-size:13px;color:#7ee2a8}.done-peek span{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.done-peek{transition:none}}
