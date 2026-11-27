@@ -46,8 +46,32 @@
     return rowsOf(name);
   }
   function rvAlert(title, msg) { // 놓치지 않게 화면 가운데 알림
-    const d = document.createElement('dialog'); d.className = 'code-dlg'; d.innerHTML = `<h2>${esc(title)}</h2><p>${esc(msg)}</p><div class="tr-acts"><button type="button" class="primary">확인</button></div>`;
+    const d = document.createElement('dialog'); d.className = 'code-dlg'; d.innerHTML = `<h2>${esc(title)}</h2><p style="white-space:pre-line">${esc(msg)}</p><div class="tr-acts"><button type="button" class="primary">확인</button></div>`;
     d.querySelector('button').onclick = () => d.close(); d.onclose = () => d.remove(); document.body.append(d); d.showModal();
+  }
+  // 업로드 실패 원인 코드: 화면 가운데 알림으로 원인과 고치는 법을 함께 보여 준다
+  const RV_CODES = [
+    [/RV-06|너무 큽니다/, 'RV-06', '파일이 15MB를 넘어요.', '사진·불필요한 탭을 지우고 다시 저장하거나, 통합데이터 탭만 남긴 사본을 올려 주세요.'],
+    [/RV-05|엑셀 읽기|불러오지 못/, 'RV-05', '엑셀을 읽는 도구를 불러오지 못했어요.', '인터넷 연결을 확인하고 새로고침(Ctrl+Shift+R) 뒤 다시 올려 주세요.'],
+    [/RV-03|날짜/, 'RV-03', '통합데이터 A열 날짜를 읽지 못했어요.', 'A열이 날짜 형식(예: 2026-11-02, 11/2/26)인지, 다른 달 날짜만 들어 있지 않은지 확인해 주세요.'],
+    [/RV-02|YYYY년|열이 없습니다|머리글/, 'RV-02', '통합데이터 탭의 머리글(열 이름)이 예상과 달라요.', "1~5행 안에 '날짜·담당자·초/재진·국적·경로·총금액·베가스 금액·업셀 집계·검증차액·결제수단' 열 이름이 그대로 있어야 해요. 열 이름을 바꿨다면 원래대로 돌려 주세요."],
+    [/토큰|권한|unauthorized/i, 'RV-04', '보관(저장) 권한이 없어요.', '관리자에게 받은 업로드 토큰을 다시 입력해 주세요. 화면에는 분석 결과가 보이지만 저장은 안 됐어요.'],
+    [/csv|형식|Unsupported|zip|corrupt|End of data|탭을 찾지/i, 'RV-01', '매출 파일로 알아볼 수 없어요.', "「통합데이터」(또는 「월간요약」) 탭이 있는 엑셀인지 확인해 주세요. 탭 이름을 바꿨다면 원래대로 돌리고, 「다른 이름으로 저장 → Excel 통합 문서(.xlsx)」로 저장한 뒤 다시 올려 주세요. 암호가 걸린 파일은 읽을 수 없어요."],
+  ];
+  function rvFail(title, err) {
+    const m = String(err?.message || err || ''), hit = RV_CODES.find(([re]) => re.test(m)) || [null, 'RV-00', '알 수 없는 오류예요.', '파일 이름·탭 이름을 바꾸지 말고 다시 올려 보고, 계속되면 이 화면을 캡처해 「건의 · 제보」로 보내 주세요.'];
+    const st = $('rvStatus'); if (st) st.textContent = '';
+    rvAlert(`${title} · ${hit[1]}`, `${hit[2]}\n\n해결 방법: ${hit[3]}\n\n자세한 내용: ${m.replace(/^\[RV-\d+\]\s*/, '')}`);
+  }
+  // 성별 × 유입경로: 통합데이터에 '성별'(남/여) 열이 있을 때 경로마다 남녀 건수·비율·객단가
+  function genderCard(d, m) {
+    const g = d.gender, avg = x => x.count ? x.total / x.count : null;
+    if (!g.has) return `<article class="rv-card rv-span12"><h2>성별 × 유입 경로</h2><p class="rv-sub">이 파일에는 성별 정보가 없어요</p><p class="rv-gender-empty">통합데이터 탭에 <b>성별</b> 열(값: 남 / 여)을 추가하면 경로별 남녀 비율·객단가가 여기에 나타나요. 담당자 원본 시트에 성별 칸을 만들어 통합데이터로 함께 넘기는 방법을 추천해요.</p></article>`;
+    const sx = n => g.sexes.find(x => x.name === n) || { count: 0, total: 0 }, M = sx('남'), F = sx('여'), U = sx('미상');
+    const rows = g.routes.filter(r => r.male.count + r.female.count).slice(0, 12);
+    return `<article class="rv-card rv-span12"><h2>성별 × 유입 경로</h2><p class="rv-sub">남 ${fmt(M.count)}건 · 여 ${fmt(F.count)}건${U.count ? ` · 미상 ${fmt(U.count)}건` : ''} · 여성 비율 ${pct(M.count + F.count ? F.count / (M.count + F.count) : null)}</p>
+      <div class="rv-table"><table><thead><tr><th>경로</th><th>남</th><th>여</th><th style="min-width:160px">남 : 여</th><th>남 객단가</th><th>여 객단가</th></tr></thead><tbody>${rows.map(r => { const t = r.male.count + r.female.count;
+        return `<tr><td>${esc(r.name)}</td><td>${fmt(r.male.count)}</td><td>${fmt(r.female.count)}</td><td><div class="rv-sexbar" role="img" aria-label="남 ${pct(r.male.count / t)} 여 ${pct(r.female.count / t)}"><i style="flex:${r.male.count};background:${colors[0]}"></i><i style="flex:${r.female.count};background:#e87ba4"></i></div><small>여 ${pct(r.female.count / t)}</small></td><td>${short(avg(r.male))}원</td><td>${short(avg(r.female))}원</td></tr>`; }).join('')}</tbody></table></div></article>`;
   }
   function pickStaff() { // 누구의 일일마감인지 (기기에 마지막 선택 기억)
     return new Promise(res => {
@@ -111,9 +135,10 @@
     $('rvFile').onchange = async e => {
       const file = e.target.files[0]; if (!file) return;
       try {
+        $('rvMessage').textContent = '파일 분석 중…';
         const parsed = await fileParse(file); // .xlsx(일일마감·월간요약)/.csv
         generation++; sourceMode = ''; data = parsed; data.updated = 'CSV 파일'; selectedDay = null; render();
-      } catch (err) { $('rvMessage').textContent = err.message; e.target.value = ''; }
+      } catch (err) { $('rvMessage').textContent = err.message; e.target.value = ''; rvFail(`「${file.name}」을 반영하지 못했어요`, err); }
     };
     $('rvPassForm').onsubmit = e => { e.preventDefault(); load($('rvPass').value); };
   }
@@ -220,6 +245,7 @@
         <article class="rv-card rv-span6"><h2>담당자별</h2><div class="rv-table"><table><thead><tr><th>담당자</th><th>보고</th><th>총금액</th><th>건당</th><th>비중</th></tr></thead><tbody>${data.staff.map(s => `<tr><td>${esc(s.name)}</td><td>${fmt(s.count)}</td><td>${won(s.total)}</td><td>${won(s.count ? s.total / s.count : null)}</td><td>${pct(m.total && s.total != null ? s.total / m.total : null)}</td></tr>`).join('')}</tbody></table></div></article>
         ${data.channels ? `<article class="rv-card rv-span6"><h2>유입 경로별 매출</h2><p class="rv-sub">경로별 매출 · 건수 · 객단가</p><div class="rv-table"><table><thead><tr><th>경로</th><th>건수</th><th>매출</th><th>객단가</th><th>비중</th></tr></thead><tbody>${data.channels.slice(0, 10).map(c => `<tr><td>${esc(c.name)}</td><td>${fmt(c.count)}</td><td>${short(c.total)}원</td><td>${short(c.count ? c.total / c.count : null)}원</td><td>${pct(m.total ? c.total / m.total : null)}</td></tr>`).join('')}</tbody></table></div></article>
         <article class="rv-card rv-span6"><h2>초진 · 재진</h2><p class="rv-sub">신규 유입과 재방문의 매출 구조</p><div class="rv-visits">${data.visits.map((v, i) => `<div><span><i style="background:${colors[i]}"></i>${esc(v.name)}</span><strong>${pct(m.count ? v.count / m.count : null)}</strong><small>${fmt(v.count)}건 · 매출 ${short(v.total)}원 · 객단가 ${short(v.count ? v.total / v.count : null)}원</small></div>`).join('')}</div><div class="rv-stack" role="img" aria-label="초진 재진 매출 비중">${data.visits.map((v, i) => `<i style="flex:${v.total};background:${colors[i]}"></i>`).join('')}</div></article>` : ''}
+        ${data.gender ? genderCard(data, m) : ''}
         <article class="rv-card rv-span12" id="rvTrend"><h2>월별 통합 추이</h2><p class="rv-sub">보관된 달을 모아 비교합니다 · 불러오는 중…</p></article>
         <article class="rv-card rv-span12 rv-insights"><h2>운영 · 마케팅 인사이트</h2><ul id="rvInsights">${insightList(...(insightArgs = () => [top, top5, cats.filter(c => !exGet().has(c.name)), totalCases, pay, dom])())}</ul></article>
         <details class="rv-card rv-span12 rv-detail"><summary>집계 기준과 검증 결과 보기</summary><div class="rv-check-list">${[['일별 금액 합계', data.checks.dailyDifference], ['보고 건수 합계', data.checks.countDifference], ['결제수단 합계', data.checks.paymentDifference], ['국가별 금액 합계', data.checks.countryDifference], ['담당자 합계', data.checks.staffDifference], ['누적 금액', data.checks.cumulativeDifference]].map(([k, v]) => `<div><span>${k}</span><b class="${v === 0 ? 'ok' : 'review'}">${v === 0 ? '일치' : v == null ? '확인 불가' : '차이 ' + won(v)}</b></div>`).join('')}</div></details>
@@ -231,7 +257,7 @@
       if (!mo) return load();
       try { const r = hist[mo] || (await archive('get', { month: mo })).data; hist[mo] = r; generation++; sourceMode = ''; data = r; selectedDay = data.daily.at(-1)?.day; render(); } catch (err) { $('rvStatus').textContent = err.message; }
     };
-    $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => rvAlert('파일을 읽지 못했어요', err.message)); e.target.value = ''; };
+    $('rvUpload').onchange = e => { const f = e.target.files[0]; if (f) uploadMonth(f).catch(err => rvFail(`「${f.name}」을 반영하지 못했어요`, err)); e.target.value = ''; };
     host.querySelectorAll('[data-chart]').forEach(button => button.onclick = () => { chartMode = button.dataset.chart; host.querySelectorAll('[data-chart]').forEach(b => b.setAttribute('aria-pressed', b === button)); renderChart(); });
     $('rvDaySlider').oninput = e => { selectedDay = data.daily[+e.target.value - 1]?.day; renderDay(); };
     $('rvProcFilter').onclick = e => openProcFilter(e.currentTarget, cats);

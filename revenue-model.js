@@ -76,30 +76,50 @@ function parseCSV(text) {
 }
 
 // 일일마감 파일의 '통합데이터' 탭(고객 1명 = 1행)에서 직접 집계. 고객 이름은 읽지 않는다(집계만 보관).
+// 날짜 칸: '2026-11-02' · '11/2/26' · '11/2/2026' · '2026. 11. 2' → [y, m, d]
+function ymd_(v) {
+  var t = String(v == null ? '' : v).trim(), m;
+  if ((m = t.match(/^(\d{4})[-.\/]\s*(\d{1,2})[-.\/]\s*(\d{1,2})/))) return [+m[1], +m[2], +m[3]];
+  if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/))) return [m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[1], +m[2]];
+  return null;
+}
 function integratedParse_(rows) {
-  var head = (rows[0] || []).map(function (h) { return String(h).trim(); });
-  var title = head[0], match = String(title).match(/(\d{4})년\s*(\d{1,2})월/);
-  if (!match) throw new Error("통합데이터 1행 A열에서 'YYYY년 M월'을 찾지 못했습니다.");
-  var year = Number(match[1]), month = Number(match[2]);
+  // 머리글 줄: '담당자'·'총금액'이 있는 줄(옛 양식은 1행 A열에 'YYYY년 M월', 새 양식은 1행이 바로 머리글)
+  var hi = rows.slice(0, 6).findIndex(function (r) { var h = (r || []).map(function (c) { return String(c).trim(); }); return h.indexOf('담당자') >= 0 && h.indexOf('총금액') >= 0; });
+  if (hi < 0) throw new Error("[RV-02] 통합데이터에서 머리글 줄('담당자'·'총금액' 열)을 찾지 못했습니다.");
+  var head = (rows[hi] || []).map(function (h) { return String(h).trim(); }), body = rows.slice(hi + 1);
+  var title = head[0], match = String(title).match(/(\d{4})년\s*(\d{1,2})월/), year, month;
+  if (match) { year = Number(match[1]); month = Number(match[2]); }
+  else { // 제목이 없으면 날짜 칸에서 가장 많은 달
+    var seen = {}; body.forEach(function (r) { var d = ymd_(r[0]); if (d) { var k = d[0] + '-' + d[1]; seen[k] = (seen[k] || 0) + 1; } });
+    var best = Object.keys(seen).sort(function (a, b) { return seen[b] - seen[a]; })[0];
+    if (!best) throw new Error('[RV-03] 통합데이터 A열 날짜를 읽지 못했습니다. (예: 2026-11-02 또는 11/2/26)');
+    year = +best.split('-')[0]; month = +best.split('-')[1]; title = year + '년 ' + month + '월';
+  }
   var col = function (name) { var i = head.indexOf(name); if (i < 0) throw new Error("통합데이터에 '" + name + "' 열이 없습니다."); return i; };
   var C = { staff: col('담당자'), visit: col('초/재진'), nation: col('국적'), route: col('경로'), total: col('총금액'), vegas: col('베가스 금액'), upsell: col('업셀 집계'), diff: col('검증차액') };
   var payCols = [['강남언니/바비톡', '강남언니/바비톡'], ['카드', '카드'], ['현금', '현금'], ['큐릭', '큐릭'], ['기타/계좌', '기타/계좌']].map(function (x) { return { name: x[1], i: col(x[0]) }; });
-  var procCols = head.map(function (h, i) { return /^시술:/.test(h) ? { name: h.slice(3), i: i } : null; }).filter(Boolean);
+  var procCols = head.map(function (h, i) { var m = h.match(/^(?:시술|대분류):\s*(.+)$/); return m ? { name: m[1], i: i } : null; }).filter(Boolean); // 옛 '시술:' · 새 '대분류:'
+  var on = function (v) { return /^(true|o|y|✔|●)$/i.test(String(v).trim()) || num(v) > 0; }; // 새 양식은 TRUE/FALSE
+  var gi = head.findIndex(function (h) { return /^(성별|남녀|성)$/.test(h); }), sexOf = function (r) { var g = gi < 0 ? '' : String(r[gi] || '').trim(); return /^(남|남자|남성|m|male)$/i.test(g) ? '남' : /^(여|여자|여성|f|female)$/i.test(g) ? '여' : g ? '미상' : '미상'; };
+  var sexRoutes = {}, sexes = {};
   var num = function (v) { var t = String(v == null ? '' : v).replace(/[₩원,\s]/g, ''); if (!t || t === '-') return 0; var n = Number(t); return isFinite(n) ? n : 0; };
   var last = new Date(Date.UTC(year, month, 0)).getUTCDate(), dayMap = {}, staff = {}, pays = payCols.map(function () { return 0; }), nations = {}, routes = {}, visits = {}, procs = procCols.map(function () { return { count: 0, revenue: 0, domestic: 0, overseas: 0 }; });
   var total = 0, count = 0, vegas = 0, upsell = 0, diff = 0;
   for (var d = 1; d <= last; d++) dayMap[d] = { count: 0, total: 0 };
-  rows.slice(1).forEach(function (r) {
-    var dm = String(r[0] || '').trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (!dm || Number(dm[2]) !== month) return;
-    var amt = num(r[C.total]), day = Number(dm[3]), nat = String(r[C.nation] || '').trim() || '미상', dom = nat === '한국';
+  body.forEach(function (r) {
+    var dm = ymd_(r[0]); if (!dm || dm[1] !== month || dm[0] !== year) return;
+    var amt = num(r[C.total]), day = dm[2], nat = String(r[C.nation] || '').trim() || '미상', dom = nat === '한국';
     total += amt; count++; vegas += num(r[C.vegas]); upsell += num(r[C.upsell]); diff += num(r[C.diff]);
     dayMap[day].count++; dayMap[day].total += amt;
     var sn = String(r[C.staff] || '').trim() || '미상'; staff[sn] = staff[sn] || { count: 0, total: 0 }; staff[sn].count++; staff[sn].total += amt;
     payCols.forEach(function (p, k) { pays[k] += num(r[p.i]); });
     var nk = dom ? '국내' : nat; nations[nk] = (nations[nk] || 0) + amt;
-    var rt = String(r[C.route] || '').trim() || '미상'; routes[rt] = routes[rt] || { count: 0, total: 0 }; routes[rt].count++; routes[rt].total += amt;
+    var rt = String(r[C.route] || '').trim().replace(/^[A-Za-z]+$/, function (x) { return x.toUpperCase(); }) || '미상'; // 'sc' = 'SC' routes[rt] = routes[rt] || { count: 0, total: 0 }; routes[rt].count++; routes[rt].total += amt;
+    var sx = sexOf(r); sexes[sx] = sexes[sx] || { count: 0, total: 0 }; sexes[sx].count++; sexes[sx].total += amt; // 성별 × 유입경로
+    sexRoutes[rt] = sexRoutes[rt] || {}; sexRoutes[rt][sx] = sexRoutes[rt][sx] || { count: 0, total: 0 }; sexRoutes[rt][sx].count++; sexRoutes[rt][sx].total += amt;
     var vt = String(r[C.visit] || '').trim() === '초' ? '초진' : '재진'; visits[vt] = visits[vt] || { count: 0, total: 0 }; visits[vt].count++; visits[vt].total += amt;
-    procCols.forEach(function (p, k) { if (num(r[p.i]) > 0) { procs[k].count++; procs[k].revenue += amt; if (dom) procs[k].domestic++; else procs[k].overseas++; } });
+    procCols.forEach(function (p, k) { if (on(r[p.i])) { procs[k].count++; procs[k].revenue += amt; if (dom) procs[k].domestic++; else procs[k].overseas++; } });
   });
   var cum = 0, daily = [];
   for (var d2 = 1; d2 <= last; d2++) { cum += dayMap[d2].total; daily.push({ day: d2, label: month + '-' + d2, weekday: new Date(Date.UTC(year, month - 1, d2)).getUTCDay(), count: dayMap[d2].count, total: dayMap[d2].total, cumulative: cum }); }
@@ -115,6 +135,7 @@ function integratedParse_(rows) {
     payments: payCols.map(function (p, k) { return { name: p.name, value: pays[k] }; }), countries: countries,
     categories: procCols.map(function (p, k) { return { name: p.name, count: procs[k].count, ratio: count ? procs[k].count / count : null, domestic: procs[k].domestic, overseas: procs[k].overseas, revenue: procs[k].revenue }; }).filter(function (c) { return c.count > 0; }),
     channels: obj(routes), visits: obj(visits), weeks: weeks.filter(Boolean),
+    gender: { has: gi >= 0, sexes: obj(sexes), routes: Object.keys(sexRoutes).map(function (k) { var x = sexRoutes[k], g = function (s) { return x[s] || { count: 0, total: 0 }; }; return { name: k, male: g('남'), female: g('여'), unknown: g('미상') }; }).sort(function (a, b) { return (b.male.count + b.female.count + b.unknown.count) - (a.male.count + a.female.count + a.unknown.count); }) },
     checks: { dailyDifference: 0, countDifference: 0, paymentDifference: Math.round(total - pays.reduce(function (a, b) { return a + b; }, 0)), countryDifference: 0, staffDifference: 0, cumulativeDifference: 0 } };
 }
 // 담당자 일일마감 파일(첫 탭: 날짜·이름·초/재진·국적·경로·어플금액·업셀금액·총금액·결제방식…) → 이름 없는 요약 행

@@ -1511,3 +1511,5 @@ html.printing .row-link{display:none!important}
 .datestrip .ds-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
 .datestrip .ds-pick:hover,.datestrip .ds-today:hover{box-shadow:0 0 0 2px var(--blue-weak)}
 .datestrip .ds-today{color:var(--blue-text)}.datestrip .ds-today b{font-size:14px}
+.rv-sexbar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--grey100);min-width:120px}.rv-sexbar i{display:block}
+.rv-sexbar+small{font-size:11px;color:var(--text-2)}.rv-gender-empty{font-size:14px;color:var(--text-2);line-height:1.6;margin:8px 0 0}
