@@ -397,14 +397,20 @@
     childrenOf(r).forEach(child => {
       const sub = el('<div class="subtask"></div>'); sub.dataset.id = child.id;
       const check = el('<input type="checkbox">'); check.checked = isDone(child); check.setAttribute('aria-label', child.text + ' 완료');
-      check.onchange = () => changeSubtask(r, child, { status: check.checked ? 'done' : 'todo' });
+      check.onchange = () => { if (check.checked && !isDone(child)) shareDone(child); changeSubtask(r, child, { status: check.checked ? 'done' : 'todo', completed: check.checked ? todayKst() : '' }); };
       const text = el(`<div class="subtask-text${check.checked ? ' done' : ''}" contenteditable="plaintext-only"></div>`); text.textContent = child.text;
       text.onblur = () => { const value = text.textContent.trim(); if (value && value !== child.text) changeSubtask(r, child, { text: value }); else if (!value) text.textContent = child.text; };
       text.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); text.blur(); } };
       const remove = el(`<button title="하위 업무 삭제" aria-label="하위 업무 삭제">${icon('x', 14)}</button>`); remove.onclick = () => changeSubtask(r, child, {}, true);
       const grip = el(`<button type="button" class="drag sub-grip" aria-label="${esc(child.text)} 순서 바꾸기·타임라인으로 끌기" title="위아래로 끌어 순서 바꾸기 · 타임라인으로 끌어 넣기">${icon('drag', 14)}</button>`);
       grip.onpointerdown = e => startDrag(e, sub, child, { tlOnly: true });
-      sub.append(grip, check, text, remove); list.append(sub);
+      sub.append(grip, check, text);
+      if (isDone(child)) { // 완료일: 오른쪽에 연한 날짜, 눌러서 고침(완료 업무 목록이 이 날짜로 모임)
+        const c = String(child.completed || child.date).slice(0, 10), dd = el(`<label class="done-date" title="완료일 수정">${c.slice(5).replace('-', '/')}<input type="date" value="${c}" max="${todayKst()}" aria-label="${esc(child.text)} 완료일 수정"></label>`);
+        dd.querySelector('input').onchange = e => { if (!e.target.value) return; changeSubtask(r, child, { completed: e.target.value }); toast(`완료일을 ${e.target.value.slice(5).replace('-', '/')}로 바꿨습니다`); loadDone(); };
+        sub.append(dd);
+      }
+      sub.append(remove); list.append(sub);
     });
     card.append(list, addInput(text => changeSubtask(r, { id: newId(r.date), date: r.date, section: '하위업무', col: r.id, status: 'todo', text, start: '', end: '' }, {}), '+ 하위 업무 추가 (Enter)'));
     return card;
@@ -946,7 +952,10 @@
     const { from, to } = doneRange(), printOn = pref('printDone', false);
     const src = [...(state.doneRows || []), ...state.rows], parentOf = r => src.find(x => x.id === r.col); // 하위 업무도 완료 목록에 (부모 제목과 함께)
     const all = src.filter(r => (DONE_SECS.has(r.section) || isTaskSec(r.section) || r.section === '하위업무') && isDone(r));
-    const latest = new Map(); all.forEach(r => { const k = r.origin || r.id, c = r.completed || r.date; if (c >= from && c <= to && (!latest.has(k) || latest.get(k).date < r.date)) latest.set(k, { ...r, _c: c }); });
+    // 같은 업무(원본id)가 여러 날에 복사돼 있으면: 완료일이 적힌 줄(가장 최근 것)을 쓰고, 없으면 처음 완료로 보인 날
+    const pick = new Map(); all.forEach(r => { const k = r.origin || r.id, c = String(r.completed || '').slice(0, 10), cur = pick.get(k);
+      if (!cur || (c && !cur.strong) || (c && cur.strong && r.date > cur.r.date) || (!c && !cur.strong && r.date < cur.r.date)) pick.set(k, { r, strong: !!c, c: c || r.date }); });
+    const latest = new Map(); pick.forEach(({ r, c }, k) => { if (c >= from && c <= to) latest.set(k, { ...r, _c: c }); });
     const byDay = {}; [...latest.values()].forEach(r => (byDay[r._c] = byDay[r._c] || []).push(r));
     const days = Object.keys(byDay).sort().reverse();
     box.innerHTML = `<div class="titlebar" style="--tb-bg:${C.PEOPLE.find(p => p.name === state.person)?.color || '#191f28'}"><span>완료 업무</span><span class="meta">${esc(disp(state.person))}</span></div>

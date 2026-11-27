@@ -624,7 +624,8 @@ function generateDay_(who, d, force) {
   } finally { lock.releaseLock(); }
 }
 function copyOf_(r, id, d, status, col) {
-  return { id: id, date: d, section: r.section, col: col || '', status: status || '', text: r.text, start: r.start, end: r.end, created: r.created || r.date, completed: '', origin: r.origin || r.id, order: r.order || '' };
+  var keep = (status === 'done' || status === '⭕') && status === r.status; // 완료 상태 그대로 넘어가면 완료일도 그대로(하위 업무 포함)
+  return { id: id, date: d, section: r.section, col: col || '', status: status || '', text: r.text, start: r.start, end: r.end, created: r.created || r.date, completed: keep ? (r.completed || r.date) : '', origin: r.origin || r.id, order: r.order || '' };
 }
 // 트리거 진입점: 평일(공휴일 제외) 00:05 KST 에 모든 사람의 그날 보고서 생성
 function dailyGenerate() {
@@ -939,7 +940,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-27.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.4'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
