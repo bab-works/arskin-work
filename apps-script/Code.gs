@@ -417,7 +417,7 @@ function revenueArchive_(b, me) {
   rows = rows.map(function (r) { return [r[0] instanceof Date ? Utilities.formatDate(r[0], 'Asia/Seoul', 'yyyy-MM') : String(r[0]), r[1], r[2], r[3], String(r[4] || ''), String(r[5] || '')]; });
   // 'yyyy-MM' = 그 달 분석, 'yyyy-MM#담당자' = 그 담당자의 일일마감 원본 요약(이름 없이)
   if (b.op === 'list') { var keys = rows.map(function (r) { return String(r[0]); }).filter(String), files = {}; rows.forEach(function (r) { if (r[4]) files[r[0]] = r[5] || '원본.xlsx'; });
-    var nw = keys.filter(function (k) { return k.indexOf('#') < 0; }).sort().pop(); if (nw && !files[nw]) files[nw] = '매출 원본 시트(엑셀)'; // 최근 달은 시트 내보내기로라도 받을 수 있게
+    var sm = revenueSheetMonth_(ss); if (sm && keys.indexOf(sm) >= 0 && !files[sm]) files[sm] = '매출 원본 시트(엑셀)'; // 원본 시트가 그 달 자료일 때만 시트 내보내기로 대신
     return { months: keys.filter(function (k) { return k.indexOf('#') < 0; }).sort().reverse(), parts: keys.filter(function (k) { return k.indexOf('#') > 0; }), files: files, saved: rows.reduce(function (o, r) { o[r[0]] = String(r[2] instanceof Date ? r[2].toISOString() : r[2]); return o; }, {}) }; }
   var month = String(b.month || ''); if (!/^\d{4}-\d{2}(#[^#]{1,20})?$/.test(month)) throw new Error('월 형식이 올바르지 않습니다');
   var idx = -1; for (var i = 0; i < rows.length; i++) if (String(rows[i][0]) === month) { idx = i + 2; break; }
@@ -425,8 +425,7 @@ function revenueArchive_(b, me) {
   if (b.op === 'file') { // 원본 파일 내려받기(매출 비밀번호 확인 후)
     var fid = idx > 0 ? rows[idx - 2][4] : '';
     if (!fid) { // 따로 보관된 원본이 없으면: 가장 최근 달은 매출 원본 시트를 엑셀로 내려준다
-      var newest = rows.map(function (r) { return r[0]; }).filter(function (k) { return k && k.indexOf('#') < 0; }).sort().pop();
-      if (month !== newest) throw new Error('이 달은 원본 파일이 보관되어 있지 않아요. 그 달 파일을 한 번 다시 올리면 원본도 함께 보관돼요.');
+      if (month !== revenueSheetMonth_(ss)) throw new Error('이 달은 원본 파일이 보관되어 있지 않아요. 그 달 파일을 한 번 다시 올리면 원본도 함께 보관돼요. (매출 원본 시트는 ' + (revenueSheetMonth_(ss) || '다른 달') + ' 자료라 대신 내려줄 수 없어요)');
       var res = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + REVENUE_SS_ID + '/export?format=xlsx', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
       if (res.getResponseCode() !== 200) throw new Error('매출 원본 시트를 엑셀로 내보내지 못했어요 (' + res.getResponseCode() + ')');
       return { name: month + ' 매출 원본 시트.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: Utilities.base64Encode(res.getBlob().getBytes()), fromSheet: true };
@@ -454,6 +453,10 @@ function revenueArchive_(b, me) {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try { var row = [month, text, new Date().toISOString(), me]; sh.getRange('A:A').setNumberFormat('@'); if (idx > 0) sh.getRange(idx, 1, 1, 4).setValues([row]); else sh.appendRow(row); } finally { lock.releaseLock(); }
   return { ok: true };
+}
+// 매출 원본 시트가 몇 월 자료인지: 월간요약 A1 'YYYY년 M월' → 'YYYY-MM'
+function revenueSheetMonth_(ss) {
+  try { var t = String(ss.getSheetByName('월간요약').getRange('A1').getDisplayValue()), m = t.match(/(\d{4})년\s*(\d{1,2})월/); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) : ''; } catch (e) { return ''; }
 }
 function revenueRows_(provided) {
   revenueKeyCheck_(provided);
@@ -965,7 +968,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-27.6'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.7'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
