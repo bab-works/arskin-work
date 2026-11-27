@@ -1666,13 +1666,39 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible' || Date.now() - (boot.at || 0) < 3e5) return; boot.at = Date.now(); api.get({ action: 'boot' }).then(j => { applyBoot(j); cacheSet('boot', j); }).catch(() => {}); });
   async function boot() { // 휴일·태그·연차·원장님 숙제·내 이름을 한 번에
     const c = cacheGet('boot'); if (c) applyBoot(c);
-    try { const j = await api.get({ action: 'boot' }, c ? 8000 : 20000); boot.at = Date.now(); applyBoot(j); cacheSet('boot', j); }
+    try { const j = await api.get({ action: 'boot' }, c ? 8000 : 20000); boot.at = Date.now(); applyBoot(j); cacheSet('boot', { ...j, prefs: undefined }); if ('prefs' in j && syncPrefs(j.prefs)) return; }
     catch { if (!c) await api.get({ action: 'holidays' }).then(j => setHolidays(j.holidays)).catch(() => {}); loadDirector(); loadTags(); loadLeaves(); } // 옛 서버
     paintDirBadge(); if (!loadDirector.checked) { loadDirector.checked = true; bossCheck(); }
     const mine = C.PEOPLE.find(p => p.name === state.dir.me && !p.director); // 접속한 사람의 일일보고를 먼저
     if (mine && !boot.moved && state.person !== mine.name && !isDirector()) { boot.moved = true; state.person = mine.name; state.rows = []; state.sel = null; renderPeople(); load(); }
     if (state.view === 'home') renderHome(); if (state.view === 'team') renderTeam();
   }
+  // 화면 개인 설정을 접속 계정에 저장(서버): 기기(윈도우·맥)를 오가도 같은 설정. 서버가 비어 있으면 윈도우 PC 설정을 먼저 올림
+  const PREF_SKIP = /^(accessCode|revenueKey|revenueAdminKey|rvLast)$|^c:|^profile@@|^prefs@@/;
+  const prefSnap = () => { const o = {}; try { Object.keys(localStorage).filter(k => !PREF_SKIP.test(k)).sort().forEach(k => { o[k] = localStorage[k]; }); } catch {} return o; };
+  const prefSig = o => { let h = 5381; const t = JSON.stringify(o); for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h.toString(36); };
+  const prefMeta = () => { try { return JSON.parse(localStorage['prefs@@sync'] || '{}'); } catch { return {}; } };
+  const prefDevice = () => /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent) ? 'Mac' : /Win/i.test(navigator.platform || navigator.userAgent) ? 'Windows' : 'Other';
+  let prefReady = false;
+  function prefUpload() {
+    const data = prefSnap(), sig = prefSig(data), at = new Date().toISOString();
+    return api.post({ action: 'prefsSave', data, at, device: prefDevice() }).then(() => { try { localStorage['prefs@@sync'] = JSON.stringify({ at, sig }); } catch {} }).catch(() => {});
+  }
+  function syncPrefs(sp) { // true = 설정을 바꿔 끼워서 새로고침함
+    const meta = prefMeta(), local = prefSnap();
+    if (sp && sp.data && (!meta.at || sp.at > meta.at)) { // 다른 기기에서 저장한 설정이 더 새것 → 받아서 적용
+      const sig = prefSig(sp.data);
+      if (sig !== prefSig(local)) {
+        try { Object.keys(local).forEach(k => { if (!(k in sp.data)) localStorage.removeItem(k); }); Object.entries(sp.data).forEach(([k, v]) => { localStorage[k] = v; }); localStorage['prefs@@sync'] = JSON.stringify({ at: sp.at, sig }); } catch {}
+        if (!sessionStorage.prefsReloaded) { sessionStorage.prefsReloaded = '1'; location.reload(); return true; }
+      } else try { localStorage['prefs@@sync'] = JSON.stringify({ at: sp.at, sig }); } catch {}
+    } else if (!sp) { if (prefDevice() !== 'Mac') prefUpload(); } // 처음: 윈도우 PC 설정을 계정 설정으로(맥은 기다림)
+    else if (prefSig(local) !== meta.sig) prefUpload(); // 이 기기에서 바꾼 게 있으면 올림
+    prefReady = true; return false;
+  }
+  // 바뀐 설정은 20초마다·창을 떠날 때 올림
+  setInterval(() => { if (prefReady && prefSig(prefSnap()) !== prefMeta().sig) prefUpload(); }, 20000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && prefReady && prefSig(prefSnap()) !== prefMeta().sig) prefUpload(); });
   async function load() {
     if (!state.holidays) { state.holidays = {}; if (!cacheGet('boot')) $('report').innerHTML = '<div class="empty-note">서버에 연결하는 중… <small>(배포 직후에는 잠깐 느릴 수 있어요)</small></div>'; await boot(); }
     if (state.revOnly) return; // 매출표 전용 계정은 보고서 데이터를 부르지 않음

@@ -45,7 +45,7 @@ function doGet_(e) {
   if (p.action === 'leaves') { try { return json({ leaves: leaveList_() }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'jandiTest') { return json(jandiSend_('✅ 아르스킨 대시보드 잔디 연결 시험', (memberFor_(p.code) || '') + '님이 연결을 시험했습니다.')); }
   if (p.action === 'boot') { // 첫 화면에 필요한 작은 데이터들을 한 번에 (요청 수를 줄여 빠르게)
-    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), cards: cardsAll_(), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
+    try { var me = memberFor_(p.code), adm = me === ADMIN; return json({ sv: SERVER_VERSION, me: me, admin: adm, deny: adm ? [] : denyFor_(me), staff: staffList_(), perms: adm ? permsAll_() : undefined, members: adm ? memberNames_() : undefined, holidays: holidays_(false), tags: tagList_(), deletedTags: tagTrashList_(), leaves: leaveList_(), tasks: directorList_(), cards: cardsAll_(), prefs: prefsGet_(me), marketer: isMarketer_(me), nudgeText: isMarketer_(me) ? nudgeText_(me) : null }); } catch (err) { return json({ error: err.message }); }
   }
   if (p.action === 'blogTags') { try { return json({ tags: blogTags_(p.url) }); } catch (err) { return json({ error: err.message }); } }
   if (p.action === 'tags') { try { return json({ tags: tagList_() }); } catch (err) { return json({ error: err.message }); } }
@@ -82,6 +82,7 @@ function doPost_(e) {
   if (body.action === 'tagSave') { try { return json({ tags: tagSave_(body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeAck') { try { if (memberFor_(body.code) !== DIRECTOR) throw new Error('원장님만 확인할 수 있습니다'); return json({ n: nudgeAck_(body.at) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudge') { try { var me = memberFor_(body.code); if (!isMarketer_(me)) throw new Error('재촉은 마케터만 할 수 있습니다'); var nt = nudgeText_(me); nudgeSheet_().appendRow([new Date().toISOString(), me, '', nt.msg]); jandiSend_(nt.msg, me + '님이 재촉했습니다.'); return json({ ok: true }); } catch (err) { return json({ error: err.message }); } }
+  if (body.action === 'prefsSave') { try { return json({ prefs: prefsSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'cardsSave') { try { return json({ cards: cardsSave_(memberFor_(body.code), body.who, body.cards) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'nudgeTextSave') { try { return json({ nudgeText: nudgeTextSave_(memberFor_(body.code), body) }); } catch (err) { return json({ error: err.message }); } }
   if (body.action === 'trialSync') { try { return json(trialSync_(body.date)); } catch (err) { return json({ error: err.message }); } }
@@ -936,7 +937,7 @@ function tagTrash_(action, tag, me) {
 // shortcut: 메뉴 표시만 막는다(화면 숨김). 매출은 별도 비밀번호, 남의 보고서 쓰기는 서버가 이미 막음. 데이터 자체 차단이 필요해지면 각 action 에서 permsAll_() 확인 추가
 // 월간 매출표만 보는 계정(ACCESS_CODES 에 이 이름으로 코드를 넣으면 됨). 매출 비밀번호·업로드 토큰은 따로 필요
 var REVENUE_ONLY = ['골져스차', '눈밑지수술한사람'];
-var SERVER_VERSION = '2026-11-25.3'; // 배포 확인용: 설정 화면 맨 아래에 표시
+var SERVER_VERSION = '2026-11-27.1'; // 배포 확인용: 설정 화면 맨 아래에 표시
 var PERM_KEYS = ['calendar', 'daily', 'director', 'team', 'team:check', 'hospital', 'revenue']; // hospital = 아르스킨 연월차 캘린더(연월차·조직도 포함)
 // 사람별 숨김 메뉴: 설정에 저장된 값이 있으면 그대로, 없으면 매출 전용 계정은 매출표만
 function denyFor_(me) { var all = permsAll_(); if (Object.prototype.hasOwnProperty.call(all, me)) return all[me]; return REVENUE_ONLY.indexOf(me) >= 0 ? PERM_KEYS.filter(function (k) { return k !== 'revenue'; }) : []; }
@@ -1154,4 +1155,27 @@ function blogTags_(url) {
   tags = tags.map(function (t) { return t.replace(/^#/, '').replace(/\s+/g, ''); }).filter(Boolean).slice(0, 10);
   if (tags.length) ch.put(key, JSON.stringify(tags), 21600);
   return tags;
+}
+
+/* ---------- 화면 개인 설정: 접속 계정별로 서버에 보관(윈도우·맥 등 기기를 오가도 같은 설정). 공통 시트 '설정' 탭 ---------- */
+function prefsSheet_() {
+  var ss = SpreadsheetApp.openById(sheetIdFor('공통')), sh = ss.getSheetByName('설정');
+  if (!sh) { sh = ss.insertSheet('설정'); sh.getRange('A:D').setNumberFormat('@'); sh.appendRow(['계정', '설정(JSON)', '저장 시각', '기기']); sh.setFrozenRows(1); }
+  return sh;
+}
+function prefsGet_(me) {
+  if (!me) return null; var sh = prefsSheet_(), n = sh.getLastRow(); if (n < 2) return null;
+  var v = sh.getRange(2, 1, n - 1, 4).getDisplayValues(); for (var i = 0; i < v.length; i++) if (v[i][0] === me) { try { return { data: JSON.parse(v[i][1] || '{}'), at: v[i][2], device: v[i][3] }; } catch (e) { return null; } }
+  return null;
+}
+function prefsSave_(me, b) {
+  if (!me) throw new Error('unauthorized');
+  var data = b.data && typeof b.data === 'object' ? b.data : {}, txt = JSON.stringify(data); if (txt.length > 45000) throw new Error('설정이 너무 큽니다');
+  var at = String(b.at || new Date().toISOString()).slice(0, 30), dev = String(b.device || '').slice(0, 40);
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = prefsSheet_(), n = sh.getLastRow(), names = n > 1 ? sh.getRange(2, 1, n - 1, 1).getDisplayValues() : [];
+    for (var i = 0; i < names.length; i++) if (names[i][0] === me) { sh.getRange(i + 2, 2, 1, 3).setValues([[txt, at, dev]]); return { at: at }; }
+    sh.appendRow([me, txt, at, dev]); return { at: at };
+  } finally { lock.releaseLock(); }
 }
